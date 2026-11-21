@@ -1,0 +1,166 @@
+<#
+.SYNOPSIS
+Builds the release archive: a FOMOD installer with SeamlessSkyrim and, as an option, the patched
+Community Shaders.
+
+.DESCRIPTION
+The archive holds:
+  fomod\info.xml, fomod\ModuleConfig.xml   package\fomod\, the version taken from CMakeLists.txt
+  Core\SKSE\Plugins\SeamlessSkyrim.dll     Release build, without its PDB
+  Core\SKSE\Plugins\SeamlessSkyrim.ini     package\, as a player gets it
+  Core\SKSE\Plugins\SeamlessSkyrim_Doors.ini   the game's copy, the doors tuned so far
+  CommunityShaders\SKSE\Plugins\CommunityShaders.dll   the fork's build
+  CommunityShaders\...                     every file the fork changed or added under package\
+                                           and features\*\ since -CsBase
+  LICENSE, SOURCE.txt                      the GPL text and where the source of both parts is
+
+The Community Shaders part is a separate option because it is only a patch: installed without
+Community Shaders, its DLL runs with none of the shaders and data it expects and rendering breaks.
+The installer preselects it when CommunityShaders.dll is already installed.
+
+The game's SeamlessSkyrim_Doors.ini is copied into package\ first (commit it there), since door
+tunings made in game land in the game's copy.
+
+.EXAMPLE
+tools\make-release.ps1 -Build
+#>
+#Requires -Version 7
+[CmdletBinding()]
+param(
+	[string]$GameData = 'E:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data',
+	[string]$CsFork = 'E:\projects\CommunityShaders-Seamless',
+	# The Community Shaders release the fork is based on (a tag or commit in the fork).
+	[string]$CsBase = 'v1.9.1',
+	# Build SeamlessSkyrim (Release) and the fork's CommunityShaders target first.
+	[switch]$Build,
+	# Ship package\'s doors as they are, when the game has no SeamlessSkyrim_Doors.ini (the mod
+	# isn't deployed).
+	[switch]$KeepPackageDoors,
+	# Written into the archive's SOURCE.txt.
+	[string]$SourceUrl = 'https://github.com/OneManMonkeySquad/SeamlessSkyrim',
+	[string]$CsSourceUrl = 'https://github.com/OneManMonkeySquad/CommunityShaders-Seamless',
+	# Defaults to build\release\SeamlessSkyrim-<version>.zip.
+	[string]$OutFile
+)
+$ErrorActionPreference = 'Stop'
+$repo = Split-Path $PSScriptRoot -Parent
+$plugins = 'SKSE\Plugins'
+
+function Invoke-Git {
+	$output = & git -C $CsFork @args
+	if ($LASTEXITCODE) { throw "git $args failed" }
+	$output
+}
+
+# A stale DLL is the easiest way to ship the wrong thing.
+function Assert-Newer([string]$Binary, [string]$SourceDir) {
+	if (-not (Test-Path -LiteralPath $Binary)) { throw "$Binary is missing; run with -Build." }
+	$newest = Get-ChildItem -LiteralPath $SourceDir -Recurse -File | Sort-Object LastWriteTime | Select-Object -Last 1
+	if ($newest.LastWriteTime -gt (Get-Item -LiteralPath $Binary).LastWriteTime) {
+		throw "$Binary is older than $($newest.FullName); run with -Build."
+	}
+}
+
+$cmakeLists = Get-Content -Raw -LiteralPath (Join-Path $repo 'CMakeLists.txt')
+if ($cmakeLists -notmatch 'project\s*\([^)]*\bVERSION\s+([0-9.]+)') { throw 'No project VERSION in CMakeLists.txt.' }
+$version = $Matches[1]
+if (-not $OutFile) { $OutFile = Join-Path $repo "build\release\SeamlessSkyrim-$version.zip" }
+
+# ---- build -----------------------------------------------------------------------------------
+if ($Build) {
+	$cmake = (Get-Command cmake -ErrorAction SilentlyContinue)?.Source
+	if (-not $cmake) {
+		$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+		$cmake = & $vswhere -latest -prerelease -find 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' | Select-Object -First 1
+	}
+	if (-not $cmake) { throw 'cmake not found (neither on PATH nor in Visual Studio).' }
+
+	& $cmake --build (Join-Path $repo 'build') --config Release
+	if ($LASTEXITCODE) { throw 'SeamlessSkyrim build failed.' }
+	& $cmake --build (Join-Path $CsFork 'build\ALL') --config Release --target CommunityShaders
+	if ($LASTEXITCODE) { throw 'Community Shaders build failed.' }
+}
+
+# ---- doors -----------------------------------------------------------------------------------
+$doors = Join-Path $repo "package\$plugins\SeamlessSkyrim_Doors.ini"
+$liveDoors = Join-Path $GameData "$plugins\SeamlessSkyrim_Doors.ini"
+if (Test-Path -LiteralPath $liveDoors) {
+	if (-not (Test-Path -LiteralPath $doors) -or (Get-FileHash -LiteralPath $liveDoors).Hash -ne (Get-FileHash -LiteralPath $doors).Hash) {
+		Copy-Item -LiteralPath $liveDoors -Destination $doors
+		Write-Host "Door tunings from the game copied into package\$plugins\SeamlessSkyrim_Doors.ini; commit them." -ForegroundColor Yellow
+	}
+}
+elseif (-not $KeepPackageDoors) {
+	throw "$liveDoors is missing (mod not deployed?); deploy it, or pass -KeepPackageDoors to ship package\'s doors."
+}
+
+# ---- what goes into the archive: path in the archive -> source file --------------------------
+$files = [ordered]@{}
+
+$dll = Join-Path $repo 'build\Release\SeamlessSkyrim.dll'
+Assert-Newer $dll (Join-Path $repo 'src')
+$files["Core\$plugins\SeamlessSkyrim.dll"] = $dll
+$ini = Join-Path $repo "package\$plugins\SeamlessSkyrim.ini"
+if ((Get-Content -Raw -LiteralPath $ini) -match '(?m)^bEnabled=0') {
+	Write-Warning "package\$plugins\SeamlessSkyrim.ini has bEnabled=0; players get the portals switched off."
+}
+$files["Core\$plugins\SeamlessSkyrim.ini"] = $ini
+$files["Core\$plugins\SeamlessSkyrim_Doors.ini"] = $doors
+
+$csDll = Join-Path $CsFork 'build\ALL\Release\CommunityShaders.dll'
+Assert-Newer $csDll (Join-Path $CsFork 'src')
+$files["CommunityShaders\$plugins\CommunityShaders.dll"] = $csDll
+
+$forkChanged = @(Invoke-Git diff --name-only --diff-filter=d $CsBase -- package features) +
+	@(Invoke-Git ls-files --others --exclude-standard -- package features)
+foreach ($path in $forkChanged | Sort-Object -Unique) {
+	# Community Shaders' packaging copies package\ and each features\<name>\ into Data as they are.
+	$relative = ($path -replace '^(package|features/[^/]+)/', '') -replace '/', '\'
+	$files["CommunityShaders\$relative"] = Join-Path $CsFork $path
+}
+# The archive is built from the working tree; uncommitted fork changes would ship without a
+# commit to rebase onto the next Community Shaders release.
+$forkDirty = Invoke-Git status --porcelain -- src package features
+if ($forkDirty) { Write-Warning "The fork has uncommitted changes:`n$($forkDirty -join "`n")" }
+
+# ---- stage and zip ---------------------------------------------------------------------------
+$stage = Join-Path ([IO.Path]::GetTempPath()) "SeamlessSkyrim-release-$PID"
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+try {
+	foreach ($relative in $files.Keys) {
+		$to = Join-Path $stage $relative
+		New-Item -ItemType Directory -Force (Split-Path $to) | Out-Null
+		Copy-Item -LiteralPath $files[$relative] -Destination $to
+	}
+	# The GPL asks for the license text and the way to the source to travel with the binaries.
+	Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
+	[IO.File]::WriteAllText((Join-Path $stage 'SOURCE.txt'), @"
+SeamlessSkyrim $version is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version: see LICENSE.
+
+Source of SeamlessSkyrim:
+  $SourceUrl
+Source of the patched Community Shaders (the CommunityShaders option), branch seamless-portal:
+  $CsSourceUrl
+
+"@)
+
+	$fomod = Join-Path $stage 'fomod'
+	New-Item -ItemType Directory -Force $fomod | Out-Null
+	Copy-Item -LiteralPath (Join-Path $repo 'package\fomod\ModuleConfig.xml') -Destination $fomod
+	$info = Get-Content -Raw -LiteralPath (Join-Path $repo 'package\fomod\info.xml')
+	[IO.File]::WriteAllText((Join-Path $fomod 'info.xml'), ($info -replace '<Version>[^<]*</Version>', "<Version>$version</Version>"))
+
+	New-Item -ItemType Directory -Force (Split-Path $OutFile) | Out-Null
+	if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile }
+	# Not Compress-Archive: older versions of it write backslashes into entry names, which some
+	# mod managers' extractors don't take as folders.
+	Add-Type -AssemblyName System.IO.Compression.FileSystem
+	[IO.Compression.ZipFile]::CreateFromDirectory($stage, $OutFile, [IO.Compression.CompressionLevel]::Optimal, $false)
+}
+finally {
+	Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n$OutFile ($($files.Count) files + fomod)"
+$files.Keys | ForEach-Object { Write-Host "  $_" }

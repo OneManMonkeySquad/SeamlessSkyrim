@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+	<moduleName>SeamlessSkyrim</moduleName>
+	<requiredInstallFiles>
+		<folder source="Core" destination="" />
+	</requiredInstallFiles>
+	<installSteps order="Explicit">
+		<installStep name="Community Shaders">
+			<optionalFileGroups order="Explicit">
+				<group name="Community Shaders patch" type="SelectAny">
+					<plugins order="Explicit">
+						<plugin name="Patch for Community Shaders 1.9.1">
+							<description>Replaces Community Shaders' DLL and a few of its shaders, so rooms behind doors are drawn into the street with their own light. Only for Community Shaders 1.9.1, and SeamlessSkyrim must win its file conflicts with Community Shaders and Skylighting.
+
+With another version of Community Shaders, leave this off: doors still open without a loading screen, only the rooms aren't drawn into the street. Without Community Shaders, leave it off too: on its own the patch breaks rendering, and SeamlessSkyrim works on the game's own shaders (and ENB) by itself.</description>
+							<files>
+								<folder source="CommunityShaders" destination="" />
+							</files>
+							<typeDescriptor>
+								<dependencyType>
+									<defaultType name="Optional" />
+									<patterns>
+										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="SKSE\Plugins\CommunityShaders.dll" state="Active" />
+											</dependencies>
+											<type name="Recommended" />
+										</pattern>
+									</patterns>
+								</dependencyType>
+							</typeDescriptor>
+						</plugin>
+					</plugins>
+				</group>
+			</optionalFileGroups>
+		</installStep>
+	</installSteps>
+</config>

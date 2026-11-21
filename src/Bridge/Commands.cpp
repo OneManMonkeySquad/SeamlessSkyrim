@@ -1,0 +1,1243 @@
+#include "Bridge/Commands.h"
+
+#include "Bridge/FrameHooks.h"
+#include "Bridge/ReverseEngineering.h"
+#include "Portal/DoorPair.h"
+#include "Portal/MergedCull.h"
+#include "Portal/PortalManager.h"
+#include "Portal/PortalRender.h"
+#include "Portal/RemoteCell.h"
+#include "Portal/Travel.h"
+#include "Probe.h"
+
+// Defined next to SeamlessPortal_IsMergedShape (PortalManager.cpp).
+
+namespace
+{
+	std::string Hex(RE::FormID a_id)
+	{
+		return std::format("{:08X}", a_id);
+	}
+
+	// Accepts 0x16072, "0x16072", "16072" or "0001605E": form IDs are hex everywhere in modding.
+	RE::FormID ParseFormID(const json& a_value)
+	{
+		if (a_value.is_number_unsigned() || a_value.is_number_integer()) {
+			return a_value.get<RE::FormID>();
+		}
+		auto text = a_value.get<std::string>();
+		if (text.starts_with("0x") || text.starts_with("0X")) {
+			text.erase(0, 2);
+		}
+		return static_cast<RE::FormID>(std::stoul(text, nullptr, 16));
+	}
+
+	RE::TESObjectREFR* RequireRef(const json& a_args, const char* a_key = "ref")
+	{
+		const auto id = ParseFormID(a_args.at(a_key));
+		auto*      ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
+		if (!ref) {
+			throw std::runtime_error(std::format("{:08X} is not a loaded reference", id));
+		}
+		return ref;
+	}
+
+	RE::PlayerCharacter* RequirePlayer()
+	{
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		if (!player || !player->GetParentCell()) {
+			throw std::runtime_error("no player in the world (main menu or loading?)");
+		}
+		return player;
+	}
+
+	json Vec(const RE::NiPoint3& a_p)
+	{
+		return { a_p.x, a_p.y, a_p.z };
+	}
+
+	json CellJson(RE::TESObjectCELL* a_cell)
+	{
+		if (!a_cell) {
+			return nullptr;
+		}
+		const char* edid = a_cell->GetFormEditorID();
+		return {
+			{ "id", Hex(a_cell->GetFormID()) },
+			{ "editorId", edid ? edid : "" },
+			{ "name", a_cell->GetFullName() },
+			{ "interior", a_cell->IsInteriorCell() },
+			{ "summary", Probe::DescribeCell(a_cell) },
+		};
+	}
+
+	json DoorTarget(RE::TESObjectREFR* a_door)
+	{
+		auto* teleport = a_door->extraList.GetByType<RE::ExtraTeleport>();
+		if (!teleport || !teleport->teleportData) {
+			return nullptr;
+		}
+		auto linked = teleport->teleportData->linkedDoor.get();
+		json target = { { "linkedDoor", linked ? Hex(linked->GetFormID()) : "" } };
+		if (linked) {
+			target["cell"] = CellJson(linked->GetParentCell());
+			if (auto* world = linked->GetWorldspace()) {
+				target["worldspace"] = Hex(world->GetFormID());
+			}
+		}
+		return target;
+	}
+
+	// ---- commands ---------------------------------------------------------------------------
+
+	json Ping(const json&)
+	{
+		return {
+			{ "plugin", SKSE::GetPluginName() },
+			{ "version", SKSE::GetPluginVersion().string() },
+			{ "runtime", REL::Module::get().version().string() },
+		};
+	}
+
+	json State(const json&)
+	{
+		auto* ui = RE::UI::GetSingleton();
+		json  state = {
+            { "mainMenu", ui && ui->IsMenuOpen(RE::MainMenu::MENU_NAME) },
+            { "loading", ui && ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) },
+            { "console", ui && ui->IsMenuOpen(RE::Console::MENU_NAME) },
+            { "paused", ui && ui->GameIsPaused() },
+            { "walk", FrameHooks::WalkStatus() },
+		};
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* cell = player ? player->GetParentCell() : nullptr;
+		state["inGame"] = cell && !state["mainMenu"].get<bool>() && !state["loading"].get<bool>();
+		if (cell) {
+			auto* world = player->GetWorldspace();
+			state["player"] = {
+				{ "pos", Vec(player->GetPosition()) },
+				// Degrees, Skyrim convention: 0 = north (+Y), clockwise.
+				{ "headingDeg", player->GetAngleZ() * 180.0f / std::numbers::pi_v<float> },
+				{ "cell", CellJson(cell) },
+				{ "worldspace", world ? Hex(world->GetFormID()) : "" },
+			};
+		}
+		return state;
+	}
+
+	json Console(const json& a_args)
+	{
+		const auto command = a_args.at("command").get<std::string>();
+		auto*      factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::Script>();
+		auto*      script = factory ? factory->Create() : nullptr;
+		if (!script) {
+			throw std::runtime_error("cannot create a console script");
+		}
+		script->SetCommand(command);
+		// Commands that need a reference either name it ("player." / "<refid>.") or pass "ref".
+		script->CompileAndRun(a_args.contains("ref") ? RequireRef(a_args) : nullptr);
+		delete script;
+		logger::info("bridge: console '{}'", command);
+		return { { "executed", command } };
+	}
+
+	json LoadGame(const json& a_args)
+	{
+		const auto name = a_args.at("name").get<std::string>();
+		RE::BGSSaveLoadManager::GetSingleton()->Load(name.c_str());
+		return { { "loading", name } };
+	}
+
+	json SaveGame(const json& a_args)
+	{
+		RequirePlayer();
+		const auto name = a_args.at("name").get<std::string>();
+		RE::BGSSaveLoadManager::GetSingleton()->Save(name.c_str());
+		return { { "saved", name } };
+	}
+
+	json RefsNear(const json& a_args)
+	{
+		auto*       player = RequirePlayer();
+		const float radius = a_args.value("radius", 2000.0f);
+		const auto  kind = a_args.value("kind", std::string("all"));
+		const auto  limit = a_args.value("limit", 50u);
+
+		struct Entry
+		{
+			float distance;
+			json  data;
+		};
+		std::vector<Entry> entries;
+		RE::TES::GetSingleton()->ForEachReferenceInRange(player, radius, [&](RE::TESObjectREFR* a_ref) {
+			auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+			if (!base || a_ref == player || a_ref->IsDisabled()) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			const bool isDoor = base->Is(RE::FormType::Door);
+			const bool isActor = a_ref->Is(RE::FormType::ActorCharacter);
+			if ((kind == "doors" && !isDoor) || (kind == "actors" && !isActor)) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			const float distance = player->GetPosition().GetDistance(a_ref->GetPosition());
+			json        data = {
+                { "id", Hex(a_ref->GetFormID()) },
+                { "base", Hex(base->GetFormID()) },
+                { "type", RE::FormTypeToString(base->GetFormType()) },
+                { "name", a_ref->GetDisplayFullName() },
+                { "pos", Vec(a_ref->GetPosition()) },
+                { "distance", distance },
+			};
+			if (isDoor) {
+				data["teleport"] = DoorTarget(a_ref);
+				data["locked"] = a_ref->IsLocked();
+			}
+			entries.push_back({ distance, std::move(data) });
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+
+		std::ranges::sort(entries, {}, &Entry::distance);
+		json result = json::array();
+		for (std::size_t i = 0; i < entries.size() && i < limit; ++i) {
+			result.push_back(std::move(entries[i].data));
+		}
+		return { { "count", entries.size() }, { "refs", result } };
+	}
+
+	json Activate(const json& a_args)
+	{
+		auto* player = RequirePlayer();
+		auto* ref = RequireRef(a_args);
+		const bool activated = ref->ActivateRef(player, 0, nullptr, 1, false);
+		return { { "activated", activated }, { "ref", Hex(ref->GetFormID()) } };
+	}
+
+	json MoveTo(const json& a_args)
+	{
+		auto* player = RequirePlayer();
+		if (a_args.contains("ref")) {
+			player->MoveTo(RequireRef(a_args));
+		} else {
+			const auto& p = a_args.at("pos");
+			player->SetPosition(RE::NiPoint3{ p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() }, true);
+		}
+		return { { "pos", Vec(player->GetPosition()) } };
+	}
+
+	json WalkTo(const json& a_args)
+	{
+		RequirePlayer();
+		FrameHooks::WalkRequest request;
+		if (a_args.contains("ref")) {
+			request.target = RequireRef(a_args)->GetHandle();
+		} else {
+			const auto& p = a_args.at("pos");
+			// Steering is 2D, so z is optional.
+			request.point = { p.at(0).get<float>(), p.at(1).get<float>(), p.size() > 2 ? p.at(2).get<float>() : 0.0f };
+		}
+		request.stopDistance = a_args.value("stopDistance", 64.0f);
+		request.run = a_args.value("run", false);
+		request.timeoutSeconds = a_args.value("timeoutSeconds", 30.0f);
+		FrameHooks::StartWalk(request);
+		return FrameHooks::WalkStatus();
+	}
+
+	json WalkStop(const json&)
+	{
+		FrameHooks::StopWalk("stopped by request");
+		return FrameHooks::WalkStatus();
+	}
+
+	// A RenderDoc capture of the next frame, through the API of the renderdoc.dll that Community
+	// Shaders loads when its "Enable RenderDoc Capture" is on: its own trigger is a hotkey, which a
+	// game running in the background never gets. Returns the captures RenderDoc has written so far.
+	json RenderDocCapture(const json&)
+	{
+		auto* module = GetModuleHandleW(L"renderdoc.dll");
+		using GetApi_t = int (*)(int, void**);
+		auto* getApi = module ? reinterpret_cast<GetApi_t>(GetProcAddress(module, "RENDERDOC_GetAPI")) : nullptr;
+		void** api = nullptr;
+		constexpr int kVersion_1_1_2 = 10102;
+		if (!getApi || !getApi(kVersion_1_1_2, reinterpret_cast<void**>(&api)) || !api) {
+			throw std::runtime_error("RenderDoc isn't loaded (Community Shaders: Enable RenderDoc Capture, then restart the game)");
+		}
+		// RENDERDOC_API_1_1_2, in renderdoc_app.h's order: GetNumCaptures 13, GetCapture 14, TriggerCapture 15.
+		using GetNumCaptures_t = std::uint32_t (*)();
+		using GetCapture_t = std::uint32_t (*)(std::uint32_t, char*, std::uint32_t*, std::uint64_t*);
+		using TriggerCapture_t = void (*)();
+		reinterpret_cast<TriggerCapture_t>(api[15])();
+		json captures = json::array();
+		const auto count = reinterpret_cast<GetNumCaptures_t>(api[13])();
+		for (std::uint32_t i = 0; i < count; ++i) {
+			char          path[1024]{};
+			std::uint32_t length = sizeof(path);
+			if (reinterpret_cast<GetCapture_t>(api[14])(i, path, &length, nullptr)) {
+				captures.push_back(path);
+			}
+		}
+		return { { "triggered", true }, { "captures", captures } };
+	}
+
+	json Screenshot(const json& a_args)
+	{
+		const auto path = a_args.at("path").get<std::string>();
+		return FrameHooks::CaptureScreenshot(std::filesystem::path(path).wstring(), 5s);
+	}
+
+	// Diagnostics for NPCs that are loaded but not drawn after a seamless entry: everything that
+	// decides whether an actor's 3D reaches the main view.
+	json Actors3D(const json& a_args)
+	{
+		auto* player = RequirePlayer();
+		auto* cell = player->GetParentCell();
+		if (a_args.contains("cell")) {
+			cell = RE::TESForm::LookupByID<RE::TESObjectCELL>(ParseFormID(a_args.at("cell")));
+			if (!cell) {
+				throw std::runtime_error("no such cell");
+			}
+		}
+		auto*      loaded = cell->GetRuntimeData().loadedData;
+		auto*      worldScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		auto*      worldGraph = worldScene ? worldScene->GetRuntimeData().portalGraph : nullptr;
+		auto*      cellGraph = loaded ? loaded->portalGraph.get() : nullptr;
+		auto*      cell3D = loaded ? loaded->cell3D.get() : nullptr;
+		auto*      worldRoot = RE::Main::WorldRootNode();
+		const auto ptr = [](const void* a_p) { return std::format("{:X}", reinterpret_cast<std::uintptr_t>(a_p)); };
+		json       actors = json::array();
+		cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+			auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
+			if (!actor || actor->IsPlayerRef()) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			auto* object = actor->Get3D();
+			json  entry = {
+                { "id", Hex(actor->GetFormID()) },
+                { "name", actor->GetDisplayFullName() },
+                { "disabled", actor->IsDisabled() },
+                { "dead", actor->IsDead() },
+                { "distance", player->GetPosition().GetDistance(actor->GetPosition()) },
+                { "high", actor->GetActorRuntimeData().currentProcess && actor->GetActorRuntimeData().currentProcess->InHighProcess() },
+                { "has3D", object != nullptr },
+                { "room", [&] {
+					 auto* room = actor->extraList.GetByType<RE::ExtraRoom>();
+					 return room && room->room ? json(room->room->name.c_str()) : json(nullptr);
+				 }() },
+			};
+			if (object) {
+				json chain = json::array();
+				bool underCell = false;
+				for (auto* node = object; node; node = node->parent) {
+					underCell |= node == cell3D;
+					const auto& b = node->worldBound;
+					chain.push_back(std::format("{}{} flags {:X} bound ({:.0f},{:.0f},{:.0f}) r {:.0f}", node->name.c_str(), node->GetAppCulled() ? " [culled]" : "",
+						node->GetFlags().underlying(), b.center.x, b.center.y, b.center.z, b.radius));
+				}
+				RE::NiAVObject* top = object;
+				while (top->parent) {
+					top = top->parent;
+				}
+				auto* fade = object->AsFadeNode();
+				entry["chain"] = chain;
+				entry["underCell3D"] = underCell;
+				entry["underWorldRoot"] = top == worldRoot;
+				if (fade) {
+					const auto& f = fade->GetRuntimeData();
+					entry["fade"] = { f.unk128, f.unk12C, f.currentFade, f.unk134, f.unk138, f.unk13C, f.unk140, f.unk144, f.unk148, f.unk14C, f.unk150, f.unk152, f.unk153, f.unk154,
+						f.unk155 };
+				}
+				entry["fadeAmount"] = object->GetFadeAmount();
+				// Whether the skeleton is being posed: a bone's world position and when it was updated.
+				entry["rootWorld"] = Vec(object->world.translate - actor->GetPosition());
+				if (auto* spine = object->GetObjectByName("NPC Spine [Spn0]")) {
+					entry["spineWorld"] = Vec(spine->world.translate - actor->GetPosition());
+					entry["spineUpdated"] = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::uint8_t*>(spine) + 0x104);
+				}
+				entry["rootUpdated"] = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::uint8_t*>(object) + 0x104);
+				entry["boundRadius"] = object->worldBound.radius;
+				entry["boundCenterOffset"] = Vec(object->worldBound.center - actor->GetPosition());
+				// Shapes under the actor that a cull would skip on their own flags.
+				std::uint32_t shapes = 0, culledShapes = 0, mergedShapes = 0;
+				json          skins = json::array();
+				RE::BSVisit::TraverseScenegraphGeometries(object, [&](RE::BSGeometry* a_geometry) {
+					++shapes;
+					culledShapes += a_geometry->GetAppCulled() ? 1 : 0;
+					mergedShapes += Portal::Manager::IsMergedShape(a_geometry) ? 1 : 0;
+					if (auto* shader = a_geometry->GetGeometryRuntimeData().shaderProperty.get()) {
+						skins.push_back(std::format("{}: flags {:X} shader alpha {:.2f} material alpha {:.2f}", a_geometry->name.c_str(), a_geometry->GetFlags().underlying(),
+							shader->alpha, shader->QMaterialAlpha()));
+					}
+					auto* skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+					if (auto* dismember = skin ? netimmerse_cast<RE::BSDismemberSkinInstance*>(skin) : nullptr) {
+						const auto& d = dismember->GetRuntimeData();
+						int         visible = 0;
+						for (int i = 0; i < d.numPartitions; ++i) {
+							visible += d.partitions[i].visible ? 1 : 0;
+						}
+						skins.push_back(std::format("{}: {}/{} visible, unk98 {}", a_geometry->name.c_str(), visible, d.numPartitions, d.unk98));
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				});
+				entry["skins"] = skins;
+				entry["shapes"] = shapes;
+				entry["culledShapes"] = culledShapes;
+				entry["mergedShapes"] = mergedShapes;
+				entry["flags"] = std::format("{:X}", object->GetFlags().underlying());
+			}
+			actors.push_back(std::move(entry));
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		return {
+			{ "cell", CellJson(cell) },
+			{ "worldSceneGraph", ptr(worldGraph) },
+			{ "cellGraph", ptr(cellGraph) },
+			{ "cellRooms", cellGraph ? cellGraph->rooms.size() : 0 },
+			{ "actors", actors },
+		};
+	}
+
+	json NodeJson(RE::NiAVObject* a_object)
+	{
+		if (!a_object) {
+			return nullptr;
+		}
+		auto* node = a_object->AsNode();
+		std::size_t children = 0;
+		if (node) {
+			for (const auto& child : node->GetChildren()) {
+				children += child ? 1 : 0;
+			}
+		}
+		const auto& at = a_object->world.translate;
+		return { { "name", a_object->name.c_str() }, { "culled", a_object->GetAppCulled() }, { "children", children },
+			{ "parent", a_object->parent ? a_object->parent->name.c_str() : "" }, { "at", { at.x, at.y, at.z } } };
+	}
+
+	// What of the outdoors still exists while the player is in an interior: the question deciding
+	// whether the renderer can keep drawing the outdoors as the world there (docs/APPROACHES.md, 9).
+	json OutdoorsProbe(const json&)
+	{
+		json  result;
+		auto* tes = RE::TES::GetSingleton();
+		if (tes) {
+			const auto* world = tes->GetRuntimeData2().worldSpace;
+			std::size_t attached = 0, gridCount = 0;
+			if (tes->gridCells) {
+				for (std::uint32_t x = 0; x < tes->gridCells->length; ++x) {
+					for (std::uint32_t y = 0; y < tes->gridCells->length; ++y) {
+						if (auto* cell = tes->gridCells->GetCell(x, y)) {
+							++gridCount;
+							attached += cell->IsAttached() ? 1 : 0;
+						}
+					}
+				}
+			}
+			result["tes"] = { { "worldSpace", world ? world->GetFormEditorID() : "" }, { "interiorCell", tes->interiorCell ? Hex(tes->interiorCell->GetFormID()) : "" },
+				{ "gridCells", gridCount }, { "gridAttached", attached }, { "objRoot", NodeJson(tes->objRoot) }, { "lodLandRoot", NodeJson(tes->lodLandRoot) } };
+		}
+		if (auto* sky = RE::Sky::GetSingleton()) {
+			result["sky"] = { { "mode", static_cast<int>(sky->mode.get()) }, { "root", NodeJson(sky->root.get()) },
+				{ "weather", sky->currentWeather ? Hex(sky->currentWeather->GetFormID()) : "" }, { "hour", sky->currentGameHour },
+				{ "calendarHour", RE::Calendar::GetSingleton() ? RE::Calendar::GetSingleton()->GetHour() : -1.0f } };
+			const auto Rgb = [](const RE::NiColor& a_color) { return json::array({ a_color.red, a_color.green, a_color.blue }); };
+			using Color = RE::TESWeather::ColorTypes;
+			result["sky"]["sunlight"] = Rgb(sky->skyColor[Color::kSunlight]);
+			result["sky"]["ambient"] = Rgb(sky->skyColor[Color::kAmbient]);
+			result["sky"]["skyUpper"] = Rgb(sky->skyColor[Color::kSkyUpper]);
+			json dalc = json::array();
+			for (auto& axis : sky->directionalAmbientColors) {
+				dalc.push_back({ Rgb(axis[0]), Rgb(axis[1]) });
+			}
+			result["sky"]["dalc"] = dalc;
+			if (auto* sun = sky->sun; sun && sun->light) {
+				result["sky"]["sunLight"] = Rgb(sun->light->GetLightRuntimeData().diffuse);
+				result["sky"]["sunFade"] = sun->light->GetLightRuntimeData().fade;
+			}
+			result["lighting"] = Portal::Render::OutdoorLightingProbe();
+			// How many of the distant land's, objects' and trees' shapes count as the merged street's.
+			json lodMarked = json::object();
+			const std::pair<const char*, RE::NiAVObject*> lodParts[] = { { "land", RE::BGSTerrainManager::GetLODLandRoot().get() },
+				{ "objects", RE::BGSTerrainManager::GetLODObjectRoot().get() }, { "trees", RE::BGSTerrainManager::GetTreeNode().get() } };
+			for (const auto& [name, node] : lodParts) {
+				int total = 0, marked = 0;
+				std::map<std::string, int> properties;
+				if (node) {
+					RE::BSVisit::TraverseScenegraphGeometries(node, [&](RE::BSGeometry* a_shape) {
+						++total;
+						marked += Portal::Manager::IsMergedShape(a_shape) ? 1 : 0;
+						auto* property = a_shape->GetGeometryRuntimeData().shaderProperty.get();
+						++properties[property ? property->GetRTTI() ? property->GetRTTI()->name : "?" : "none"];
+						return RE::BSVisit::BSVisitControl::kContinue;
+					});
+				}
+				lodMarked[name] = { { "shapes", total }, { "marked", marked }, { "properties", properties } };
+			}
+			result["lodMarked"] = lodMarked;
+			// The engine's sun shadow light: whether it exists and is among the active shadow
+			// lights, its direction, and whether it shares the world's sun light.
+			if (auto* world = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]) {
+				auto& data = world->GetRuntimeData();
+				json  shadow = { { "exists", data.sunShadowDirLight != nullptr }, { "activeShadowLights", data.activeShadowLights.size() } };
+				if (auto* dir = data.sunShadowDirLight) {
+					const auto& v = dir->GetShadowDirectionalLightRuntimeData().sunVector;
+					shadow["sunVector"] = { v.x, v.y, v.z };
+					shadow["active"] = std::ranges::any_of(data.activeShadowLights, [&](const auto& a_light) { return a_light.get() == dir; });
+					shadow["sameLightAsSun"] = data.sunLight && dir->light == data.sunLight->light;
+					shadow["cascades"] = dir->GetRuntimeData().shadowmapDescriptors.size();
+				}
+				if (auto* sun = data.sunLight ? data.sunLight->light.get() : nullptr) {
+					const auto& r = sun->world.rotate;
+					shadow["sunLightDirection"] = { r.entry[0][0], r.entry[1][0], r.entry[2][0] };
+				}
+				result["sunShadow"] = shadow;
+			}
+		}
+		const auto TerrainJson = [](const RE::BGSTerrainManager* a_manager) -> json {
+			if (!a_manager) {
+				return nullptr;
+			}
+			return { { "worldSpace", a_manager->worldSpace ? a_manager->worldSpace->GetFormEditorID() : "" }, { "hasLOD", a_manager->hasLOD },
+				{ "staticDataLoaded", a_manager->staticDataLoaded }, { "rootNode", a_manager->rootNode != nullptr },
+				{ "cull", { a_manager->cachedCullState.cullRoot, a_manager->cachedCullState.cullLand, a_manager->cachedCullState.cullTrees, a_manager->cachedCullState.cullObjects } } };
+		};
+		result["terrain"] = { { "active", TerrainJson(RE::BGSTerrainManager::GetActiveManager()) },
+			{ "lodRoot", NodeJson(RE::BGSTerrainManager::GetLODRoot().get()) }, { "lodLandRoot", NodeJson(RE::BGSTerrainManager::GetLODLandRoot().get()) },
+			{ "lodObjectRoot", NodeJson(RE::BGSTerrainManager::GetLODObjectRoot().get()) }, { "water", NodeJson(RE::BGSTerrainManager::GetWaterNode().get()) },
+			{ "trees", NodeJson(RE::BGSTerrainManager::GetTreeNode().get()) } };
+		// The worldspace the street belongs to (the active portal's other side, when outdoors).
+		if (const auto portal = Portal::Manager::ReadyPortal(); portal && portal->cell && portal->cell->GetRuntimeData().worldSpace) {
+			auto* world = portal->cell->GetRuntimeData().worldSpace;
+			result["streetWorld"] = { { "editorId", world->GetFormEditorID() }, { "terrain", TerrainJson(world->terrainManager) },
+				{ "terrainOfParent", TerrainJson(world->GetTerrainManager()) } };
+		}
+		json scene = json::array();
+		if (auto* ssn = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]) {
+			for (const auto& child : ssn->GetChildren()) {
+				if (child) {
+					json entry = NodeJson(child.get());
+					if (auto* node = child->AsNode()) {
+						json inner = json::array();
+						for (const auto& grandchild : node->GetChildren()) {
+							if (grandchild) {
+								inner.push_back(NodeJson(grandchild.get()));
+							}
+						}
+						entry["childNodes"] = inner;
+					}
+					scene.push_back(entry);
+				}
+			}
+		}
+		result["worldScene"] = scene;
+		// What is drawn in the doorway: every reference whose 3D stands near the portal's door, in
+		// the player's cell and the remote cells (merged ones are where they are drawn).
+		if (const auto portal = Portal::Manager::ReadyPortal()) {
+			if (auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(portal->sourceDoor)) {
+				const auto center = door->GetPosition();
+				json       nearDoor = json::array();
+				std::vector<RE::TESObjectCELL*> cells(Portal::Manager::RemoteCells().begin(), Portal::Manager::RemoteCells().end());
+				cells.push_back(door->GetParentCell());
+				for (auto* cell : cells) {
+					cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+						auto* object = a_ref ? a_ref->Get3D() : nullptr;
+						if (object && object->world.translate.GetDistance(center) < 150.0f) {
+							const auto& at = object->world.translate;
+							// Why a shape is or isn't drawn: the flags of every node down to it, its fade and material.
+							json shapes = json::array();
+							RE::BSVisit::TraverseScenegraphGeometries(object, [&](RE::BSGeometry* a_shape) {
+								if (shapes.size() >= 4) {
+									return RE::BSVisit::BSVisitControl::kStop;
+								}
+								std::string chain;
+								for (auto* up = static_cast<RE::NiAVObject*>(a_shape); up; up = up->parent) {
+									chain += std::format("{}:{:X} ", up->name.c_str(), up->GetFlags().underlying());
+									if (auto* fade = up->AsFadeNode()) {
+										chain += std::format("[fade {:.2f}] ", fade->GetRuntimeData().currentFade);
+									}
+								}
+								auto* property = a_shape->GetGeometryRuntimeData().shaderProperty.get();
+								shapes.push_back(std::format("'{}' alpha {:.2f} flags {:X} | {}", a_shape->name.c_str(), property ? property->alpha : -1.0f,
+									property ? property->flags.underlying() : 0, chain));
+								return RE::BSVisit::BSVisitControl::kContinue;
+							});
+							nearDoor.push_back({ { "ref", Hex(a_ref->GetFormID()) }, { "base", Hex(a_ref->GetBaseObject() ? a_ref->GetBaseObject()->GetFormID() : 0) },
+								{ "cell", Hex(cell->GetFormID()) }, { "culled", object->GetAppCulled() }, { "disabled", a_ref->IsDisabled() }, { "at", { at.x, at.y, at.z } },
+								{ "shapes", shapes } });
+						}
+						return RE::BSContainer::ForEachResult::kContinue;
+					});
+				}
+				result["doorway"] = nearDoor;
+			}
+			// The remote space's references near its own door that can't be drawn where they should
+			// be: no 3D, 3D not in the scene graph or culled somewhere above it, faded out, or a bound
+			// left behind. The worldspace's persistent references too (a town's houses and paving),
+			// which aren't in the cells' own lists. Then each cell's land.
+			if (auto* linked = RE::TESForm::LookupByID<RE::TESObjectREFR>(portal->linkedDoor)) {
+				const auto center = linked->GetPosition();
+				json       missing = json::array();
+				const auto Check = [&](RE::TESObjectREFR* a_ref) {
+					if (!a_ref || a_ref->IsDisabled() || a_ref->GetPosition().GetDistance(center) > 1500.0f || missing.size() >= 60) {
+						return RE::BSContainer::ForEachResult::kContinue;
+					}
+					auto*       object = a_ref->Get3D();
+					auto*       base = a_ref->GetBaseObject();
+					std::string why;
+					if (!object) {
+						why = "no 3D";
+					} else {
+						// Culled at its own root is the engine's doing for markers (base IDs below 0x800).
+						const bool      marker = !base || base->GetFormID() < 0x800 || std::string_view(object->name.c_str()).find("Marker") != std::string_view::npos;
+						RE::NiAVObject* top = object;
+						for (auto* up = marker ? object->parent : object; up; up = up->parent) {
+							if (up->GetAppCulled()) {
+								why = std::format("culled at '{}'", up->name.c_str());
+								break;
+							}
+							top = up;
+						}
+						if (why.empty() && top != RE::Main::WorldRootNode()) {
+							why = std::format("not in the scene graph (top '{}')", top->name.c_str());
+						}
+						if (auto* fade = object->AsFadeNode(); why.empty() && fade && fade->GetRuntimeData().currentFade < 0.99f) {
+							why = std::format("faded to {:.2f}", fade->GetRuntimeData().currentFade);
+						}
+						if (const auto& bound = object->worldBound; why.empty() && bound.center.GetDistance(object->world.translate) > bound.radius + 300.0f) {
+							why = std::format("bound elsewhere: center ({:.0f},{:.0f},{:.0f}) radius {:.0f}, object at ({:.0f},{:.0f},{:.0f}), flags {:X}", bound.center.x, bound.center.y,
+								bound.center.z, bound.radius, object->world.translate.x, object->world.translate.y, object->world.translate.z, object->GetFlags().underlying());
+						}
+					}
+					if (!why.empty()) {
+						missing.push_back(std::format("{:08X} {:08X} '{}': {}", a_ref->GetFormID(), base ? base->GetFormID() : 0, base ? base->GetFormEditorID() : "", why));
+					}
+					return RE::BSContainer::ForEachResult::kContinue;
+				};
+				auto* world = linked->GetParentCell() && !linked->GetParentCell()->IsInteriorCell() ? linked->GetParentCell()->GetRuntimeData().worldSpace : nullptr;
+				if (world && world->persistentCell) {
+					world->persistentCell->ForEachReference(Check);
+				}
+				for (auto* cell : Portal::Manager::RemoteCells()) {
+					cell->ForEachReference(Check);
+					auto*       land = cell->GetRuntimeData().cellLand;
+					auto*       landData = land ? land->loadedData : nullptr;
+					std::string quads;
+					for (int quad = 0; quad < 4; ++quad) {
+						auto*       mesh = landData ? landData->mesh[quad] : nullptr;
+						std::string state = mesh ? "ok" : "none";
+						if (mesh) {
+							RE::NiAVObject* top = mesh;
+							for (RE::NiAVObject* up = mesh; up; up = up->parent) {
+								if (up->GetAppCulled()) {
+									state = std::format("culled at '{}'", up->name.c_str());
+									break;
+								}
+								top = up;
+							}
+							if (state == "ok" && top != RE::Main::WorldRootNode()) {
+								state = std::format("top '{}'", top->name.c_str());
+							}
+						}
+						quads += std::format("{}{}", quad ? ", " : "", state);
+					}
+					missing.push_back(std::format("land of {:08X}: {}", cell->GetFormID(), quads));
+				}
+				result["remoteNotDrawn"] = missing;
+			}
+		}
+		return result;
+	}
+
+	// Diagnostics: the distant LOD's shapes within 6000 units of the player (in the street's
+	// coordinates when the street is shown indoors), what culls them, and how many of their cells'
+	// segments are hidden (cells whose own houses are loaded).
+	json LODNear()
+	{
+		json  result = json::array();
+		auto* lodRoot = RE::BGSTerrainManager::GetLODRoot().get();
+		auto* root = lodRoot ? lodRoot->parent : nullptr;
+		if (!root) {
+			return result;
+		}
+		const auto toRoot = root->world.Invert();
+		const auto point = toRoot * RE::PlayerCharacter::GetSingleton()->GetPosition();
+		if (auto* tes = RE::TES::GetSingleton()) {
+			result.push_back(std::format("point ({:.0f},{:.0f}) grid ({},{})", point.x, point.y, tes->currentGridX, tes->currentGridY));
+		}
+		for (auto* top : { RE::BGSTerrainManager::GetLODObjectRoot().get(), RE::BGSTerrainManager::GetLODLandRoot().get() }) {
+			if (!top) {
+				continue;
+			}
+			RE::BSVisit::TraverseScenegraphGeometries(top, [&](RE::BSGeometry* a_shape) {
+				const auto c = toRoot * a_shape->worldBound.center;
+				if (std::hypot(c.x - point.x, c.y - point.y) > a_shape->worldBound.radius + 6000.0f || result.size() > 80) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				std::string chain;
+				for (RE::NiAVObject* up = a_shape; up && up != top; up = up->parent) {
+					chain += std::format("'{}'{}{} < ", up->name.c_str(), up->GetRTTI() ? std::format(" {}", up->GetRTTI()->GetName()) : "", up->GetAppCulled() ? " CULLED" : "");
+				}
+				std::string segments;
+				if (auto* sub = netimmerse_cast<RE::BSSubIndexTriShape*>(a_shape)) {
+					const auto& data = sub->GetSubIndexedTrishapeRuntimeData();
+					int hidden = 0;
+					for (std::uint32_t i = 0; data.segmentData && i < data.numSegments; ++i) {
+						hidden += data.segmentData[i].unkFlags == 0 ? 1 : 0;
+					}
+					segments = std::format(" segments {} hidden {}", data.numSegments, hidden);
+				}
+				result.push_back(std::format("({:.0f},{:.0f}) r{:.0f}{}: {}", c.x, c.y, a_shape->worldBound.radius, segments, chain));
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+		return result;
+	}
+
+	// Diagnostics: distant-object segments (one per cell) still drawn for cells whose own 3D is
+	// attached, within 6 cells of the player (in the street's coordinates when it is shown
+	// indoors): both are drawn there, the LOD fighting the houses.
+	json LODDoubles()
+	{
+		json  result = json::array();
+		auto* manager = RE::BGSTerrainManager::GetActiveManager();
+		auto* lodRoot = RE::BGSTerrainManager::GetLODRoot().get();
+		auto* root = lodRoot ? lodRoot->parent : nullptr;
+		auto* tes = RE::TES::GetSingleton();
+		auto* world = tes ? tes->GetRuntimeData2().worldSpace : nullptr;
+		if (!manager || !manager->rootNode || !root || !world) {
+			return result;
+		}
+		const auto point = root->world.Invert() * RE::PlayerCharacter::GetSingleton()->GetPosition();
+		const int  px = static_cast<int>(std::floor(point.x / 4096.0f)), py = static_cast<int>(std::floor(point.y / 4096.0f));
+		const auto level = manager->segmentedBlockLevel;
+		int        drawn = 0, hidden = 0, blocks = 0, shapes = 0, segments = 0, unattached = 0;
+		std::function<void(RE::BGSTerrainNode*)> visit = [&](RE::BGSTerrainNode* a_node) {
+			const int lod = static_cast<int>(a_node->GetLODLevel());
+			if (a_node->baseCellX > px + 6 || a_node->baseCellX + lod < px - 6 || a_node->baseCellY > py + 6 || a_node->baseCellY + lod < py - 6) {
+				return;
+			}
+			if (static_cast<std::uint32_t>(lod) == level) {
+				++blocks;
+				auto* block = a_node->objects ? reinterpret_cast<RE::BGSDistantObjectBlock*>(a_node->objects->block) : nullptr;
+				auto* node = block ? block->node.get() : nullptr;
+				if (!node) {
+					return;
+				}
+				// Under the block's node, each in a multibound node of its own.
+				RE::BSVisit::TraverseScenegraphGeometries(node, [&](RE::BSGeometry* a_shape) {
+					auto* sub = netimmerse_cast<RE::BSSubIndexTriShape*>(a_shape);
+					const auto* data = sub ? &sub->GetSubIndexedTrishapeRuntimeData() : nullptr;
+					shapes += data ? 1 : 0;
+					for (std::uint32_t i = 0; data && data->segmentData && i < data->numSegments && i < level * level; ++i) {
+						const auto& segment = data->segmentData[i];
+						if (segment.unkTriCount == 0) {
+							continue;
+						}
+						++segments;
+						const auto x = static_cast<std::int16_t>(a_node->baseCellX + i / level), y = static_cast<std::int16_t>(a_node->baseCellY + i % level);
+						const auto it = world->cellMap.find(RE::CellID(y, x));
+						auto*      cell = it != world->cellMap.end() ? it->second : nullptr;
+						if (!cell || cell->cellState.get() != RE::TESObjectCELL::CellState::kAttached) {
+							++unattached;
+							continue;
+						}
+						if (segment.unkFlags == 0) {
+							++hidden;
+						} else if (++drawn <= 30) {
+							result.push_back(std::format("drawn over attached cell ({},{}) {:08X} '{}': '{}' segment {} of block ({},{}) culled {}", x, y, cell->GetFormID(),
+								cell->GetFormEditorID(), sub->name.c_str(), i, a_node->baseCellX, a_node->baseCellY, sub->GetAppCulled()));
+						}
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				});
+				return;
+			}
+			if (a_node->children) {
+				auto* kids = reinterpret_cast<RE::BGSTerrainNode*>(a_node->children);
+				for (int k = 0; k < 4; ++k) {
+					visit(&kids[k]);
+				}
+			}
+		};
+		visit(manager->rootNode);
+		result.push_back(std::format("player cell ({},{}), root ({},{}) level {}, block level {}: {} block(s), {} shape(s), {} segment(s) with triangles, {} of cells not attached; of attached cells {} drawn, {} hidden",
+			px, py, manager->rootNode->baseCellX, manager->rootNode->baseCellY, manager->rootNode->GetLODLevel(), level, blocks, shapes, segments, unattached, drawn, hidden));
+		return result;
+	}
+
+	json DumpWorld(const json&)
+	{
+		for (const auto& line : LODDoubles()) {
+			logger::info("lod double: {}", line.get<std::string>());
+		}
+		for (const auto& line : LODNear()) {
+			logger::info("lod near: {}", line.get<std::string>());
+		}
+		Probe::DumpWorldState("bridge request");
+		logger::info("outdoors probe: {}", OutdoorsProbe({}).dump());
+		auto passes = Portal::Manager::RemoteRenderPasses(false);
+		passes.erase("tree");
+		logger::info("remote render passes: {}", passes.dump());
+		return { { "logged", true } };
+	}
+}
+
+namespace Bridge
+{
+	const std::unordered_map<std::string, Command>& GetCommands()
+	{
+		static const std::unordered_map<std::string, Command> commands{
+			{ "ping", { Ping, false } },
+			{ "state", { State } },
+			{ "console", { Console } },
+			{ "load_game", { LoadGame } },
+			{ "save_game", { SaveGame } },
+			{ "refs_near", { RefsNear } },
+			{ "activate", { Activate } },
+			{ "move_to", { MoveTo } },
+			{ "walk_to", { WalkTo } },
+			{ "walk_stop", { WalkStop } },
+			// Diagnostics: third-person camera zoom and where the camera ends up relative to the player.
+			{ "camera", { [](const json& a) {
+				 auto* camera = RE::PlayerCamera::GetSingleton();
+				 auto* third = camera ? skyrim_cast<RE::ThirdPersonState*>(camera->currentState.get()) : nullptr;
+				 if (third && a.contains("zoom")) {
+					 third->targetZoomOffset = a.at("zoom").get<float>();
+				 }
+				 auto*      player = RE::PlayerCharacter::GetSingleton();
+				 auto*      world = RE::Main::WorldRootCamera();
+				 const auto eye = world ? world->world.translate : RE::NiPoint3{};
+				 const auto pos = player->GetPosition();
+				 return json{
+					 { "state", camera && camera->currentState ? static_cast<int>(camera->currentState->id) : -1 },
+					 { "targetZoom", third ? third->targetZoomOffset : 0.0f },
+					 { "currentZoom", third ? third->currentZoomOffset : 0.0f },
+					 { "posOffsetActual", third ? json{ third->posOffsetActual.x, third->posOffsetActual.y, third->posOffsetActual.z } : json() },
+					 { "camera", { eye.x, eye.y, eye.z } },
+					 { "horizontalDistance", std::hypot(eye.x - pos.x, eye.y - pos.y) },
+					 { "heightAbovePlayer", eye.z - pos.z },
+				 };
+			 } } },
+			// Tests: the camera at the player's head or behind them, without a key press (which would
+			// need the game window in front).
+			{ "camera_view", { [](const json& a) {
+				 auto* camera = RE::PlayerCamera::GetSingleton();
+				 if (a.value("firstPerson", true)) {
+					 camera->ForceFirstPerson();
+				 } else {
+					 camera->ForceThirdPerson();
+				 }
+				 return json{ { "firstPerson", camera->IsInFirstPerson() } };
+			 } } },
+			// Tests: the activate key, without the game window in front (PlayerCharacter::ActivatePickRef,
+			// on whatever the crosshair is on).
+			{ "use_pick", { [](const json&) {
+				 auto* player = RequirePlayer();
+				 auto* pick = RE::CrosshairPickData::GetSingleton();
+				 const auto target = pick ? pick->GetActiveTarget().get() : nullptr;
+				 static REL::Relocation<void (*)(RE::PlayerCharacter*)> activatePickRef{ REL::ID(40548) };
+				 activatePickRef(player);
+				 return json{ { "target", target ? std::format("{:08X}", target->GetFormID()) : "" } };
+			 } } },
+			// Tests: what the player's Havok world has under a point (the player's by default).
+			// Tests: what the player's Havok world has between two points (from, to; "room" as in ray_down).
+			{ "ray", { [](const json& a) {
+				 auto* player = RequirePlayer();
+				 auto* world = player->GetParentCell() ? player->GetParentCell()->GetbhkWorld() : nullptr;
+				 if (a.value("room", false)) {
+					 const auto& cells = Portal::Manager::RemoteCells();
+					 world = cells.empty() ? nullptr : cells.front()->GetbhkWorld();
+				 }
+				 if (!world) {
+					 throw std::runtime_error("no Havok world");
+				 }
+				 const auto&     f = a.at("from");
+				 const auto&     t = a.at("to");
+				 const float     scale = RE::bhkWorld::GetWorldScale();
+				 RE::bhkPickData pick;
+				 pick.rayInput.from = RE::hkVector4(f.at(0).get<float>() * scale, f.at(1).get<float>() * scale, f.at(2).get<float>() * scale, 0.0f);
+				 pick.rayInput.to = RE::hkVector4(t.at(0).get<float>() * scale, t.at(1).get<float>() * scale, t.at(2).get<float>() * scale, 0.0f);
+				 pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kCharController);
+				 if (!world->PickObject(pick) || !pick.rayOutput.HasHit()) {
+					 return json{ { "hit", false } };
+				 }
+				 auto*       ref = RE::TESHavokUtilities::FindCollidableRef(*pick.rayOutput.rootCollidable);
+				 const auto* collidable = pick.rayOutput.rootCollidable;
+				 return json{ { "hit", true }, { "fraction", pick.rayOutput.hitFraction },
+					 { "layer", collidable ? static_cast<int>(collidable->GetCollisionLayer()) : -1 },
+					 { "ref", ref ? std::format("{:08X} cell {:08X}", ref->GetFormID(), ref->GetParentCell() ? ref->GetParentCell()->GetFormID() : 0) : "" } };
+			 } } },
+			{ "ray_down", { [](const json& a) {
+				 auto* player = RequirePlayer();
+				 auto* world = player->GetParentCell() ? player->GetParentCell()->GetbhkWorld() : nullptr;
+				 // "room": in the Havok world of the space behind the portal's door instead.
+				 if (a.value("room", false)) {
+					 const auto& cells = Portal::Manager::RemoteCells();
+					 world = cells.empty() ? nullptr : cells.front()->GetbhkWorld();
+				 }
+				 if (!world) {
+					 throw std::runtime_error("no Havok world");
+				 }
+				 RE::NiPoint3 at = player->GetPosition();
+				 if (a.contains("pos")) {
+					 const auto& p = a.at("pos");
+					 at = { p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() };
+				 }
+				 const float     scale = RE::bhkWorld::GetWorldScale();
+				 RE::bhkPickData pick;
+				 pick.rayInput.from = RE::hkVector4(at.x * scale, at.y * scale, (at.z + 100.0f) * scale, 0.0f);
+				 pick.rayInput.to = RE::hkVector4(at.x * scale, at.y * scale, (at.z - 1000.0f) * scale, 0.0f);
+				 pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kCharController);
+				 if (!world->PickObject(pick) || !pick.rayOutput.HasHit()) {
+					 return json{ { "hit", false } };
+				 }
+				 auto* ref = RE::TESHavokUtilities::FindCollidableRef(*pick.rayOutput.rootCollidable);
+				 return json{ { "hit", true }, { "z", at.z + 100.0f - 1100.0f * pick.rayOutput.hitFraction },
+					 { "ref", ref ? std::format("{:08X} cell {:08X}", ref->GetFormID(), ref->GetParentCell() ? ref->GetParentCell()->GetFormID() : 0) : "" } };
+			 } } },
+			// Tests: the in-game menu's debug switches and red tint.
+			{ "portal_switches", { [](const json& a) {
+				 auto s = Portal::Render::GetDebugSwitches();
+				 s.skipPortalPass = a.value("skipPortalPass", s.skipPortalPass);
+				 s.skipComposite = a.value("skipComposite", s.skipComposite);
+				 s.skipMotion = a.value("skipMotion", s.skipMotion);
+				 s.skipCommunityShaders = a.value("skipCommunityShaders", s.skipCommunityShaders);
+				 s.skipDepthWrite = a.value("skipDepthWrite", s.skipDepthWrite);
+				 s.lateComposite = a.value("lateComposite", s.lateComposite);
+				 Portal::Render::SetDebugSwitches(s);
+				 Portal::Render::SetTintDoorway(a.value("tint", Portal::Render::TintDoorway()));
+				 return json{ { "skipPortalPass", s.skipPortalPass }, { "skipComposite", s.skipComposite }, { "lateComposite", s.lateComposite },
+					 { "tint", Portal::Render::TintDoorway() } };
+			 } } },
+			// Waits for the next Present; running it on the main thread would deadlock the frame.
+			{ "screenshot", { Screenshot, false } },
+			{ "renderdoc_capture", { RenderDocCapture } },
+			{ "dump_world", { DumpWorld } },
+			{ "outdoors_probe", { OutdoorsProbe } },
+			{ "actors_3d", { Actors3D } },
+			{ "merge_test", { [](const json&) { return Portal::Manager::MergeTest(); } } },
+			{ "portal_merge", { [](const json& a) {
+				 if (a.contains("enabled")) {
+					 Portal::Manager::SetMergeEnabled(a.at("enabled").get<bool>());
+				 }
+				 if (a.contains("lightScale")) {
+					 Portal::Manager::SetMergedLightScale(a.at("lightScale").get<float>());
+				 }
+				 if (a.contains("quietLeftCell")) {
+					 Portal::RemoteCell::kQuietSecondsLeftCell = a.at("quietLeftCell").get<float>();
+				 }
+				 if (a.contains("handOver")) {
+					 Portal::RemoteCell::handOverStreet = a.at("handOver").get<bool>();
+				 }
+				 if (a.contains("stepExterior")) {
+					 Portal::RemoteCell::stepExterior = a.at("stepExterior").get<bool>();
+				 }
+				 if (a.contains("ownLighting")) {
+					 Portal::Manager::SetMergedOwnLighting(a.at("ownLighting").get<bool>());
+				 }
+				 return json{ { "enabled", Portal::Manager::MergeEnabled() } };
+			 } } },
+			{ "merged_shapes", { [](const json& a) {
+				 const auto& p = a.at("near");
+				 return json{ { "shapes", Portal::Manager::MergedShapesReport({ p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() }, a.value("far", 3000.0f)) } };
+			 } } },
+			// Diagnostics: references (temporary and persistent) within a radius of a point in a
+			// worldspace, with where their 3D hangs.
+			{ "refs_at", { [](const json& a) {
+				 auto*       world = RE::TESForm::LookupByID<RE::TESWorldSpace>(ParseFormID(a.at("world")));
+				 const auto& p = a.at("pos");
+				 const RE::NiPoint3 at{ p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() };
+				 const float radius = a.value("radius", 400.0f);
+				 if (!world) {
+					 throw std::runtime_error("no such worldspace");
+				 }
+				 json       refs = json::array();
+				 const auto visit = [&](RE::TESObjectCELL* a_cell, const char* a_kind) {
+					 if (!a_cell) {
+						 return;
+					 }
+					 a_cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+						 if (!a_ref || a_ref->GetPosition().GetDistance(at) > radius) {
+							 return RE::BSContainer::ForEachResult::kContinue;
+						 }
+						 auto*           object = a_ref->Get3D();
+						 RE::NiAVObject* top = object;
+						 while (top && top->parent) {
+							 top = top->parent;
+						 }
+						 auto* model = a_ref->GetBaseObject() ? a_ref->GetBaseObject()->As<RE::TESModel>() : nullptr;
+						 refs.push_back(std::format("{}{} {:08X} '{}' at ({:.0f} {:.0f} {:.0f}) 3D {} top '{}' flags {:X} parentCell {:08X}", a_kind, a_ref->Is(RE::FormType::ActorCharacter) ? "A" : "", a_ref->GetFormID(),
+							 model ? model->GetModel() : "", a_ref->GetPositionX(), a_ref->GetPositionY(), a_ref->GetPositionZ(), object != nullptr, top ? top->name.c_str() : "", object ? object->GetFlags().underlying() : 0,
+							 a_ref->GetParentCell() ? a_ref->GetParentCell()->GetFormID() : 0));
+						 return RE::BSContainer::ForEachResult::kContinue;
+					 });
+				 };
+				 visit(world->persistentCell, "persistent");
+				 const auto x = static_cast<std::int16_t>(std::floor(at.x / 4096.0f)), y = static_cast<std::int16_t>(std::floor(at.y / 4096.0f));
+				 const auto it = world->cellMap.find(RE::CellID(y, x));
+				 visit(it != world->cellMap.end() ? it->second : nullptr, "cell");
+				 return json{ { "refs", refs } };
+			 } } },
+			// Diagnostics: the 3D of one reference, node by node (flags, fade, what each shape would draw).
+			{ "ref_3d", { [](const json& a) {
+				 auto* ref = RequireRef(a);
+				 auto* base = ref->GetBaseObject();
+				 auto* model = base ? base->As<RE::TESModel>() : nullptr;
+				 json  nodes = json::array();
+				 if (auto* root = ref->Get3D()) {
+					 RE::BSVisit::TraverseScenegraphObjects(root, [&](RE::NiAVObject* a_object) {
+						 int depth = 0;
+						 for (auto* up = a_object; up && up != root; up = up->parent) {
+							 ++depth;
+						 }
+						 std::string line = std::format("{}{} '{}' flags {:X}", std::string(depth * 2, ' '), a_object->GetRTTI() ? a_object->GetRTTI()->name : "?", a_object->name.c_str(),
+							 a_object->GetFlags().underlying());
+						 if (auto* fade = a_object->AsFadeNode()) {
+							 const auto& data = fade->GetRuntimeData();
+							 line += std::format(" fade {:.2f} {:.2f} cur {:.2f} | {:X} {:X} {:X} {:.2f} {:X} {:X} {:.2f} | {:X} {:X} {:X} {:X} {:X} {:X}", data.unk128, data.unk12C, data.currentFade,
+								 data.unk134, data.unk138, data.unk13C, data.unk140, data.unk144, data.unk148, data.unk14C, data.unk150, data.unk152, data.unk153, data.unk154, data.unk155, data.unk156);
+						 }
+						 if (auto* shape = a_object->AsGeometry()) {
+							 auto* shader = shape->GetGeometryRuntimeData().shaderProperty.get();
+							 line += std::format(" shader {} alpha {:.2f} flags {:X} passes {}", shader != nullptr, shader ? shader->alpha : -1.0f,
+								 shader ? shader->flags.underlying() : 0, shader && shader->renderPassList.head != nullptr);
+						 }
+						 line += std::format(" at ({:.0f} {:.0f} {:.0f}) x{:.2f} prev ({:.0f} {:.0f} {:.0f})", a_object->world.translate.x, a_object->world.translate.y, a_object->world.translate.z,
+							 a_object->world.scale, a_object->previousWorld.translate.x, a_object->previousWorld.translate.y, a_object->previousWorld.translate.z);
+						 if (auto* shape = a_object->AsGeometry()) {
+							 if (auto* shader = shape->GetGeometryRuntimeData().shaderProperty.get()) {
+								 line += " raw";
+								 const auto* bytes = reinterpret_cast<const std::uint32_t*>(shader);
+								 for (int i = 0x28 / 4; i < 0x160 / 4; ++i) {
+									 line += std::format(" {:X}", bytes[i]);
+								 }
+								 line += std::format(" bound ({:.0f} {:.0f} {:.0f}) r{:.0f}", shape->worldBound.center.x, shape->worldBound.center.y, shape->worldBound.center.z, shape->worldBound.radius);
+							 }
+						 }
+						 nodes.push_back(line);
+						 return RE::BSVisit::BSVisitControl::kContinue;
+					 });
+				 }
+				 std::string chain;
+				 for (auto* up = ref->Get3D() ? ref->Get3D()->parent : nullptr; up; up = up->parent) {
+					 chain += std::format(" < '{}' {:X}", up->name.c_str(), up->GetFlags().underlying());
+					 if (!up->parent) {
+						 chain += up == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0] ? " (WORLD scene)" : std::format(" (root {:X})", reinterpret_cast<std::uintptr_t>(up));
+					 }
+				 }
+				 return json{ { "model", model ? model->GetModel() : "" }, { "refFlags", ref->GetFormFlags() }, { "nodes", nodes }, { "chain", chain } };
+			 } } },
+			{ "frame_stats", { [](const json&) { return FrameHooks::FrameStats(); } } },
+			// {"start": true} clears and records; {"start": false} stops; no argument just reads.
+			{ "brightness", { [](const json& a) {
+				 if (a.contains("start")) {
+					 FrameHooks::RecordBrightness(a.at("start").get<bool>());
+				 }
+				 return FrameHooks::BrightnessLog();
+			 } } },
+			// The next `frames` presented frames, every one, as JPEGs in `directory` (which must
+			// exist), written once the last is taken.
+			{ "capture_frames", { [](const json& a) {
+				 // Each frame is held as a copy of the back buffer until all are taken: 33 MB at 4K.
+				 const int frames = std::clamp(a.value("frames", 16), 1, 60);
+				 if (!FrameHooks::CaptureFrames(std::filesystem::path(a.at("directory").get<std::string>()).wstring(), frames)) {
+					 throw std::runtime_error("screenshot hook not installed");
+				 }
+				 return json{ { "frames", frames } };
+			 } } },
+			// The first frames of every crossing and merge from now on, each in a folder of its own
+			// under `directory`; without one, or with an empty one, off.
+			{ "capture_events", { [](const json& a) {
+				 const auto directory = a.value("directory", std::string());
+				 FrameHooks::SetEventCapture(std::filesystem::path(directory).wstring());
+				 return json{ { "directory", directory } };
+			 } } },
+			// Diagnostics: put any loaded reference somewhere (also in a cell the player isn't in).
+			{ "ref_set_position", { [](const json& a) {
+				 auto*       ref = RequireRef(a);
+				 const auto& p = a.at("pos");
+				 ref->SetPosition(RE::NiPoint3{ p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() });
+				 return json{ { "pos", Vec(ref->GetPosition()) } };
+			 } } },
+			// Diagnostics: the player's third-person geometry and whether each one is culled.
+			{ "player_parts", { [](const json&) {
+				 json  parts = json::array();
+				 auto* root = RE::PlayerCharacter::GetSingleton()->Get3D(false);
+				 if (root) {
+					 RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_geometry) {
+						 bool culled = false;
+						 for (RE::NiAVObject* node = a_geometry; node; node = node->parent) {
+							 culled |= node->GetAppCulled();
+						 }
+						 parts.push_back(std::format("{}{}", a_geometry->name.c_str(), culled ? " [culled]" : ""));
+						 return RE::BSVisit::BSVisitControl::kContinue;
+					 });
+				 }
+				 auto* first = RE::PlayerCharacter::GetSingleton()->Get3D(true);
+				 return json{ { "rootCulled", root && root->GetAppCulled() }, { "rootFlags", root ? std::format("{:08X}", root->GetFlags().underlying()) : "" },
+							  { "firstFlags", first ? std::format("{:08X}", first->GetFlags().underlying()) : "" }, { "parts", parts }, { "firstPersonSame", first == root } };
+			 } } },
+			{ "portal_light_debug", { Portal::Render::SetLightDebug } },
+			{ "actor_cull", { [](const json&) { return Portal::Render::ActorCullStats(); } } },
+			// Diagnostics: what the HUD's activation prompt says right now (screenshots don't show
+			// the HUD), and what is under the crosshair.
+			{ "hud_prompt", { [](const json&) {
+				 json  result;
+				 auto* ui = RE::UI::GetSingleton();
+				 auto  menu = ui ? ui->GetMenu(RE::HUDMenu::MENU_NAME) : nullptr;
+				 if (menu && menu->uiMovie) {
+					 const auto read = [&](const char* a_path) -> json {
+						 RE::GFxValue value;
+						 if (!menu->uiMovie->GetVariable(&value, a_path)) {
+							 return nullptr;
+						 }
+						 if (value.IsString()) {
+							 return value.GetString();
+						 }
+						 if (value.IsNumber()) {
+							 return value.GetNumber();
+						 }
+						 if (value.IsBool()) {
+							 return value.GetBool();
+						 }
+						 return "?";
+					 };
+					 result["text"] = read("_root.HUDMovieBaseInstance.RolloverText.text");
+					 result["htmlText"] = read("_root.HUDMovieBaseInstance.RolloverText.htmlText");
+					 result["alpha"] = read("_root.HUDMovieBaseInstance.RolloverText._alpha");
+					 result["visible"] = read("_root.HUDMovieBaseInstance.RolloverText._visible");
+					 result["buttonAlpha"] = read("_root.HUDMovieBaseInstance.RolloverButton_tf._alpha");
+					 result["buttonVisible"] = read("_root.HUDMovieBaseInstance.RolloverButton_tf._visible");
+				 }
+				 auto* pick = RE::CrosshairPickData::GetSingleton();
+				 auto  target = pick ? pick->GetActiveTarget().get() : nullptr;
+				 result["textHookCalls"] = Portal::Doors::HidePrompt();
+				 result["target"] = target ? std::format("{:08X}", target->GetFormID()) : "";
+				 return result;
+			 } } },
+			// Tests: the turn and shift of the current door pair (as the in-game menu sets them).
+			{ "door_correction", { [](const json& a) {
+				 const auto portal = Portal::Manager::CurrentPortal();
+				 auto*      source = portal ? RE::TESForm::LookupByID<RE::TESObjectREFR>(portal->sourceDoor) : nullptr;
+				 auto*      linked = portal ? RE::TESForm::LookupByID<RE::TESObjectREFR>(portal->linkedDoor) : nullptr;
+				 if (!source || !linked) {
+					 throw std::runtime_error("no door pair in use");
+				 }
+				 auto* key = Portal::Doors::CorrectionDoor(source, linked);
+				 if (a.contains("turn")) {
+					 Portal::Doors::SetCorrection(key->GetFormID(), a.at("turn").get<float>());
+				 }
+				 if (a.contains("shift")) {
+					 const auto& v = a.at("shift");
+					 Portal::Doors::SetShift(key->GetFormID(), { v.at(0).get<float>(), v.at(1).get<float>(), v.at(2).get<float>() });
+				 }
+				 const auto shift = Portal::Doors::Shift(key->GetFormID());
+				 return json{ { "key", std::format("{:08X}", key->GetFormID()) }, { "turn", Portal::Doors::Correction(key->GetFormID()) },
+					 { "shift", { shift.x, shift.y, shift.z } } };
+			 } } },
+			// Diagnostics: the sky's precipitation (rain, snow) and where its geometry hangs.
+			{ "precip", { [](const json&) {
+				 auto* sky = RE::Sky::GetSingleton();
+				 auto* precip = sky ? sky->precip : nullptr;
+				 json  result{ { "mode", sky ? static_cast<int>(sky->mode.underlying()) : -1 }, { "precip", precip != nullptr },
+					 { "weather", sky && sky->currentWeather ? std::format("{:08X}", sky->currentWeather->GetFormID()) : "" } };
+				 if (precip) {
+					 for (const auto& [name, geometry] : { std::pair{ "current", precip->currentPrecip.get() }, std::pair{ "last", precip->lastPrecip.get() } }) {
+						 if (!geometry) {
+							 result[name] = nullptr;
+							 continue;
+						 }
+						 std::string chain;
+						 for (auto* up = geometry->parent; up; up = up->parent) {
+							 chain += std::format(" < '{}'", up->name.c_str());
+						 }
+						 auto* shader = geometry->GetGeometryRuntimeData().shaderProperty.get();
+						 result[name] = std::format("'{}' {} flags {:X} at ({:.0f},{:.0f},{:.0f}) culled {} shader {}{}", geometry->name.c_str(), geometry->GetRTTI() ? geometry->GetRTTI()->name : "?",
+							 geometry->GetFlags().underlying(), geometry->world.translate.x, geometry->world.translate.y, geometry->world.translate.z, geometry->GetAppCulled(),
+							 shader && shader->GetRTTI() ? shader->GetRTTI()->name : "-", chain);
+					 }
+				 }
+				 return result;
+			 } } },
+			// Diagnostics / measuring: the merged room's cull (Portal/MergedCull.h), mode 0-3.
+			{ "merged_cull", { [](const json& a) {
+				 if (a.contains("mode")) {
+					 Portal::MergedCull::SetMode(static_cast<Portal::MergedCull::Mode>(std::clamp(a.at("mode").get<int>(), 0, 3)));
+				 }
+				 if (a.contains("street")) {
+					 Portal::MergedCull::SetStreetMode(static_cast<Portal::MergedCull::Mode>(std::clamp(a.at("street").get<int>(), 0, 2)));
+				 }
+				 auto result = Portal::MergedCull::Describe();
+				 result["frames"] = FrameHooks::FrameStats();
+				 return result;
+			 } } },
+			// Testing without touching the ini: {count} as [Portals] iShownRooms, {pause} as
+			// bPauseUnseenRooms.
+			{ "shown_rooms", { [](const json& a) {
+				 if (a.contains("count")) {
+					 Portal::Manager::SetShownRooms(a.at("count").get<int>());
+				 }
+				 if (a.contains("pause")) {
+					 Portal::Manager::SetPauseUnseenRooms(a.at("pause").get<bool>());
+				 }
+				 auto status = Portal::Manager::Status();
+				 return json{ { "shownRooms", status["shownRooms"] }, { "warm", status["warm"] }, { "mergedCull", status["mergedCull"] }, { "frames", FrameHooks::FrameStats() } };
+			 } } },
+			{ "portal_passes", { [](const json& a) { return Portal::Manager::RemoteRenderPasses(a.value("drop", false)); } } },
+			{ "portal_debug", { [](const json& a) {
+				 Portal::RemoteCell::debugSkip = a.value("skip", Portal::RemoteCell::debugSkip);
+				 return json{ { "skip", Portal::RemoteCell::debugSkip } };
+			 } } },
+			// Diagnostics: the directional light of each registered light scene, and the player cell's
+			// directional settings (to check how rotation XY/Z map to a direction).
+			{ "lighting", { [](const json&) {
+				 json scenes = json::array();
+				 for (auto* scene : RE::BSShaderManager::State::GetSingleton().shadowSceneNode) {
+					 auto* sun = scene ? scene->GetRuntimeData().sunLight : nullptr;
+					 auto* light = sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr;
+					 if (!light) {
+						 scenes.push_back(nullptr);
+						 continue;
+					 }
+					 const auto& r = light->GetLightRuntimeData();
+					 const auto& rt = scene->GetRuntimeData();
+					 scenes.push_back({ { "diffuse", { r.diffuse.red, r.diffuse.green, r.diffuse.blue } }, { "fade", r.fade }, { "direction", Vec(light->GetWorldDirection()) },
+						 { "lights", rt.activeLights.size() }, { "shadowLights", rt.activeShadowLights.size() } });
+				 }
+				 auto* cell = RequirePlayer()->GetParentCell();
+				 auto* own = cell->IsInteriorCell() ? cell->GetLighting() : nullptr;
+				 auto* lt = cell->GetRuntimeData().lightingTemplate;
+				 return json{
+					 { "scenes", scenes },
+					 { "cell", CellJson(cell) },
+					 { "directional", own ? json{ { "xy", own->directionalXY }, { "z", static_cast<std::int32_t>(own->directionalZ) }, { "fade", own->directionalFade },
+											   { "inherit", own->lightingTemplateInheritanceFlags.underlying() }, { "templateXY", lt ? lt->data.directionalXY : 0 },
+											   { "templateZ", lt ? static_cast<std::int32_t>(lt->data.directionalZ) : 0 }, { "templateFade", lt ? lt->data.directionalFade : 0.0f } }
+										: json(nullptr) },
+				 };
+			 } } },
+			// Read-only and independent of game state, so they work even during loading screens.
+			{ "re_export_ids", { ReverseEngineering::ExportIDs, false } },
+			{ "re_read", { ReverseEngineering::ReadMemory, false } },
+			{ "re_call", { ReverseEngineering::CallFunction } },
+			{ "portals_enable", { [](const json& a) {
+				 Portal::Manager::SetEnabled(a.value("enabled", true));
+				 return Portal::Manager::Status();
+			 } } },
+			{ "portal_status", { [](const json&) {
+				 auto status = Portal::Manager::Status();
+				 status["lastFrame"] = Portal::Render::LastFrame();
+				 status["travel"] = Portal::Travel::Status();
+				 status["tone"] = Portal::Manager::ToneWhy();  // TEMP
+				 return status;
+			 } } },
+			{ "travel_options", { Portal::Travel::SetOptions } },
+			{ "travel_profile", { [](const json& a) {
+				 const auto file = a.at("file").get<std::string>();
+				 Portal::Travel::ProfileNext(std::filesystem::path(file));
+				 return json{ { "file", file } };
+			 } } },
+			// Waits for the next rendered frame, like screenshot.
+			{ "portal_render_file", { [](const json& a) { return Portal::Render::RenderToFile(a.at("path").get<std::string>()); }, false } },
+		};
+		return commands;
+	}
+}

@@ -1,0 +1,11 @@
+build/
+out/
+.vs/
+CMakeUserPresets.json
+build-*.log
+tools/skyrim-mcp/.cache/
+tools/skyrim-mcp/.venv/
+reference/
+__pycache__/
+tools/places/bin/
+tools/places/obj/

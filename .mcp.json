@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "skyrim": {
+      "command": "uv",
+      "args": ["--directory", "E:/projects/SeamlessSkyrim/tools/skyrim-mcp", "run", "server.py"]
+    }
+  }
+}

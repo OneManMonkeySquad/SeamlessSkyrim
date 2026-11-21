@@ -1,0 +1,3 @@
+- Skylight (indoor standin for sun) in The Drunken Huntsman is turn off viewed from outside (jaring)
+- Physics objects/arrows are not teleported through portal
+- Portals draws in front of transparent things

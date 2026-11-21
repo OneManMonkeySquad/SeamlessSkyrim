@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fomod>
+	<Name>SeamlessSkyrim</Name>
+	<Author>MildlyInfuriating</Author>
+	<!-- tools\make-release.ps1 writes the project version from CMakeLists.txt into the archive's copy. -->
+	<Version>0.0.0</Version>
+	<Description>Walk through load doors without a loading screen, and see the room behind a door from the street.</Description>
+</fomod>

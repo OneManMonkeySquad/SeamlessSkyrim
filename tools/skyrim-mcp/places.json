@@ -1,0 +1,24 @@
+{
+  "bannered-mare-door-out": {
+    "cell": "WhiterunBanneredMare",
+    "headingDeg": 180.0,
+    "interior": true,
+    "note": "Inside the Bannered Mare's front door, looking out at the market.",
+    "pos": [
+      -128.0,
+      -1118.0,
+      68.34
+    ]
+  },
+  "bannered-mare-steps": {
+    "cell": "WhiterunPlainsDistrict04",
+    "headingDeg": 70.70201873779297,
+    "interior": false,
+    "note": "In the street at the foot of the Bannered Mare's steps, looking up at its door (pitch: player.setangle x -12). Within the door's open distance: with iSlowLoadMs the doorway shows its stand-in picture first.",
+    "pos": [
+      25353.0,
+      -7759.99951171875,
+      -3374.91259765625
+    ]
+  }
+}

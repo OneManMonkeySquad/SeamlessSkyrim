@@ -1,0 +1,15 @@
+[project]
+name = "skyrim-mcp"
+version = "0.1.0"
+description = "MCP server that drives Skyrim through the SeamlessSkyrim dev bridge"
+requires-python = ">=3.10"
+dependencies = [
+    "capstone>=5.0.9",
+    # 2.x renamed FastMCP and changed its API; the v1 line is enough for a stdio tool server.
+    "mcp>=1.9,<2",
+    "numpy>=2.2.6",
+    "pillow>=10",
+    "psutil>=5.9",
+    "pycaw>=20260927",
+    "pyvda>=0.6.0",
+]
