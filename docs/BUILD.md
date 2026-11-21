@@ -10,7 +10,7 @@ details below were looked up more than once; check here first.
 | Game | `E:\SteamLibrary\steamapps\common\Skyrim Special Edition` |
 | Plugin log | `Documents\My Games\Skyrim Special Edition\SKSE\SeamlessSkyrim.log` |
 | Community Shaders log | same folder, `CommunityShaders.log` (shader compile errors land here) |
-| Crash logs | same folder, `crash-*.log` (Crash Logger) |
+| Crash logs | same folder, `Crashlogs\*.log` (trainwreck); `re_lookup` turns a `SkyrimSE.exe+offset` into an ID |
 | Plugin settings | `<game>\Data\SKSE\Plugins\SeamlessSkyrim.ini` |
 | Load order | `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt` |
 | Community Shaders fork | `E:\projects\CommunityShaders-Seamless`, branch `seamless-portal` (see COMMUNITY-SHADERS-PATCH.md) |
@@ -119,6 +119,19 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   (`shown_rooms`, `merged_cull`).
 - Never launch or quit while the user is playing: check `Get-Process SkyrimSE` first. A game the
   user started has no bridge, and the plugin log says `agent mode: off`.
+- From a test script: `PYTHONPATH=. uv run python script.py` in `tools/skyrim-mcp`; an MCP tool
+  is called as `getattr(server.run_route, "fn", server.run_route)(steps=[...])`. `re_read` takes
+  an offset from the module base: for a heap address pass `address - base`, the base from
+  `(Get-Process SkyrimSE).MainModule.BaseAddress` (0x7FF73F6A0000 on every launch so far).
+- `place_save` and `route_save` write their JSON with CRLF; `sed -i 's/$//'` before committing.
+- `toolsuild.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
+- Walking through a door from a script: `walk_to` a position a little past the door along its
+  inward direction. Aimed at a door reference in the other space, the player crosses at an angle
+  beside the doorway, and the engine moved them out of the frame's collision, under Belethor's
+  porch.
+- A game loaded at launch and one loaded later in the same session are not the same test (see
+  the persistent references below). Loading saves back to back across worldspaces with portals
+  on crashes now and then (KNOWN-ISSUES); relaunch rather than chase it in a long loop.
 - Anything that shows for a frame or a few (a flash on crossing, a door drawn closed once, low
   detail over the real town) falls between screenshots. Take every frame instead:
   - `run_route(name, capture=true)` saves the frames of each crossing and of the merge that
@@ -163,6 +176,11 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   persistent references around the door (Whiterun's houses, porches, market paving) without 3D; a
   game loaded right after starting has them. Without them there is no collision under the door
   either. `RemoteCell::PersistentIn` loads them, not doors.
+- Distant LOD (`BGSTerrainManager`): `updateNodes` are the level-32 nodes; a node's `children`
+  (+0x30) points to its 4 children inline (0x50 apart), not to pointers. The low 12 bits of
+  `nodeState` are one nibble per layer, terrain 0x00F, objects 0x0F0, trees 0xF00: 2 none,
+  4 shown, 8 split into the children. Object layers live on the level 16/8/4 nodes, so a level-32
+  node without one is normal.
 - `BSCullingProcess::AppendVirtual` (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 
