@@ -95,6 +95,56 @@
       }
     ]
   },
+  "markarth-smelter-house-out-and-in": {
+    "note": "Smelter Overseer's House (Markarth mines): walk out, walk back in, look out the door. Was: the street's ground and rocks missing through the doorway (persistent references merged with the street left at the street's coordinates).",
+    "steps": [
+      {
+        "load": "SeamlessTestMarkarthMines"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "walk": {
+          "pos": [
+            -1936,
+            -950
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            -173165,
+            1550
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -1981,
+            -525
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "heading": 173
+      },
+      {
+        "wait": 4
+      }
+    ]
+  },
   "mistveil-keep-walk-in": {
     "note": "Riften, Mistveil Keep (an interior built of room bounds): loaded at its door, wait for the merge, look in, then walk in. Before the fix the merged room was not drawn (land and sky behind the keep showed through the doorway).",
     "steps": [

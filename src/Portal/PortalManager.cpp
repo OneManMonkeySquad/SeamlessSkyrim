@@ -956,7 +956,12 @@ namespace
 			}
 			mergedLOD->persistent.push_back({ node, RE::NiPointer<RE::NiNode>(node->parent), node->local });
 			mergedLOD->bounds.Capture(node.get());
+			mergedLOD->bounds.UnfixBeforeMove(node.get());
 			node->local = mergedLOD->toSource * node->local;
+			// HangInto keeps the node where it is drawn now: not updated, that was still the street's
+			// place, and the moved ground and rocks stood there, out of the doorway's view.
+			RE::NiUpdateData update;
+			node->Update(update);
 			mergedLOD->bounds.Move(node.get(), mergedLOD->toSource);
 			if (mergedLOD->branch) {
 				HangInto(mergedLOD->branch.get(), node.get());
@@ -990,7 +995,11 @@ namespace
 		// grid's cells as well when the player walked in from the street: everything in it moves.
 		const auto moveBy = a_toSource * root->local.Invert();
 		state.bounds.Capture(root);
+		state.bounds.UnfixBeforeMove(root);
 		root->local = a_toSource;
+		// Updated before HangInto below, which keeps it where it is drawn now.
+		RE::NiUpdateData update;
+		root->Update(update);
 		state.bounds.Move(root, moveBy);
 		// Hung into the interior's statics branch (the one holding the most shapes), the street and
 		// the LOD are culled into the main view with the interior's own contents. Left under the

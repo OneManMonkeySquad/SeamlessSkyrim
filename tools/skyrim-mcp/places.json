@@ -32,6 +32,17 @@
       320.3499450683594
     ]
   },
+  "markarth-smelter-house-door-out": {
+    "cell": "MarkarthSmelterOverseersHouse",
+    "headingDeg": 173.0817108154297,
+    "interior": true,
+    "note": "Smelter Overseer's House, looking out its door (00016F18) at MarkarthMines: the street's ground and rocks (persistent statics, MrkDocksideLand01) were missing after walking out and back in.",
+    "pos": [
+      -1981.84375,
+      -525.3077392578125,
+      64.34993743896484
+    ]
+  },
   "mistveil-keep-door": {
     "cell": "RiftenCitySouth",
     "headingDeg": 178.61306762695312,
