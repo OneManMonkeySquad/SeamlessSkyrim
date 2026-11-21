@@ -135,8 +135,9 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   outdoor lighting, the doorway, and the street references that can't be drawn and why.
 - A piece of a merged room missing: bridge `ref_3d {ref}` gives the chain of parents with node
   types and each node's slot in its parent; `find_nodes {name}` finds nodes by name in the world's
-  and the portal's scene. `frames_sheet` currently fails ("Unable to serialize ... Image"); read
-  the burst's frames directly.
+  and the portal's scene; `orphans {cell?}` lists the remote cells' references whose 3D hangs
+  nowhere, and each portal graph's always-drawn and pending lists. `frames_sheet` currently fails
+  ("Unable to serialize ... Image"); read the burst's frames directly.
 
 ## Engine facts (culling)
 
@@ -148,6 +149,10 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   process's portal graph lists it or the cull mode is kAllPass / kIgnoreMultiBounds.
 - A portal's shared geometry: `BSPortal::portalSharedNode`, the portals in
   `BSMultiBoundRoom::portalList`, the rooms in the cell's `loadedData->portalGraph->rooms`.
+- Objects outside the rooms (`BSPortalGraph::alwaysRenderChildren`) hang nowhere in the scene;
+  the scene's cull with the graph (ID 106322) culls them one by one. 3D finished after the cell's
+  attach waits in `pendingAlwaysRenderAdds`, taken in only while the graph is the scene's: in a
+  cell attached behind a door, most of Riften's jail and Mistveil Keep's dais steps.
 - `BSCullingProcess::AppendVirtual` (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 

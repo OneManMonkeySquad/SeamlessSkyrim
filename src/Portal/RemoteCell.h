@@ -199,6 +199,14 @@ namespace Portal
 		PersistentByCell       roundPersistent;         // as found when the round began
 		bool                   fadeForced = false;      // every cell's references shown this frame
 
+		// An interior's "always render" objects (BSPortalGraph::alwaysRenderChildren: Mistveil Keep's
+		// steps up to the jarl's dais) hang nowhere: the engine culls them one by one from its portal
+		// graph, which a remote cell's scene doesn't have. They are hung under a node of their cell's
+		// 3D here, as long as the cell is ours (see Release).
+		void                                    HangAlwaysRender(RE::TESObjectCELL* a_cell);
+		void                                    UnhangAlwaysRender();
+		std::vector<RE::NiPointer<RE::NiNode>> alwaysRenderHolders;
+
 		std::vector<RE::TESObjectCELL*> cells;  // [0] = the door's cell
 		std::vector<RE::NiPointer<RE::NiAVObject>> parked;  // cells' 3D hidden by SetParked
 		bool                                       paused = false;

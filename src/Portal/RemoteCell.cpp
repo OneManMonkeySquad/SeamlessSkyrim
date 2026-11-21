@@ -448,6 +448,72 @@ namespace Portal
 		}
 	}
 
+	void RemoteCell::HangAlwaysRender(RE::TESObjectCELL* a_cell)
+	{
+		auto* loaded = a_cell->GetRuntimeData().loadedData;
+		auto* graph = loaded ? loaded->portalGraph.get() : nullptr;
+		auto* cell3D = Cell3D(a_cell) ? Cell3D(a_cell)->AsNode() : nullptr;
+		if (!graph || !cell3D) {
+			return;
+		}
+		auto holder = std::ranges::find_if(alwaysRenderHolders, [&](const auto& a_holder) { return a_holder->parent == cell3D; });
+		int  hung = 0;
+		// Also those still waiting to be taken in: the graph takes in 3D finished after the attach
+		// only while it is the scene's (Mistveil Keep's steps, loaded a moment late).
+		std::vector<RE::NiAVObject*> objects;
+		for (const auto* list : { &graph->alwaysRenderChildren, &graph->pendingAlwaysRenderAdds }) {
+			for (const auto& object : *list) {
+				objects.push_back(object.get());
+			}
+		}
+		for (const auto& removed : graph->pendingAlwaysRenderRemoves) {
+			std::erase(objects, removed.get());
+		}
+		for (auto* object : objects) {
+			if (!object || object->parent) {
+				continue;
+			}
+			if (holder == alwaysRenderHolders.end()) {
+				RE::NiPointer<RE::NiNode> node(RE::NiNode::Create());
+				node->name = "SeamlessAlwaysRender";
+				// At the end: the main view's cull goes by the cell node's slots and leaves some
+				// out (ID 36643), a free slot among them.
+				cell3D->AttachChild(node.get(), false);
+				alwaysRenderHolders.push_back(node);
+				holder = std::prev(alwaysRenderHolders.end());
+			}
+			(*holder)->AttachChild(object, true);
+			++hung;
+		}
+		if (hung) {
+			RE::NiUpdateData update;
+			(*holder)->Update(update);
+			logger::info("portal: {} always-drawn object(s) of {} hung into its 3D", hung, Probe::DescribeCell(a_cell));
+		}
+	}
+
+	void RemoteCell::UnhangAlwaysRender()
+	{
+		// Back as the engine keeps them, unparented, where they stand in their cell.
+		for (auto& holder : alwaysRenderHolders) {
+			std::vector<RE::NiPointer<RE::NiAVObject>> children;
+			for (auto& child : holder->GetChildren()) {
+				if (child) {
+					children.push_back(child);
+				}
+			}
+			for (auto& child : children) {
+				holder->DetachChild(child.get());
+				RE::NiUpdateData update;
+				child->Update(update);
+			}
+			if (holder->parent) {
+				holder->parent->DetachChild(holder.get());
+			}
+		}
+		alwaysRenderHolders.clear();
+	}
+
 	void RemoteCell::Release(bool a_handOver)
 	{
 		if (cells.empty()) {
@@ -457,6 +523,7 @@ namespace Portal
 		SetParked(false);
 		// Before the cells go: handed over, they are the player's own again.
 		RestorePassage();
+		UnhangAlwaysRender();
 		auto* tes = RE::TES::GetSingleton();
 		auto* engineRoot = tes ? tes->objRoot : nullptr;
 		// A merged street (merged into the interior being left) is put back under the portal root,
@@ -602,6 +669,9 @@ namespace Portal
 			// freshly loaded 3D would stay invisible (after loading a game indoors, most of the
 			// village outside the door was missing).
 			if (cell == checked || loading) {
+				if (cell->IsInteriorCell() && cell != RE::PlayerCharacter::GetSingleton()->GetParentCell()) {
+					HangAlwaysRender(cell);
+				}
 				if (auto* cell3D = Cell3D(cell)) {
 					RE::BSVisit::TraverseScenegraphObjects(cell3D, [](RE::NiAVObject* a_object) {
 						if (auto* fade = a_object->AsFadeNode()) {

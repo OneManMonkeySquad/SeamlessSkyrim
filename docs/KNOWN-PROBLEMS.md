@@ -1,5 +1,5 @@
 - Skylight (indoor standin for sun) in The Drunken Huntsman is turn off viewed from outside (jaring)
 - Physics objects/arrows are not teleported through portal
 - Portals draws in front of transparent things
-- Mistveil Keep from the street: the steps up to the jarl's dais (000A33E7, RifRmBgKeepFloorSteps01) are missing, a pale strip behind the table. Its 3D is loaded but hangs nowhere (no parent, in neither scene) while the cell is attached by the portal; walked in, the engine draws them.
 - Physics objects can break
+- Floating portals in Riften (prison)

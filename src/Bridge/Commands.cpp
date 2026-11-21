@@ -977,6 +977,42 @@ namespace Bridge
 				 visit(it != world->cellMap.end() ? it->second : nullptr, "cell");
 				 return json{ { "refs", refs } };
 			 } } },
+			// References of the remote cells whose 3D exists but hangs nowhere: loaded, never drawn.
+			{ "orphans", { [](const json& a) {
+				 json found = json::array();
+				 for (auto* cell : Portal::Manager::RemoteCells()) {
+					 cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+						 auto* object = a_ref ? a_ref->Get3D() : nullptr;
+						 if (object && !object->parent && found.size() < 100) {
+							 auto* model = a_ref->GetBaseObject() ? a_ref->GetBaseObject()->As<RE::TESModel>() : nullptr;
+							 found.push_back(std::format("{:08X} '{}' cell {:08X} disabled {} formFlags {:X} 3D {:X} flags {:X} refcount {}", a_ref->GetFormID(), model ? model->GetModel() : "",
+								 cell->GetFormID(), a_ref->IsDisabled(), a_ref->GetFormFlags(), reinterpret_cast<std::uintptr_t>(object), object->GetFlags().underlying(),
+								 object->GetRefCount()));
+						 }
+						 return RE::BSContainer::ForEachResult::kContinue;
+					 });
+				 }
+				 json graphs = json::array();
+				 std::vector<RE::TESObjectCELL*> withGraphs(Portal::Manager::RemoteCells());
+				 if (auto* extra = a.contains("cell") ? RE::TESForm::LookupByID<RE::TESObjectCELL>(ParseFormID(a.at("cell"))) : nullptr) {
+					 withGraphs.push_back(extra);
+				 }
+				 for (auto* cell : withGraphs) {
+					 auto* loaded = cell->GetRuntimeData().loadedData;
+					 if (auto* graph = loaded ? loaded->portalGraph.get() : nullptr) {
+						 graphs.push_back(std::format("{:08X}: {} rooms, {} always drawn, {} to add, {} to remove", cell->GetFormID(), graph->rooms.size(), graph->alwaysRenderChildren.size(),
+							 graph->pendingAlwaysRenderAdds.size(), graph->pendingAlwaysRenderRemoves.size()));
+						 for (const auto* list : { &graph->alwaysRenderChildren, &graph->pendingAlwaysRenderAdds, &graph->pendingAlwaysRenderRemoves }) {
+							 for (const auto& object : *list) {
+								 auto* owner = object ? object->GetUserData() : nullptr;
+								 graphs.push_back(std::format("  {} '{}' owner {:08X} parent '{}'", list == &graph->alwaysRenderChildren ? "always" : list == &graph->pendingAlwaysRenderAdds ? "add" : "remove",
+									 object ? object->name.c_str() : "", owner ? owner->GetFormID() : 0, object && object->parent ? object->parent->name.c_str() : "-"));
+							 }
+						 }
+					 }
+				 }
+				 return json{ { "orphans", found }, { "graphs", graphs } };
+			 } } },
 			// Where nodes whose name contains {name} hang, in the world's scene and the portal's:
 			// a piece of a room missing from one of them.
 			{ "find_nodes", { [](const json& a) {
