@@ -41,6 +41,14 @@ tools\build.ps1 -NoDeploy   # compile only; safe while the game runs
 
 Don't call `cmake` directly: it isn't on `PATH`.
 
+## Coding style
+
+- No defensive programming. Don't null-check, clamp or early-return around states that shouldn't
+  happen; assert or let it crash. A crash at the violated assumption is easier to find than a
+  wrong frame later.
+- When the number of items is guaranteed to be small, use a flat `std::vector` (linear search)
+  rather than a map or set.
+
 ## The game
 
 - Before launching, quitting or deploying, check `Get-Process SkyrimSE`. A game with no agent
