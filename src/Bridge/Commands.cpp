@@ -1020,6 +1020,46 @@ namespace Bridge
 			 } } },
 			// Where nodes whose name contains {name} hang, in the world's scene and the portal's:
 			// a piece of a room missing from one of them.
+			// The nodes of a cell's 3D whose bound is wider than {radius} (default 8000), with their
+			// widest children: one stray child (a node left at the origin) makes every bound above it
+			// span the world, and the engine's per-light walk of the scene can't skip any of it.
+			{ "wide_bounds", { [](const json& a) {
+				 auto*       cell = RE::TESForm::LookupByID<RE::TESObjectCELL>(ParseFormID(a.at("cell")));
+				 auto*       loaded = cell ? cell->GetRuntimeData().loadedData : nullptr;
+				 auto*       root = loaded ? loaded->cell3D.get() : nullptr;
+				 const float wide = a.value("radius", 8000.0f);
+				 json        found = json::array();
+				 if (!root) {
+					 return json{ { "error", "no 3D" } };
+				 }
+				 const auto describe = [](const RE::NiAVObject* a_object) {
+					 const auto& b = a_object->worldBound;
+					 return std::format("'{}' {} ({:.0f},{:.0f},{:.0f}) r {:.0f}", a_object->name.c_str(), a_object->GetRTTI() ? a_object->GetRTTI()->name : "?", b.center.x, b.center.y,
+						 b.center.z, b.radius);
+				 };
+				 RE::BSVisit::TraverseScenegraphObjects(root, [&](RE::NiAVObject* a_object) {
+					 if (a_object->worldBound.radius < wide || found.size() >= 60) {
+						 return RE::BSVisit::BSVisitControl::kContinue;
+					 }
+					 std::vector<const RE::NiAVObject*> children;
+					 if (auto* node = a_object->AsNode()) {
+						 for (auto& child : node->GetChildren()) {
+							 if (child) {
+								 children.push_back(child.get());
+							 }
+						 }
+					 }
+					 // The children farthest from this node's centre: where the width comes from.
+					 std::ranges::sort(children, std::greater{}, [&](const RE::NiAVObject* c) { return c->worldBound.center.GetDistance(a_object->worldBound.center) + c->worldBound.radius; });
+					 json farthest = json::array();
+					 for (std::size_t i = 0; i < std::min<std::size_t>(children.size(), 3); ++i) {
+						 farthest.push_back(describe(children[i]));
+					 }
+					 found.push_back({ { "node", describe(a_object) }, { "children", children.size() }, { "farthest", farthest } });
+					 return RE::BSVisit::BSVisitControl::kContinue;
+				 });
+				 return json{ { "cell3D", describe(root) }, { "wide", found } };
+			 } } },
 			{ "find_nodes", { [](const json& a) {
 				 const auto needle = a.at("name").get<std::string>();
 				 json       found = json::array();

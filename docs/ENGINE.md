@@ -103,6 +103,17 @@ the same change that needed them.
 - **A street in the world scene** while the player is indoors registers one of its lights anew
   every frame. Adopting each into our scene crashed in the world scene's queued removal
   (ID 106335 → 106342).
+- **Taking in a light costs ~0.15-0.3 ms.** `AddLight` (ID 106327) only queues it; the scene's
+  light update (ID 106335, per queued light ID 106342 → 106401, shadow lights 106400) builds a
+  ~200 KB `BSParabolicCullingProcess` for it and walks the scene for the shapes it lights
+  (ID 108282, pruned by `worldBound`). It dedupes by `BSLight::light` (the NiLight), not by
+  BSLight. The patched Community Shaders still uses the world scene's per-shape lists (without
+  them a room came out ~4% darker); our scenes don't need them.
+- **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
+  (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
+  the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).
+- **A switch node's hidden child** (`NiSwitchNode`, a coin bag or mushroom picked or not) is never
+  updated: its world transform stays at the origin, and the switch node's bound takes it in.
 
 ## Culling
 

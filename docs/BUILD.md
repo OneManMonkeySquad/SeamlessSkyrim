@@ -157,6 +157,8 @@ town falls between screenshots):
 Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
   outdoor lighting, the doorway, and the street references that can't be drawn and why.
+- `wide_bounds {cell, radius}`: nodes of a cell's 3D with a bound wider than `radius`, with their
+  farthest children (a stray child at the origin makes every bound above it span the map).
 - `portal_status` has the active portal, the remote cell, the merged rooms and the distant LOD
   (`lod`: shapes of its land, objects and trees).
 - A piece of a merged space missing:

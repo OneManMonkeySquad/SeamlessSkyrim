@@ -9,6 +9,9 @@ namespace
 {
 	using CellState = RE::TESObjectCELL::CellState;
 
+	// Set around our own attach of a remote cell (RemoteCell::AttachOne, AttachGraphHook).
+	bool attachingRemote = false;
+
 	std::vector<RE::Actor*> ActorsIn(const RE::TESObjectCELL* a_cell)
 	{
 		std::vector<RE::Actor*> actors;
@@ -206,8 +209,10 @@ namespace Portal
 		auto* worldScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		auto* worldGraph = worldScene ? worldScene->GetRuntimeData().portalGraph : nullptr;
 		loadTempData(a_cell);
+		attachingRemote = true;
 		attachCell(a_cell, scene.get());
 		finishAttach(a_cell, true);
+		attachingRemote = false;
 		// The land's meshes are built only when the engine loads a cell into its own grid (IDs 13285
 		// and 13427 call this right after 19063), which a remote cell never goes through: a street
 		// read from disk while the player is indoors (a game loaded in a room) had no ground through
@@ -1085,6 +1090,7 @@ namespace Portal
 		for (auto* cell : movedCells) {
 			if (auto* cell3D = Cell3D(cell)) {
 				movedBounds.Capture(cell3D);
+				movedBounds.UnfixBeforeMove(cell3D);
 				cell3D->local = a_toSource;
 				RE::NiUpdateData update;
 				cell3D->Update(update);
@@ -1138,7 +1144,19 @@ namespace Portal
 		RE::NiBound bound{};
 		bound.center = a_root->world.translate;
 		bound.radius = 0.0f;
+		// A switch node (a coin bag, a mushroom: picked or not) updates only the child shown, and the
+		// other keeps the world transform it never got, at the origin; the switch node's bound still
+		// takes it in. Moved to a door, every such bound, and every room above one, spanned the map
+		// from there to the origin, and the engine's walk of the scene for each light it adds (on
+		// crossing, ~150 of them in Understone Keep) could skip none of it.
+		auto* switchNode = netimmerse_cast<RE::NiSwitchNode*>(a_root);
+		auto  index = 0;
 		for (auto& child : node->GetChildren()) {
+			if (child && switchNode && index != switchNode->index) {
+				RE::NiUpdateData update;
+				child->Update(update);
+			}
+			++index;
 			if (child) {
 				RecomputeBounds(child.get());
 				MergeBound(bound, child->worldBound);
@@ -1166,7 +1184,7 @@ namespace Portal
 		});
 	}
 
-	void MovedBounds::Move(RE::NiAVObject* a_root, const RE::NiTransform& a_move)
+	void MovedBounds::UnfixBeforeMove(RE::NiAVObject* a_root)
 	{
 		RE::BSVisit::TraverseScenegraphObjects(a_root, [&](RE::NiAVObject* a_object) {
 			if (a_object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) {
@@ -1175,8 +1193,10 @@ namespace Portal
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
-		RE::NiUpdateData update;
-		a_root->Update(update);
+	}
+
+	void MovedBounds::Move(RE::NiAVObject* a_root, const RE::NiTransform& a_move)
+	{
 		RecomputeBounds(a_root);
 		// The scene update puts a cell's box around its contents itself. Captured after an update
 		// and moved again, cells' boxes were saved already in the interior's coordinates and put
@@ -1570,6 +1590,7 @@ namespace Portal
 			if (cell3D && cell3D->parent == root) {
 				movedCells.push_back(cell);
 				movedBounds.Capture(cell3D.get());
+				movedBounds.UnfixBeforeMove(cell3D.get());
 				root->DetachChild(cell3D.get());
 				worldParent->AttachChild(cell3D.get(), true);
 				cell3D->local = a_toSource;
@@ -1665,6 +1686,24 @@ namespace Portal
 		// Cells handed over still attached failed that check, and the walk out took longer than
 		// with them detached and attached again. They count as ready here; the attach loop that
 		// follows skips them (it attaches unattached cells only).
+		// The engine's attach (ID 18976) installs the cell's room graph in the world light scene
+		// (ShadowSceneNode::SetPortalGraph), and a scene whose graph changes drops all its lights
+		// (RemoveAllLights) for the engine to take in again, each with a cull of the scene for the
+		// shapes it lights. AttachOne put the world's graph back (another drop) and every light back
+		// with AddLight: walking into Understone Keep, its 153 lights went through that twice and
+		// the next frame took ~40 ms; the same for the street's lights on walking out, and on each
+		// door approached. Attaching a remote cell, the world's graph is left as it is.
+		struct AttachGraphHook
+		{
+			static void Thunk(RE::ShadowSceneNode* a_scene, RE::BSPortalGraph* a_graph)
+			{
+				if (!attachingRemote) {
+					func(a_scene, a_graph);
+				}
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
+
 		struct GridReadyHook
 		{
 			static bool Thunk(void* a_grid)
@@ -1767,6 +1806,10 @@ namespace Portal
 	void RemoteCell::InstallGridHook()
 	{
 		InstallUnloadHook();
+		REL::Relocation<std::uintptr_t> graphSite{ REL::ID(18976), 0x140 };
+		if (Hooks::CallsTo(graphSite.address(), 106385, "portal: room graph on attach")) {
+			AttachGraphHook::func = SKSE::GetTrampoline().write_call<5>(graphSite.address(), AttachGraphHook::Thunk);
+		}
 		REL::Relocation<std::uintptr_t> site{ REL::ID(13317), 0xF4 };
 		if (!Hooks::CallsTo(site.address(), 15951, "portal: grid ready check")) {
 			logger::warn("portal: street cells are detached when walking out");

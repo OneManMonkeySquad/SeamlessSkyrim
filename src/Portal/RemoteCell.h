@@ -20,8 +20,11 @@ namespace Portal
 		// Before a_root is moved (its local transform set, or its parent's): its multibounds as they
 		// are, what they go back to.
 		void Capture(RE::NiAVObject* a_root);
-		// After a_root was moved by a_move: fixed bounds are recomputed (and left unfixed), and the
-		// boxes captured that the scene update didn't move along are moved by hand.
+		// Before a_root is moved and updated: its fixed bounds unfixed, so that the update computes
+		// them (one update of the whole cell, not a second one to unfix them after).
+		void UnfixBeforeMove(RE::NiAVObject* a_root);
+		// After a_root was moved by a_move and updated: bounds recomputed, and the boxes captured
+		// that the scene update didn't move along are moved by hand.
 		void Move(RE::NiAVObject* a_root, const RE::NiTransform& a_move);
 		// While moved: nodes the engine fixed since (land and statics attached as their cell finished
 		// loading) are unfixed too. Their bound, fixed where it was computed, stayed in the moved
