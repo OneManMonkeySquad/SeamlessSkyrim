@@ -353,6 +353,100 @@ namespace
 	// a frame nobody should see (the next one is already drawn from the other side).
 	bool skipExtraFrame = true;
 
+	// The lights of the space walked into are queued on arrival, and the world scene's light update
+	// takes each in with a cull of the scene for the shapes it lights (~0.27 ms a light): Understone
+	// Keep's ~150 were ~40 ms of the teleport's frame. For a few frames after a seamless trip the
+	// update takes the nearest ones first, a few per frame, and the rest wait in the queue.
+	constexpr int     kLightsPerUpdate = 32;
+	constexpr int     kSpreadFrames = 30;
+	int               spreadFrames = 0;
+	bool              spreadLights = true;
+	std::atomic<int>  lightsHeld = 0;  // diagnostics: held back in the last update
+
+	template <class F>
+	void UpdateLightsSpread(RE::ShadowSceneNode* a_scene, void* a_arg, F&& a_update)
+	{
+		if (!spreadLights || spreadFrames <= 0 || a_scene != RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]) {
+			a_update(a_scene, a_arg);
+			return;
+		}
+		auto&                                   data = a_scene->GetRuntimeData();
+		std::vector<RE::NiPointer<RE::BSLight>> held;
+		std::unordered_set<const RE::BSLight*>  removing;
+		{
+			RE::BSSpinLockGuard locker(data.lightQueueLock);
+			auto&               queue = data.lightQueueAdd;
+			if (queue.size() > kLightsPerUpdate) {
+				const auto at = RE::PlayerCharacter::GetSingleton()->GetPosition();
+				// The arrival queues each light twice; the update takes in the first and, for the
+				// second, walks the scene for the first's shapes again.
+				std::vector<RE::NiPointer<RE::BSLight>> all;
+				std::unordered_set<const RE::NiLight*>  queued;
+				for (auto& light : queue) {
+					if (!light || !light->light || queued.insert(light->light.get()).second) {
+						all.push_back(light);
+					}
+				}
+				const auto distance = [&](const RE::NiPointer<RE::BSLight>& a_light) {
+					return a_light && a_light->light ? a_light->light->world.translate.GetSquaredDistance(at) : 0.0f;
+				};
+				std::ranges::stable_sort(all, {}, distance);
+				queue.clear();
+				for (std::size_t i = 0; i < all.size(); ++i) {
+					if (i < kLightsPerUpdate) {
+						queue.push_back(all[i]);
+					} else {
+						held.push_back(all[i]);
+					}
+				}
+			}
+			for (auto& light : data.lightQueueRemove) {
+				removing.insert(light.get());
+			}
+		}
+		lightsHeld = static_cast<int>(held.size());
+		a_update(a_scene, a_arg);
+		if (!held.empty()) {
+			RE::BSSpinLockGuard locker(data.lightQueueLock);
+			for (auto& light : held) {
+				// Removed meanwhile (the space left again): not taken in later.
+				if (!removing.contains(light.get())) {
+					data.lightQueueAdd.push_back(light);
+				}
+			}
+		}
+	}
+
+	// In the teleport (ID 40744): the arrival's lights.
+	struct TeleportLightsHook
+	{
+		static void Thunk(RE::ShadowSceneNode* a_scene, void* a_arg)
+		{
+			if (seamlessTeleport) {
+				spreadFrames = kSpreadFrames;
+			}
+			UpdateLightsSpread(a_scene, a_arg, [](RE::ShadowSceneNode* a_s, void* a_a) { func(a_s, a_a); });
+			if (lightsHeld > 0) {
+				Note(std::format("{} light(s) left queued for the next frames", lightsHeld.load()));
+			}
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// Every frame (ID 106337, for each registered light scene).
+	struct FrameLightsHook
+	{
+		static void Thunk(RE::ShadowSceneNode* a_scene, void* a_arg)
+		{
+			const bool world = a_scene == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+			UpdateLightsSpread(a_scene, a_arg, [](RE::ShadowSceneNode* a_s, void* a_a) { func(a_s, a_a); });
+			if (world && spreadFrames > 0) {
+				--spreadFrames;
+			}
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	struct ExtraFrameHook
 	{
 		static void Thunk(void* a_main)
@@ -649,6 +743,12 @@ namespace Portal::Travel
 		} else {
 			logger::warn("travel: end-of-frame call not found, crossings are carried out at the start of a frame");
 		}
+		REL::Relocation<std::uintptr_t> teleportLights{ REL::ID(40744), 0x3D2 };
+		REL::Relocation<std::uintptr_t> frameLights{ REL::ID(106337), 0x2B };
+		if (callsTo(teleportLights.address(), 106335) && callsTo(frameLights.address(), 106335)) {
+			TeleportLightsHook::func = SKSE::GetTrampoline().write_call<5>(teleportLights.address(), TeleportLightsHook::Thunk);
+			FrameLightsHook::func = SKSE::GetTrampoline().write_call<5>(frameLights.address(), FrameLightsHook::Thunk);
+		}
 		REL::Relocation<std::uintptr_t> extraFrame{ REL::ID(13316), 0x273 };
 		if (callsTo(extraFrame.address(), 36555)) {
 			ExtraFrameHook::func = SKSE::GetTrampoline().write_call<5>(extraFrame.address(), ExtraFrameHook::Thunk);
@@ -672,7 +772,9 @@ namespace Portal::Travel
 		skipLoadWait = a_options.value("skipLoadWait", skipLoadWait);
 		skipLoadScreenClose = a_options.value("skipLoadScreenClose", skipLoadScreenClose);
 		skipExtraFrame = a_options.value("skipExtraFrame", skipExtraFrame);
-		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame } };
+		spreadLights = a_options.value("spreadLights", spreadLights);
+		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
+			{ "spreadLights", spreadLights } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

@@ -109,6 +109,10 @@ the same change that needed them.
   (ID 108282, pruned by `worldBound`). It dedupes by `BSLight::light` (the NiLight), not by
   BSLight. The patched Community Shaders still uses the world scene's per-shape lists (without
   them a room came out ~4% darker); our scenes don't need them.
+- **Arriving in a cell queues each of its lights twice** in the world scene (Understone Keep: 306
+  for 153). The update takes in the first and, finding the second's NiLight active, walks the
+  scene for it again. The teleport (ID 40744 + 0x3D2) and every frame (ID 106337 + 0x2B) call the
+  update; after a seamless trip `Travel.cpp` lets it take 32 lights at a time, nearest first.
 - **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
   (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).
