@@ -19,18 +19,15 @@ Read what the task touches, not everything.
 
 | File | Read it for |
 |---|---|
-| `docs/BUILD.md` | Building, deploying, paths on this machine, driving the game |
-| `docs/HANDOFF.md` (local only, not in the repo), section 7 onwards | How doorways work now. Sections 1 to 6 are history, apart from section 2, the engine facts that were expensive to find |
-| `docs/APPROACHES.md` | What was tried and dropped, before proposing a new approach |
+| `docs/BUILD.md` | Building, deploying, paths on this machine, driving and testing the game |
+| `docs/ENGINE.md` | Engine facts that were expensive to find: cells, simulation, second views, light scenes, culling |
+| `docs/APPROACHES.md` | What is in use for which doors, and what was tried and dropped, before proposing a new approach |
 | `docs/RENDER-BACKENDS.md`, `docs/COMMUNITY-SHADERS-PATCH.md` | Rendering work |
 | `docs/KNOWN-ISSUES.md` | Open bugs |
 
-`docs/ARCHITECTURE.md` and `docs/WORLD-SECTORS.md` describe designs that were replaced. Don't
-work from them.
-
-When a task teaches something that cost time to find out (an engine function's real behaviour, a
-render flag, a trap in the tooling), add it to `docs/HANDOFF.md` (if present) or `docs/BUILD.md` in the same
-change.
+When a task teaches something that cost time to find out, add it in the same change: an engine
+function's real behaviour or a render flag to `docs/ENGINE.md`, a trap in the tooling to
+`docs/BUILD.md`.
 
 ## Building
 

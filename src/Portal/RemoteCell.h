@@ -6,7 +6,7 @@
 // the portal's private root: attached, its NPCs in high process, its lights in the portal light
 // scene, an interior's Havok world stepped by us. Behind an exterior door: the door's cell and
 // its loaded neighbours. All engine calls are the ones reversed from TES::SetCurrentCell
-// (AE 1.7.104), see docs/ARCHITECTURE.md S2.
+// (AE 1.7.104), see docs/ENGINE.md, "Cells and spaces".
 namespace Portal
 {
 	// Bounds that don't follow a subtree moved for a merge. Multibound shapes (BSMultiBoundNode, an

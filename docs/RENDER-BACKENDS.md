@@ -1,6 +1,6 @@
 # Render backends: Community Shaders fork, or the game's own shaders (and ENB)
 
-Some of seamless doors needs changes to how shapes are drawn: the doorway mask of render-merge
+Seamless doors need changes to how shapes are drawn: the doorway mask of render-merge
 (two spaces drawn in one pass, each only where the other isn't), the far door's clip in the portal
 pass, and the light, ambient and fog of the space behind the door. `src/Render/Backend.h` hides
 who does that.

@@ -1,7 +1,7 @@
 # Building, deploying and testing
 
-How to build both halves, get them into the game, and drive a test, on this machine. The
-details below were looked up more than once; check here first.
+How to build both halves, get them into the game, and drive a test, on this machine. Engine
+facts are in ENGINE.md.
 
 ## Paths
 
@@ -13,7 +13,7 @@ details below were looked up more than once; check here first.
 | Crash logs | same folder, `Crashlogs\*.log` (trainwreck); `re_lookup` turns a `SkyrimSE.exe+offset` into an ID |
 | Plugin settings | `<game>\Data\SKSE\Plugins\SeamlessSkyrim.ini` |
 | Load order | `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt` |
-| Community Shaders fork | `E:\projects\CommunityShaders-Seamless`, branch `seamless-portal` (see COMMUNITY-SHADERS-PATCH.md) |
+| Community Shaders fork | `E:\projects\CommunityShaders-Seamless`, branch `seamless-portal` (COMMUNITY-SHADERS-PATCH.md) |
 
 ## SeamlessSkyrim (this repo)
 
@@ -36,8 +36,7 @@ building when the game is running and the copy would fail.
 
 `tools/deploy-vortex-mod.ps1` puts the plugin (Release build, no PDB), its two ini files from
 `package/`, and the Community Shaders fork's DLL (its ~100 MB PDB only with `-CsPdb`) and changed
-files into
-`E:\Vortex Mods\skyrimse\SeamlessSkyrim`:
+files into `E:\Vortex Mods\skyrimse\SeamlessSkyrim`:
 
 ```powershell
 tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
@@ -67,9 +66,9 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   `SeamlessSkyrim_Doors.ini`, which the script first copies into `package/` (commit it).
 - `CommunityShaders/`, optional: the fork's DLL and changed files. The installer preselects it
   when `SKSE\Plugins\CommunityShaders.dll` is already installed, and leaves it unselected but
-  selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without the shaders
-  and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend instead of the
-  native one. It still can't tell Community Shaders versions apart: the option's text says 1.9.1.
+  selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
+  the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
+  instead of the native one. It still can't tell Community Shaders versions apart: the option's text says 1.9.1.
 - `LICENSE` and `SOURCE.txt` at the archive's root, outside both options: the GPL text and the
   GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`).
 - Quit the game first: `-Build` runs the post-build copy into the game, which fails while it runs.
@@ -88,9 +87,10 @@ cp build/ALL/Release/CommunityShaders.dll build/ALL/Release/CommunityShaders.pdb
 ```
 
 CMake's build of the fork doesn't copy anything into the game, so do it by hand as above, or run
-`tools/build.ps1 -CommunityShaders` or `tools/deploy-vortex-mod.ps1`. `cp` writes into the existing file, which keeps the game's DLL hard
-link intact, and therefore also changes the Vortex mod that file belongs to: once the
-SeamlessSkyrim mod is deployed that's the right one, before it's stock Community Shaders.
+`tools/build.ps1 -CommunityShaders` or `tools/deploy-vortex-mod.ps1`. `cp` writes into the
+existing file, which keeps the game's DLL hard link intact, and therefore also changes the Vortex
+mod that file belongs to: once the SeamlessSkyrim mod is deployed that's the right one, before
+it's stock Community Shaders.
 
 Shaders aren't built; the game compiles them from `<game>\Data\Shaders`. After editing one in
 `package/Shaders`, copy it over the game's file:
@@ -108,81 +108,61 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
 
 ## Driving the game from an agent (tools/skyrim-mcp)
 
+Launching and the bridge:
 - `game_launch(save=...)` starts the game with the agent bridge and loads the save straight from
   the main menu (`SEAMLESS_AGENT_LOAD`).
+- Never launch or quit while the user is playing: check `Get-Process SkyrimSE` first. A game the
+  user started has no bridge, and the plugin log says `agent mode: off`.
 - Background mode moves the game window to a second virtual desktop **once** per launch and then
   leaves it alone. `game_window_mode("show")` brings it to the front.
 - Changes to `server.py` only apply after the MCP server is reconnected (`/mcp` in Claude Code).
-- The bridge serves several clients at once (127.0.0.1:47800, one JSON request per line): a test
-  script can talk to it beside the MCP server, e.g. with `server.bridge.call(cmd, **args)` after
-  `import server` under `uv run` in `tools/skyrim-mcp`, for commands that have no MCP tool
-  (`shown_rooms`, `merged_cull`).
-- Never launch or quit while the user is playing: check `Get-Process SkyrimSE` first. A game the
-  user started has no bridge, and the plugin log says `agent mode: off`.
-- From a test script: `PYTHONPATH=. uv run python script.py` in `tools/skyrim-mcp`; an MCP tool
-  is called as `getattr(server.run_route, "fn", server.run_route)(steps=[...])`. `re_read` takes
-  an offset from the module base: for a heap address pass `address - base`, the base from
-  `(Get-Process SkyrimSE).MainModule.BaseAddress` (0x7FF73F6A0000 on every launch so far).
-- `place_save` and `route_save` write their JSON with CRLF; `sed -i 's/$//'` before committing.
-- `toolsuild.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
-- Walking through a door from a script: `walk_to` a position a little past the door along its
-  inward direction. Aimed at a door reference in the other space, the player crosses at an angle
-  beside the doorway, and the engine moved them out of the frame's collision, under Belethor's
-  porch.
-- A game loaded at launch and one loaded later in the same session are not the same test (see
-  the persistent references below). Loading saves back to back across worldspaces with portals
-  on crashes now and then (KNOWN-ISSUES); relaunch rather than chase it in a long loop.
-- Anything that shows for a frame or a few (a flash on crossing, a door drawn closed once, low
-  detail over the real town) falls between screenshots. Take every frame instead:
-  - `run_route(name, capture=true)` saves the frames of each crossing and of the merge that
-    follows it (40 frames, about a second) and lists them under `bursts`, each with its
-    `oddFrames`: frames that differ from the one before and the one after, which resemble each
-    other. A route step `{"frames": n}` starts a burst at that point of the route.
-  - `capture_frames(frames, crop)` takes a burst now and returns it as one contact sheet;
-    `frames_sheet(directory, crop)` shows one already taken. `crop` cuts to the doorway and makes
-    the odd-frame scores more sensitive. The single frames stay in the burst's folder at full size.
-  - The odd-frame score only finds what lasts a single frame. Something wrong for several frames
-    in a row (a weapon drawn black for four) has to be seen on the sheet.
-  - Not while measuring stutter: writing a burst out stalls the game for a moment.
+- `tools\build.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
+
+Tests:
+- A game loaded at launch and one loaded later in the same session are not the same test (the
+  persistent references, ENGINE.md). Loading saves back to back across worldspaces with portals
+  on crashes now and then (KNOWN-ISSUES.md): relaunch rather than run a long reload loop.
+- Walking through a door: `walk_to` a position a little past the door along its inward direction.
+  Aimed at a door reference in the other space, the player crosses at an angle beside the
+  doorway, and the engine moved them out of the frame's collision, under Belethor's porch.
+- `place_save` and `route_save` write their JSON with CRLF: `sed -i 's/\r$//'` before committing.
+
+Scripts beside the MCP server (for loops, and commands with no MCP tool such as `shown_rooms`,
+`merged_cull`):
+- The bridge serves several clients at once (127.0.0.1:47800, one JSON request per line).
+- Run with `PYTHONPATH=. uv run python script.py` in `tools/skyrim-mcp`, then `import server`:
+  `server.bridge.call(cmd, **args)` for a bridge command,
+  `getattr(server.run_route, "fn", server.run_route)(steps=[...])` for an MCP tool.
+- `re_read` takes an offset from the module base. For a heap address pass `address - base`; the
+  base is `(Get-Process SkyrimSE).MainModule.BaseAddress` (0x7FF73F6A0000 on every launch so far).
+
+Every frame of a moment (a flash on crossing, a door drawn closed once, low detail over the real
+town falls between screenshots):
+- `run_route(name, capture=true)` saves the frames of each crossing and of the merge that follows
+  it (40 frames, about a second) and lists them under `bursts`, each with its `oddFrames`: frames
+  that differ from the one before and the one after, which resemble each other. A route step
+  `{"frames": n}` starts a burst at that point of the route.
+- `capture_frames(frames, crop)` takes a burst now and returns it as one contact sheet. `crop`
+  cuts to the doorway and makes the odd-frame scores more sensitive. The single frames stay in
+  the burst's folder at full size.
+- `frames_sheet` currently fails ("Unable to serialize ... Image"): read the burst's frames
+  directly, or paste them into a sheet with PIL.
+- The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
+  a row (a weapon drawn black for four) has to be seen.
+- Not while measuring stutter: writing a burst out stalls the game for a moment.
+
+Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
   outdoor lighting, the doorway, and the street references that can't be drawn and why.
-- A piece of a merged room missing: bridge `ref_3d {ref}` gives the chain of parents with node
-  types and each node's slot in its parent; `find_nodes {name}` finds nodes by name in the world's
-  and the portal's scene; `orphans {cell?}` lists the remote cells' references whose 3D hangs
-  nowhere, and each portal graph's always-drawn and pending lists. `ref_3d` also lists each
-  node's physics body: flags, motion type, where the physics has it, its constraints. `frames_sheet` currently fails
-  ("Unable to serialize ... Image"); read the burst's frames directly.
-
-## Engine facts (culling)
-
-- The main view's cull (ID 36643) doesn't walk the scene: it hands each loaded cell's 3D to jobs
-  slot by slot, leaving out slots 0, 1 and 4 and the first child of slot 6 (an interior's "Shared
-  Portal Geometry", culled through the portal graph only). NiNode and BSMultiBoundNode OnVisible
-  are not called for those nodes; BSMultiBoundRoom's (ID 75886) is.
-- A BSMultiBoundRoom (ID 75886) or BSPortalSharedNode (ID 76448) culls its children only when the
-  process's portal graph lists it or the cull mode is kAllPass / kIgnoreMultiBounds.
-- A portal's shared geometry: `BSPortal::portalSharedNode`, the portals in
-  `BSMultiBoundRoom::portalList`, the rooms in the cell's `loadedData->portalGraph->rooms`.
-- Objects outside the rooms (`BSPortalGraph::alwaysRenderChildren`) hang nowhere in the scene;
-  the scene's cull with the graph (ID 106322) culls them one by one. 3D finished after the cell's
-  attach waits in `pendingAlwaysRenderAdds`, taken in only while the graph is the scene's: in a
-  cell attached behind a door, most of Riften's jail and Mistveil Keep's dais steps.
-- In an interior with a portal graph the main view tests what lies outside the rooms against the
-  view through the rooms' portals (the process's compound frustum; kIgnoreMultiBounds skips that
-  test): a street hung outside the rooms is not drawn. Listed as always-render with the graph it
-  is, but then also in the sun's shadow map, which crashed (EngineFixes' alpha test fix, a pass
-  without a shader). Hung under a room it is culled with that room's view.
-- A game loaded indoors after the player was outdoors in the same session leaves the worldspace's
-  persistent references around the door (Whiterun's houses, porches, market paving) without 3D; a
-  game loaded right after starting has them. Without them there is no collision under the door
-  either. `RemoteCell::PersistentIn` loads them, not doors.
-- Distant LOD (`BGSTerrainManager`): `updateNodes` are the level-32 nodes; a node's `children`
-  (+0x30) points to its 4 children inline (0x50 apart), not to pointers. The low 12 bits of
-  `nodeState` are one nibble per layer, terrain 0x00F, objects 0x0F0, trees 0xF00: 2 none,
-  4 shown, 8 split into the children. Object layers live on the level 16/8/4 nodes, so a level-32
-  node without one is normal.
-- `BSCullingProcess::AppendVirtual` (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
-  Objects); the original is ID 76556.
+- `portal_status` has the active portal, the remote cell, the merged rooms and the distant LOD
+  (`lod`: shapes of its land, objects and trees).
+- A piece of a merged space missing:
+  - bridge `ref_3d {ref}`: the chain of parents with node types and each node's slot in its
+    parent, and each node's physics body (flags, motion type, where the physics has it, its
+    constraints);
+  - `find_nodes {name}`: nodes by name in the world's and the portal's scene;
+  - `orphans {cell?}`: the remote cells' references whose 3D hangs nowhere, and each portal
+    graph's always-drawn and pending lists.
 
 ## Graphics debugging
 

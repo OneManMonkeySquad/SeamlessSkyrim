@@ -20,7 +20,7 @@
 // Two kinds of pass get this:
 // - the portal pass (its accumulator draws with the portal light scene, State slot 3): the engine
 //   pairs lights with shapes against the main camera only, and most of the portal's shapes came
-//   with no point light at all (ARCHITECTURE.md, S4). They get the nearest lights of the portal
+//   with no point light at all (docs/ENGINE.md, "Light scenes"). They get the nearest lights of the portal
 //   scene that reach them, as the fork's strict-light path does.
 // - shapes of a room merged into the world: lit by the room's lights (they stay in the portal
 //   scene, so they don't light the street), and by the room's own sun and ambient when the

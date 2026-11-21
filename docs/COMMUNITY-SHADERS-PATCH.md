@@ -95,8 +95,13 @@ Changes by file:
     pass draws one space.
 - `src/Utils/Game.cpp/.h`: `SetInteriorOverride`; `IsInterior()` honours it (features that switch
   on interior/exterior follow the space being drawn).
-- `src/Features/IBL.cpp`: IBL counts as disabled while a portal pass is drawn (otherwise its
-  static menu lighting replaces the space's ambient).
+- `src/Features/IBL.cpp/.h`: IBL counts as disabled while a portal pass is drawn (otherwise its
+  static menu lighting replaces the space's ambient). `computedOutdoors` (set at the end of `Prepass`) and
+  `BindForPortal(bool outdoors)`, which binds the IBL textures to PS slots 76/77 (the last outdoor
+  sky: the prepass doesn't run indoors, so they keep it) or unbinds them. `State::BeginPortalSharedData`
+  calls it with the portal's kind, `EndPortalSharedData` with the world's (`!Util::IsInterior()`).
+  `GetCommonBufferData` turns IBL off in a portal pass while `computedOutdoors` is false. Without
+  this the street seen through a doorway from indoors was lit without IBL and didn't match the street.
 - `src/Deferred.cpp/.h`: `PrecompileComposites` compiles both deferred composite compute shaders
   on a background thread (they were compiled on first use: a ~150 ms stall when walking through a
   door without a loading screen); `compositeLock` guards the two getters. Started from
@@ -122,12 +127,6 @@ Changes by file:
 
 ## Shaders
 
-- `Features/IBL.cpp/.h` (C++ only): `computedOutdoors` (set at the end of `Prepass`) and
-  `BindForPortal(bool outdoors)`, which binds the IBL textures to PS slots 76/77 (the last outdoor
-  sky: the prepass doesn't run indoors, so they keep it) or unbinds them. `State::BeginPortalSharedData`
-  calls it with the portal's kind, `EndPortalSharedData` with the world's (`!Util::IsInterior()`).
-  `GetCommonBufferData` turns IBL off in a portal pass while `computedOutdoors` is false. Without
-  this the street seen through a doorway from indoors was lit without IBL and didn't match the street.
 - `Common/Permutation.hlsli`: `ExtraFlags::SeamlessRoomShift = 11` (bits 11-12: which merged room).
   `ExtraFlags::SeamlessRemote = 1 << 7`, `ExtraFlags::SeamlessUnmasked = 1 << 8`
   (same values in `State::ExtraShaderDescriptors`). `State::UpdateLightingShaderPermutation` sets
@@ -178,7 +177,6 @@ Changes by file:
   `SV_Position` with `CameraViewProjInverse`; **do not add vertex shader outputs here**: it shifts
   the vertex shader's rounding, the lighting pass (depth test EQUAL) z-fights with the prepass
   and the ground turns white and scribbled.
-
 - `Utility.hlsl` vertex shader: the paraboloid shadow-map projection (`RENDER_SHADOWMAP_PB`) is
   tested before `LOD_LANDSCAPE`. Distant land drawn inside an interior gets into a point light's
   paraboloid shadow map; in the original order that permutation left `positionCSPerspective`

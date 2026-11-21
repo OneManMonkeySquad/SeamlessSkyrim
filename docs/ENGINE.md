@@ -1,0 +1,151 @@
+# Engine facts
+
+Skyrim AE 1.7.104, IDs from the Address Library. These were expensive to find. Add new ones in
+the same change that needed them.
+
+## Cells and spaces
+
+- **One current space.** The engine runs either one interior (`TES::interiorCell`) or one exterior
+  grid (`TES::gridCells` plus LOD). Rendering, lighting, AI, Havok stepping, sky and weather all
+  follow it. Everything here is about keeping a second space alive beside it.
+- **Leaving a cell** detaches it, and its actors leave high process. Its references stay in
+  memory.
+  - The first probe (Dragonsreach → street → Bannered Mare) saw cells drop to `DataLoaded` with
+    their 3D freed.
+  - Interiors in the interior buffer have since been seen keeping their 3D (state Unattached,
+    3D yes), and an attach then has nothing to build.
+- **Preloading:** the engine loads the data of interiors linked from nearby doors
+  (`bPreloadLinkedInteriors`), so exterior → interior targets are in memory early.
+- **Interior → exterior:** the linked door is a persistent reference with no parent cell until
+  the exterior loads, so its cell has to be resolved and loaded by us.
+- **Attaching a cell that isn't current** (reversed from `TES::SetCurrentCell`):
+  - ID 19111 (cell) loads its temporary references.
+  - ID 18976 (cell, node) attaches it under any parent node; `SetCurrentCell` passes
+    `TES::objRoot`. The cell gets its own `bhkWorld`.
+  - ID 19063 (cell, true) finishes: state Attached, actors in high process with 3D. Its gate
+    (ID 13308) only checks the cell's state, not whether the cell is current.
+  - The attach also installs the cell's room graph in the world light scene
+    (`ShadowSceneNode::SetPortalGraph`, slot 0): put the world's back, or the main view culls
+    with the other cell's rooms (actors vanish, crashes).
+- **Detaching:** take the cell's 3D off our root first, then call ID 19130 (cell, true).
+  Detached with the 3D still under our root, it took `objRoot`'s first child instead, the
+  temporary node manager (`TES+0x98`). The game then crashed in its update (`NiAVObject::Update`
+  from ID 13292).
+- **Interior buffer** (`TES+0xC8`): detaching puts a cell at its front, and the one falling off
+  the end is unloaded by ID 13721. ID 13721 has about 25 callers, and a cell we still hold must
+  not go through any of them: hooked at its entry (`RemoteCell::InstallGridHook`). A held cell
+  unloaded the same way crashed in ID 13292.
+- **Persistent references** (a town's houses, porches, paving) belong to the worldspace's
+  persistent cell. The grid hangs their 3D under the cell they stand in, and takes it off some
+  frames after the player goes inside.
+  - Loaded at game start, the save has them with 3D.
+  - Loaded indoors after the player was outdoors in the same session, those around the door
+    have no 3D, so there is no collision under the door either. `RemoteCell::PersistentIn` loads
+    them, but not doors.
+- **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
+  13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
+
+## Simulation
+
+- **High process:** `Actor::MoveToHigh()` on a remote cell's actors is accepted, and they aren't
+  demoted while the cell stays attached.
+- **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
+  ID 18870 / 18897), with `bhkWorld` vfunc 0x32 (arg 0).
+  - Stepping a second world from the main thread, beside that job, corrupted memory: it is
+    stepped in the same job, right after the engine's.
+  - With Precision loaded, that froze the game; it is stepped at the end of the frame instead.
+  - `bhkWorld+0xC701` is the active flag, read only by the step.
+- **Collision filter:** `bhkCollisionFilter`'s pair filter is at vtable offset 0x10, its ray
+  filter at 0x28. Havok returns `hkBool` through a hidden pointer: a `bool` signature crashed.
+- **Line of sight:** ID 37761 (observer, target, mode), called by detection and combat (IDs 39639,
+  39640, 41246, among twelve callers). ID 53829 (`HasLineOfSight`) only dispatches to it.
+- **Conditions:** `GetInWorldspace` is ID 21475 and compares exactly. Conditions run through the
+  script command table (ID 29924 + 0x691 calls the entry), so replacing the entry answers every
+  condition.
+- **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
+
+## Rendering a second view
+
+- **Frame:** `Main::RenderPlayerView` (ID 36559) → shadow maps → `RenderDepth` (107139) →
+  `RenderShadowmasks` (107140) → `RenderWorld` (107142, executes the accumulated draw lists) →
+  `RenderFirstPersonView` (107129) → `RenderWaterEffects` (36560) → post.
+- **The main camera** is the world-root camera (ID 403513, camera at +0x128). `RenderPlayerView`
+  pushes it into every light scene's culling process (ID 415016 count, ID 415022 array) and calls
+  ID 107132 (camera).
+- **Second views in the engine:** the local map (ID 16335 on), menu and inventory 3D (ID 52727),
+  the cubemap camera (ID 107564 on), water reflections (the world a second time, with sky and LOD).
+- **The menu-3D recipe** (ID 52727), which the portal pass uses:
+  1. Culling context {accumulator, camera, scene}, then `BSCullingProcess::Process`.
+  2. Set the render and depth targets: IDs 77453 / 77454, with the RenderTargetManager object
+     `&ID 411451` as `this`.
+  3. `Renderer::SubmitAccumulator(camera, accumulator, flags)`.
+  - The accumulator (`BSShaderAccumulator::Create(0x63)`) must have an `activeShadowSceneNode`,
+    or the lighting shader's `GetRenderPasses` crashes while culling.
+  - It must be emptied after each submit, as `RenderPlayerView` does (ID 106597
+    `ClearItemsList`, ID 106600 (acc, 6) and (acc, 5)), or stale passes crash the batch renderer.
+  - ID 77386 (false) afterwards marks the engine's state cache dirty.
+
+## Light scenes
+
+- **Our own light scene:** a `ShadowSceneNode` built like the engine's (constructor ID 106320, on
+  the engine heap) and registered in `BSShaderManager::State` slot 3 with ID 105635. Slot 0 is
+  the world, 1 menu 3D, 2 and 3 are free. It must be registered: shaders look scenes up by
+  index (ID 105637, slot → fog property), and an unregistered one crashed the first frame.
+- **A cell's lights:** the attach puts them into the world light scene. They are moved into ours
+  (`LightScene::Adopt`). On release, call `RemoveAllLights()` on ours, or walking into the cell
+  registers every light twice.
+- **Lights are culled and faded against the main camera only.** For another view set
+  `BSLight::frustrumCull = 0` and `lodDimmer = 1` on each light before the cull.
+- **Directional ambient** is one global, set per frame by `Sky::SetDirectionalAmbientColors`
+  (ID 105643). Its raw inputs are at ID 414646 (0x48 bytes), the tint at IDs 390997-390999, the
+  fresnel at ID 391000.
+- **Sun light and fog:** every `ShadowSceneNode` has its own sun light and fog property.
+- **A street in the world scene** while the player is indoors registers one of its lights anew
+  every frame. Adopting each into our scene crashed in the world scene's queued removal
+  (ID 106335 → 106342).
+
+## Culling
+
+- **The main view's cull** (ID 36643) doesn't walk the scene. It hands each loaded cell's 3D to
+  jobs slot by slot, leaving out:
+  - slots 0, 1 and 4;
+  - the first child of slot 6, an interior's "Shared Portal Geometry", culled through the portal
+    graph only.
+
+  `NiNode` and `BSMultiBoundNode` OnVisible aren't called for those nodes. `BSMultiBoundRoom`'s
+  (ID 75886) is.
+- **Rooms and shared nodes:** a `BSMultiBoundRoom` (ID 75886) or `BSPortalSharedNode` (ID 76448)
+  culls its children only when the process's portal graph lists it or the cull mode is kAllPass /
+  kIgnoreMultiBounds.
+- **A portal's shared geometry:** `BSPortal::portalSharedNode`; the portals are in
+  `BSMultiBoundRoom::portalList`, the rooms in the cell's `loadedData->portalGraph->rooms`.
+- **Objects outside the rooms** (`BSPortalGraph::alwaysRenderChildren`) hang nowhere in the scene.
+  The scene's cull with the graph (ID 106322) culls them one by one.
+  - 3D finished after the cell's attach waits in `pendingAlwaysRenderAdds`. It is taken in only
+    while the graph is the scene's, so in a cell attached behind a door it never is: most of
+    Riften's jail, Mistveil Keep's dais steps.
+- **In an interior with a portal graph,** the main view tests what lies outside the rooms against
+  the view through the rooms' portals (the process's compound frustum; kIgnoreMultiBounds skips
+  that test). A street hung outside the rooms isn't drawn.
+  - Listed as always-render with the graph, it is drawn, but then it is also in the sun's shadow
+    map, which crashed (EngineFixes' alpha test fix, a pass without a shader).
+  - Hung under a room, it is culled with that room's view.
+- **Dead ends found while looking for the interior's cull:**
+  - The ID 415022 loop isn't a cull: ID 76557 only clears each process's collected geometry.
+  - The cull in `RenderDepth` (ID 107139 + 0x710) is the player's skeleton.
+  - `ShadowSceneNode` vfunc 0x34 (OnVisible) is never called for the world scene indoors.
+- **`BSCullingProcess::AppendVirtual`** (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
+  Objects); the original is ID 76556.
+
+## The outdoors seen from indoors
+
+- **Distant LOD survives indoors:** Tamriel's terrain manager stays active with its LOD loaded.
+  Its land, object and tree nodes are only culled (`SetAppCulled`).
+- **The sky stays in the world scene** in dome-only mode (`Sky::mode` 2).
+- **The street can stay attached** when the player goes in (the grid's nine cells).
+- **`BGSTerrainManager` layout:**
+  - `updateNodes` are the level-32 nodes.
+  - A node's `children` (+0x30) points to its 4 children inline, 0x50 apart, not to pointers.
+  - The low 12 bits of `nodeState` hold one nibble per layer: terrain 0x00F, objects 0x0F0,
+    trees 0xF00. The values are 2 none, 4 shown, 8 split into the children.
+  - Object layers live on the level 16, 8 and 4 nodes, so a level-32 node without one is normal.
