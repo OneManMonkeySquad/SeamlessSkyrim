@@ -947,6 +947,7 @@ namespace
 		if (!mergedLOD) {
 			return;
 		}
+		int taken = 0;
 		for (auto& node : remote.borrowedPersistent) {
 			const bool known = std::ranges::any_of(mergedLOD->persistent, [&](const MergedLOD::Moved& a_moved) { return a_moved.node == node; });
 			if (known || !node->parent) {
@@ -960,7 +961,10 @@ namespace
 				HangInto(mergedLOD->branch.get(), node.get());
 			}
 			Portal::SettleMotion(node.get());
-			logger::info("portal: a persistent references' node merged with the street ({} children)", node->AsNode() ? node->AsNode()->GetChildren().size() : 0);
+			++taken;
+		}
+		if (taken) {
+			logger::info("portal: {} node(s) of persistent references merged with the street", taken);
 		}
 	}
 

@@ -41,6 +41,36 @@
       }
     ]
   },
+  "belethors-walk-out": {
+    "note": "Loaded in Belethor's facing the front door, walked out into Whiterun's Plains District (shop signs in front of the door swung wildly or fell off on walking out).",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "frames": 60
+      },
+      {
+        "walk": {
+          "pos": [
+            0,
+            -900
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 60
+      }
+    ]
+  },
   "honningbrew-loaded-inside": {
     "note": "Fresh launch, loaded in Honningbrew Meadery facing its open front door (street not visited this session): after the wait, look out (the dirt road in front of the door was distant land, the door's cell had no land or temporary references); then walking out (it put the player under the world, z -14623).",
     "steps": [

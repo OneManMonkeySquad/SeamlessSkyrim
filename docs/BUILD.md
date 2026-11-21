@@ -136,7 +136,8 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
 - A piece of a merged room missing: bridge `ref_3d {ref}` gives the chain of parents with node
   types and each node's slot in its parent; `find_nodes {name}` finds nodes by name in the world's
   and the portal's scene; `orphans {cell?}` lists the remote cells' references whose 3D hangs
-  nowhere, and each portal graph's always-drawn and pending lists. `frames_sheet` currently fails
+  nowhere, and each portal graph's always-drawn and pending lists. `ref_3d` also lists each
+  node's physics body: flags, motion type, where the physics has it, its constraints. `frames_sheet` currently fails
   ("Unable to serialize ... Image"); read the burst's frames directly.
 
 ## Engine facts (culling)
@@ -158,6 +159,10 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   test): a street hung outside the rooms is not drawn. Listed as always-render with the graph it
   is, but then also in the sun's shadow map, which crashed (EngineFixes' alpha test fix, a pass
   without a shader). Hung under a room it is culled with that room's view.
+- A game loaded indoors after the player was outdoors in the same session leaves the worldspace's
+  persistent references around the door (Whiterun's houses, porches, market paving) without 3D; a
+  game loaded right after starting has them. Without them there is no collision under the door
+  either. `RemoteCell::PersistentIn` loads them, not doors.
 - `BSCullingProcess::AppendVirtual` (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 

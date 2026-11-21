@@ -1075,6 +1075,19 @@ namespace Bridge
 								 line += std::format(" bound ({:.0f} {:.0f} {:.0f}) r{:.0f}", shape->worldBound.center.x, shape->worldBound.center.y, shape->worldBound.center.z, shape->worldBound.radius);
 							 }
 						 }
+						 // Where the physics has the node's body, beside where the node is drawn: a
+						 // sign swinging wildly or torn off its bracket is a body far from its node.
+						 if (auto* collision = a_object->collisionObject ? a_object->collisionObject->AsBhkNiCollisionObject() : nullptr) {
+							 auto* body = collision->body ? collision->body->AsBhkRigidBody() : nullptr;
+							 auto* rigid = body ? body->GetRigidBody() : nullptr;
+							 line += std::format(" | collision {} flags {:X}", collision->GetRTTI()->name, collision->flags.underlying());
+							 if (rigid) {
+								 const float scale = RE::bhkWorld::GetWorldScale();
+								 const auto& at = rigid->motion.motionState.transform.translation;
+								 line += std::format(" body motion {} at ({:.0f} {:.0f} {:.0f}) constraints {} world {:X}", static_cast<int>(rigid->motion.type.get()), at.quad.m128_f32[0] / scale,
+									 at.quad.m128_f32[1] / scale, at.quad.m128_f32[2] / scale, body->unk28.size(), reinterpret_cast<std::uintptr_t>(rigid->world));
+							 }
+						 }
 						 nodes.push_back(line);
 						 return RE::BSVisit::BSVisitControl::kContinue;
 					 });

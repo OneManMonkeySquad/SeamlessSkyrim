@@ -81,17 +81,43 @@ namespace Portal
 				byCoordinates.emplace(key(coordinates->cellX, coordinates->cellY), cell);
 			}
 		}
+		int        loaded = 0;
+		const auto started = std::chrono::steady_clock::now();
 		world->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
-			if (!a_ref || !a_ref->Get3D()) {
+			if (!a_ref) {
 				return RE::BSContainer::ForEachResult::kContinue;
 			}
 			const auto pos = a_ref->GetPosition();
 			const auto cell = byCoordinates.find(key(static_cast<std::int32_t>(std::floor(pos.x / 4096.0f)), static_cast<std::int32_t>(std::floor(pos.y / 4096.0f))));
-			if (cell != byCoordinates.end()) {
-				found[cell->second].push_back(a_ref->GetFormID());
+			if (cell == byCoordinates.end()) {
+				return RE::BSContainer::ForEachResult::kContinue;
 			}
+			// A game loaded indoors after being outdoors in the same session leaves them without 3D
+			// (a fresh start doesn't): Belethor's house with its porch, the paving of Whiterun's
+			// market were missing from the view out, and with no collision under the door the
+			// player walking out was put 135 units down in the stream below the porch. Loaded here.
+			// Not doors: merged with the street, a door's 3D stands where the interior shows it, and
+			// the doorway mapped from it sent the player walking out of Belethor's to the far side
+			// of Whiterun.
+			if (!a_ref->Get3D()) {
+				auto* base = a_ref->GetBaseObject();
+				auto* model = base ? base->As<RE::TESModel>() : nullptr;
+				if (!model || !model->GetModel() || !model->GetModel()[0] || base->Is(RE::FormType::Door) || a_ref->As<RE::Actor>() || a_ref->IsDisabled() || a_ref->IsDeleted() ||
+					static_cast<RE::TESObject*>(base)->IsMarker()) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				a_ref->Load3D(false);
+				if (!a_ref->Get3D()) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				++loaded;
+			}
+			found[cell->second].push_back(a_ref->GetFormID());
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
+		if (loaded) {
+			logger::info("portal: 3D of {} persistent reference(s) loaded in {:.1f} ms", loaded, std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
+		}
 		return found;
 	}
 
