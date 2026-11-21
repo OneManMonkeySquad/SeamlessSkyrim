@@ -3,6 +3,7 @@
 #include "Bridge/FrameHooks.h"
 #include "Bridge/ReverseEngineering.h"
 #include "Portal/DoorPair.h"
+#include "Portal/LightScene.h"
 #include "Portal/MergedCull.h"
 #include "Portal/PortalManager.h"
 #include "Portal/PortalRender.h"
@@ -976,6 +977,32 @@ namespace Bridge
 				 visit(it != world->cellMap.end() ? it->second : nullptr, "cell");
 				 return json{ { "refs", refs } };
 			 } } },
+			// Where nodes whose name contains {name} hang, in the world's scene and the portal's:
+			// a piece of a room missing from one of them.
+			{ "find_nodes", { [](const json& a) {
+				 const auto needle = a.at("name").get<std::string>();
+				 json       found = json::array();
+				 const auto search = [&](RE::NiAVObject* a_root, const char* a_where) {
+					 if (!a_root) {
+						 return;
+					 }
+					 RE::BSVisit::TraverseScenegraphObjects(a_root, [&](RE::NiAVObject* a_object) {
+						 if (found.size() < 50 && std::string_view(a_object->name.c_str()).find(needle) != std::string_view::npos) {
+							 std::string chain = a_where;
+							 for (auto* up = a_object->parent; up; up = up->parent) {
+								 chain += std::format(" < {} '{}' {:X}", up->GetRTTI() ? up->GetRTTI()->name : "?", up->name.c_str(), up->GetFlags().underlying());
+							 }
+							 const auto& at = a_object->world.translate;
+							 found.push_back(std::format("{} '{}' {:X} at ({:.0f} {:.0f} {:.0f}){}", a_object->GetRTTI() ? a_object->GetRTTI()->name : "?", a_object->name.c_str(),
+								 a_object->GetFlags().underlying(), at.x, at.y, at.z, chain));
+						 }
+						 return RE::BSVisit::BSVisitControl::kContinue;
+					 });
+				 };
+				 search(RE::Main::WorldRootNode(), "world");
+				 search(Portal::LightScene::Get(), "portal");
+				 return json{ { "found", found } };
+			 } } },
 			// Diagnostics: the 3D of one reference, node by node (flags, fade, what each shape would draw).
 			{ "ref_3d", { [](const json& a) {
 				 auto* ref = RequireRef(a);
@@ -1017,8 +1044,24 @@ namespace Bridge
 					 });
 				 }
 				 std::string chain;
-				 for (auto* up = ref->Get3D() ? ref->Get3D()->parent : nullptr; up; up = up->parent) {
-					 chain += std::format(" < '{}' {:X}", up->name.c_str(), up->GetFlags().underlying());
+				 // With each node's slot in its parent: the engine's cull of a cell's 3D goes by slot
+				 // (ID 36643 leaves out slots 0, 1 and 4, and the first child of slot 6).
+				 const auto slotOf = [](const RE::NiAVObject* a_object) {
+					 int slot = 0;
+					 if (a_object->parent) {
+						 for (const auto& child : a_object->parent->GetChildren()) {
+							 if (child.get() == a_object) {
+								 return slot;
+							 }
+							 ++slot;
+						 }
+					 }
+					 return -1;
+				 };
+				 for (const auto* below = ref->Get3D(); below && below->parent; below = below->parent) {
+					 const auto* up = below->parent;
+					 chain += std::format(" #{} < {} '{}' {:X} bound ({:.0f} {:.0f} {:.0f}) r{:.0f}", slotOf(below), up->GetRTTI() ? up->GetRTTI()->name : "?", up->name.c_str(),
+						 up->GetFlags().underlying(), up->worldBound.center.x, up->worldBound.center.y, up->worldBound.center.z, up->worldBound.radius);
 					 if (!up->parent) {
 						 chain += up == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0] ? " (WORLD scene)" : std::format(" (root {:X})", reinterpret_cast<std::uintptr_t>(up));
 					 }

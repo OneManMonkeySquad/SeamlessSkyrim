@@ -55,6 +55,59 @@ namespace Portal::MergedCull
 		std::chrono::steady_clock::time_point viewStarted;
 		float                                 lastCullMs = 0.0f;
 
+		// The rooms of the merged cells (from their portal graphs; a few dozen at most), for
+		// RoomCullHook. Culls run on job threads too.
+		std::mutex                         roomsLock;
+		std::vector<const RE::NiAVObject*> mergedRooms;  // under roomsLock; compared, never followed
+
+		bool IsMergedRoom(const RE::NiAVObject* a_node)
+		{
+			std::scoped_lock lock(roomsLock);
+			return std::ranges::find(mergedRooms, a_node) != mergedRooms.end();
+		}
+
+		// An interior built of room bounds (Mistveil Keep) is culled through its portal graph, which
+		// the world's scene doesn't have. Merged, the main view (ID 36643) missed two parts of it:
+		// - A room's cull (ID 75886) walks into its children only when the culling process's graph
+		//   lists the room, or when the process ignores multibounds. Nothing of the room was drawn
+		//   but its particles (those come from the light scene, not the cull): the land behind the
+		//   house showed through the doorway.
+		// - What straddles a portal between two rooms (the great hall's walls) hangs under the
+		//   portal's BSPortalSharedNode, in the first child of the cell's sixth node, which the main
+		//   view leaves out: the graph culls it through the portals of the rooms seen.
+		// For a merged room, kNormal processes ignore multibounds within the room, as the portal
+		// pass does throughout (RenderPortal), and the room culls the shared geometry of its
+		// portals, each portal from one of its two rooms only (so it is drawn once). Rooms are
+		// always drawn (kAlwaysDraw), so every room of the cell gets here in every cull.
+		struct RoomCullHook
+		{
+			static void Thunk(RE::BSMultiBoundRoom* a_room, RE::NiCullingProcess& a_process, std::int32_t a_alphaGroupIndex)
+			{
+				using Type = RE::BSCullingProcess::BSCPCullingType;
+				// The engine's own function reads it as a BSCullingProcess, whichever process it is.
+				auto& process = static_cast<RE::BSCullingProcess&>(a_process);
+				if (process.cullMode.get() != Type::kNormal || !IsMergedRoom(a_room)) {
+					func(a_room, a_process, a_alphaGroupIndex);
+					return;
+				}
+				process.cullMode = Type::kIgnoreMultiBounds;
+				func(a_room, a_process, a_alphaGroupIndex);
+				for (auto* portal : a_room->portalList) {
+					auto* shared = portal ? portal->portalSharedNode.get() : nullptr;
+					if (!shared) {
+						continue;
+					}
+					const auto* owner = portal->entranceRoom && IsMergedRoom(portal->entranceRoom) ? portal->entranceRoom : portal->exitRoom;
+					if (owner == a_room) {
+						static REL::Relocation<void (*)(RE::NiAVObject*, RE::NiCullingProcess&, std::uint32_t)> cull{ REL::ID(70267) };
+						cull(shared, a_process, static_cast<std::uint32_t>(a_alphaGroupIndex));
+					}
+				}
+				process.cullMode = Type::kNormal;
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
+
 		void Hide(RE::NiAVObject* a_object)
 		{
 			if (!a_object->GetAppCulled()) {
@@ -119,7 +172,9 @@ namespace Portal::MergedCull
 			if (side == Side::kInside) {
 				return;
 			}
-			if (side == Side::kOutside && !guarded) {
+			// Not a room whole: it culls its portals' shared geometry (RoomCullHook), which may be
+			// seen when the room's bound isn't. Its contents are looked at one by one instead.
+			if (side == Side::kOutside && !guarded && !netimmerse_cast<RE::BSMultiBoundRoom*>(a_object)) {
 				Hide(a_object);
 				return;
 			}
@@ -272,9 +327,37 @@ namespace Portal::MergedCull
 		}
 	}
 
+	void Install()
+	{
+		// AE IDs: the plugin runs on AE only.
+		REL::Relocation<std::uintptr_t> vtable{ REL::ID(238170) };
+		const auto                      expected = REL::Relocation<std::uintptr_t>{ REL::ID(75886) }.address();
+		const auto                      slot = *reinterpret_cast<const std::uintptr_t*>(vtable.address() + 0x34 * sizeof(std::uintptr_t));
+		if (slot != expected) {
+			logger::warn("portal: BSMultiBoundRoom's OnVisible is not ID 75886; merged rooms built of room bounds stay unseen");
+			return;
+		}
+		RoomCullHook::func = vtable.write_vfunc(0x34, RoomCullHook::Thunk);
+	}
+
 	void Set(std::vector<Room> a_rooms)
 	{
 		rooms = std::move(a_rooms);
+		// Not the room the player has walked into: the engine culls it with its own graph then.
+		auto*                              here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		std::vector<const RE::NiAVObject*> found;
+		for (const auto& room : rooms) {
+			for (auto* cell : room.cells) {
+				auto* loaded = cell != here ? cell->GetRuntimeData().loadedData : nullptr;
+				if (auto* graph = loaded ? loaded->portalGraph.get() : nullptr) {
+					for (const auto& node : graph->rooms) {
+						found.push_back(node.get());
+					}
+				}
+			}
+		}
+		std::scoped_lock lock(roomsLock);
+		mergedRooms = std::move(found);
 	}
 
 	void BeforeView()

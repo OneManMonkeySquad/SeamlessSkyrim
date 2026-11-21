@@ -20,5 +20,16 @@
       -7759.99951171875,
       -3374.91259765625
     ]
+  },
+  "mistveil-keep-door": {
+    "cell": "RiftenCitySouth",
+    "headingDeg": 178.61306762695312,
+    "interior": false,
+    "note": "Riften, in front of Mistveil Keep's door (00042282), looking in. Merged room (render-merge) not drawn: the doorway showed the land and sky beyond.",
+    "pos": [
+      173408.734375,
+      -100059.546875,
+      11499.9677734375
+    ]
   }
 }

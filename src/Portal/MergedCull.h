@@ -28,6 +28,9 @@ namespace Portal::MergedCull
 		kHideAll,   // diagnostics: the room hidden whatever is seen (what is to be won)
 	};
 
+	// kDataLoaded: the engine's cull of room bounds, opened for merged rooms (see RoomCullHook).
+	void Install();
+
 	// Main thread, every frame: the rooms merged now (the shown one and those merged beside it),
 	// none when nothing is.
 	void Set(std::vector<Room> a_rooms);

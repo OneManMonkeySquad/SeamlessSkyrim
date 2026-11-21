@@ -1794,6 +1794,7 @@ namespace Portal::Manager
 		Portal::Travel::Install();
 		Portal::CameraLimit::Install();
 		Portal::StreetLOD::Install();
+		MergedCull::Install();
 		Portal::Doors::InstallPromptHook();
 		RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESActivateEvent>(&activateSink);
 		if (auto* ui = RE::UI::GetSingleton()) {
