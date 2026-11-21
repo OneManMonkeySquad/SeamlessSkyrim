@@ -3,7 +3,7 @@
 Status: dropped; its code (`tools/places`, `src/World/Sectors.*`) was removed. Decided: **portals for every door, no merges** (neither
 cities nor places). Every space stays where the game put it; the portal shows
 the other side and the crossing has no loading screen. The open problems of that design are in
-KNOWN-PROBLEMS.md. This document keeps the sector design and what was learnt building it.
+KNOWN-ISSUES.md. This document keeps the sector design and what was learnt building it.
 
 ## Dropped: open cities by merge (built, tested and removed)
 

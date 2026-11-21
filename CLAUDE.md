@@ -23,7 +23,7 @@ Read what the task touches, not everything.
 | `docs/HANDOFF.md` (local only, not in the repo), section 7 onwards | How doorways work now. Sections 1 to 6 are history, apart from section 2, the engine facts that were expensive to find |
 | `docs/APPROACHES.md` | What was tried and dropped, before proposing a new approach |
 | `docs/RENDER-BACKENDS.md`, `docs/COMMUNITY-SHADERS-PATCH.md` | Rendering work |
-| `docs/KNOWN-PROBLEMS.md` | Open bugs |
+| `docs/KNOWN-ISSUES.md` | Open bugs |
 
 `docs/ARCHITECTURE.md` and `docs/WORLD-SECTORS.md` describe designs that were replaced. Don't
 work from them.
@@ -78,4 +78,4 @@ Don't call `cmake` directly: it isn't on `PATH`.
   report. Subject line: what the player now sees, as in `git log`.
 - Remove diagnostics added for the task, or make them a bridge command worth keeping. Don't leave
   them uncommitted in the working tree.
-- A problem you found and didn't fix goes into `docs/KNOWN-PROBLEMS.md`; one you fixed comes out.
+- A problem you found and didn't fix goes into `docs/KNOWN-ISSUES.md`; one you fixed comes out.
