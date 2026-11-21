@@ -264,6 +264,11 @@ namespace
 		if (!base || !base->Is(RE::FormType::Door) || a_ref->IsDisabled() || !a_ref->Get3D() || a_ref->IsLocked()) {
 			return nullptr;
 		}
+		// A marker door is no doorway: unseen, used by scripts (Riften's prison marker, which takes
+		// an arrested player to the jail). Its portal stood in the open street, next to the keep.
+		if (static_cast<RE::TESObject*>(base)->IsMarker()) {
+			return nullptr;
+		}
 		auto* teleport = a_ref->extraList.GetByType<RE::ExtraTeleport>();
 		auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
 		if (!linked) {

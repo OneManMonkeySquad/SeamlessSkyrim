@@ -2,4 +2,3 @@
 - Physics objects/arrows are not teleported through portal
 - Portals draws in front of transparent things
 - Physics objects can break
-- Floating portals in Riften (prison)

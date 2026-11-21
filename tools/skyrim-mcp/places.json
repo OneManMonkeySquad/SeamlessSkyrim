@@ -31,5 +31,16 @@
       -100059.546875,
       11499.9677734375
     ]
+  },
+  "riften-prison-marker": {
+    "cell": "RiftenCitySouth",
+    "headingDeg": 160.71243286132812,
+    "interior": false,
+    "note": "Riften, next to Mistveil Keep, looking at the prison marker door (0003EF58, Marker_Prison.nif, leads to RiftenJail01): a portal floated in the open street there.",
+    "pos": [
+      172811.71875,
+      -100351.9609375,
+      11496.474609375
+    ]
   }
 }
