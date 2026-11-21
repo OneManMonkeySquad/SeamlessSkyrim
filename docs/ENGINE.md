@@ -42,6 +42,13 @@ the same change that needed them.
   - Loaded indoors after the player was outdoors in the same session, those around the door
     have no 3D, so there is no collision under the door either. `RemoteCell::PersistentIn` loads
     them, but not doors.
+  - 3D loaded while its cell isn't attached (`Load3D`, also `Set3D` again) hangs nowhere, and the
+    engine's later attach of the cell leaves it so: it hangs only the 3D it loads itself. ID 19165
+    (cell, ref, true, false) hangs one reference's 3D into its cell, as the cell attach does for
+    each (ID 18976 → ID 19187); the cell must have its 3D.
+  - Walking out once, Markarth's ground statics (`MrkDocksideLand01`, temporary references of
+    MarkarthMines) became persistent references of a runtime cell `FF000A96 'Wilderness'`, whose 3D
+    hangs under `TES::objRoot` outdoors. Why isn't known.
 - **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
   13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
 

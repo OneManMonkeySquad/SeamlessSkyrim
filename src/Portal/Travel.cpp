@@ -572,6 +572,8 @@ namespace
 				}
 				Note(std::format("heading set to {:.1f}, now {:.1f}", RE::rad_to_deg(*arrivalYaw), RE::rad_to_deg(a_player->GetAngleZ())));
 				arrivalYaw.reset();
+				// Before the space just left is attached below, which forgets them.
+				Portal::RemoteCell::HangHandedPersistent();
 				// The space just left is attached (and merged, with the doorway passable) before the
 				// camera is placed: otherwise the camera, behind the player in that doorway, collides
 				// with the building's shell and starts at the player's head for two frames.

@@ -955,8 +955,11 @@ namespace Bridge
 				 if (!world) {
 					 throw std::runtime_error("no such worldspace");
 				 }
-				 json       refs = json::array();
-				 const auto visit = [&](RE::TESObjectCELL* a_cell, const char* a_kind) {
+				 json        refs = json::array();
+				 auto*       persistentLoaded = world->persistentCell ? world->persistentCell->GetRuntimeData().loadedData : nullptr;
+				 const auto* persistent3D = persistentLoaded ? persistentLoaded->cell3D.get() : nullptr;
+				 std::vector<RE::TESObjectCELL*> parents;
+				 const auto  visit = [&](RE::TESObjectCELL* a_cell, const char* a_kind) {
 					 if (!a_cell) {
 						 return;
 					 }
@@ -965,14 +968,19 @@ namespace Bridge
 							 return RE::BSContainer::ForEachResult::kContinue;
 						 }
 						 auto*           object = a_ref->Get3D();
+						 if (auto* parentCell = a_ref->GetParentCell(); parentCell && std::ranges::find(parents, parentCell) == parents.end()) {
+							 parents.push_back(parentCell);
+						 }
 						 RE::NiAVObject* top = object;
+						 bool            inPersistent3D = false;
 						 while (top && top->parent) {
 							 top = top->parent;
+							 inPersistent3D |= top == persistent3D;
 						 }
 						 auto* model = a_ref->GetBaseObject() ? a_ref->GetBaseObject()->As<RE::TESModel>() : nullptr;
-						 refs.push_back(std::format("{}{} {:08X} '{}' at ({:.0f} {:.0f} {:.0f}) 3D {} top '{}' flags {:X} parentCell {:08X}", a_kind, a_ref->Is(RE::FormType::ActorCharacter) ? "A" : "", a_ref->GetFormID(),
-							 model ? model->GetModel() : "", a_ref->GetPositionX(), a_ref->GetPositionY(), a_ref->GetPositionZ(), object != nullptr, top ? top->name.c_str() : "", object ? object->GetFlags().underlying() : 0,
-							 a_ref->GetParentCell() ? a_ref->GetParentCell()->GetFormID() : 0));
+						 refs.push_back(std::format("{}{} {:08X} '{}' at ({:.0f} {:.0f} {:.0f}) 3D {} top '{}'{} flags {:X} parentCell {:08X}", a_kind, a_ref->Is(RE::FormType::ActorCharacter) ? "A" : "", a_ref->GetFormID(),
+							 model ? model->GetModel() : "", a_ref->GetPositionX(), a_ref->GetPositionY(), a_ref->GetPositionZ(), object != nullptr, top ? top->name.c_str() : "",
+							 inPersistent3D ? " (in the persistent cell's 3D)" : "", object ? object->GetFlags().underlying() : 0, a_ref->GetParentCell() ? a_ref->GetParentCell()->GetFormID() : 0));
 						 return RE::BSContainer::ForEachResult::kContinue;
 					 });
 				 };
@@ -980,7 +988,30 @@ namespace Bridge
 				 const auto x = static_cast<std::int16_t>(std::floor(at.x / 4096.0f)), y = static_cast<std::int16_t>(std::floor(at.y / 4096.0f));
 				 const auto it = world->cellMap.find(RE::CellID(y, x));
 				 visit(it != world->cellMap.end() ? it->second : nullptr, "cell");
-				 return json{ { "refs", refs } };
+				 // The worldspace's persistent cell: where the engine hangs its references' 3D outdoors.
+				 json persistent = nullptr;
+				 if (auto* cell = world->persistentCell) {
+					 auto* loaded = cell->GetRuntimeData().loadedData;
+					 auto* cell3D = loaded ? loaded->cell3D.get() : nullptr;
+					 json  slots = json::array();
+					 if (auto* node = cell3D ? cell3D->AsNode() : nullptr) {
+						 for (auto& child : node->GetChildren()) {
+							 slots.push_back(child && child->AsNode() ? static_cast<int>(child->AsNode()->GetChildren().size()) : -1);
+						 }
+					 }
+					 persistent = { { "cell", std::format("{:08X}", cell->GetFormID()) }, { "state", static_cast<int>(cell->cellState.get()) }, { "has3D", cell3D != nullptr },
+						 { "parent", cell3D && cell3D->parent ? cell3D->parent->name.c_str() : "" }, { "slots", slots } };
+				 }
+				 // The cells the references found say they are in, and where each one's 3D hangs.
+				 json parentCells = json::array();
+				 for (auto* cell : parents) {
+					 auto* loaded = cell->GetRuntimeData().loadedData;
+					 auto* cell3D = loaded ? loaded->cell3D.get() : nullptr;
+					 auto* cellWorld = cell->IsInteriorCell() ? nullptr : cell->GetRuntimeData().worldSpace;
+					 parentCells.push_back(std::format("{} world {:08X}{} 3D parent '{}'", Probe::DescribeCell(cell), cellWorld ? cellWorld->GetFormID() : 0,
+						 cellWorld && cellWorld->persistentCell == cell ? " (its persistent cell)" : "", cell3D && cell3D->parent ? cell3D->parent->name.c_str() : "-"));
+				 }
+				 return json{ { "refs", refs }, { "persistentCell", persistent }, { "parentCells", parentCells } };
 			 } } },
 			// References of the remote cells whose 3D exists but hangs nowhere: loaded, never drawn.
 			{ "orphans", { [](const json& a) {

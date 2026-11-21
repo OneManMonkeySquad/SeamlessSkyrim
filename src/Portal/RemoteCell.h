@@ -234,11 +234,16 @@ namespace Portal
 		StandIn                                 playerStandIn;  // the player, in the room's world
 		// The last cells handed over attached (Release), until the next attach.
 		static inline std::vector<RE::TESObjectCELL*> handedOver;
+		// Persistent references whose own 3D was ours when the street was handed over (Release).
+		static inline std::vector<RE::FormID> handedPersistent;
 		// Every cell attached by any space behind a door (see Holds).
 		static inline std::vector<RE::TESObjectCELL*> held;
 
 	public:
 		[[nodiscard]] static const std::vector<RE::TESObjectCELL*>& HandedOver() { return handedOver; }
+		// After walking out into the street handed over (Release): the persistent references whose
+		// 3D we loaded are hung into their cells as the engine's attach of a cell does.
+		static void HangHandedPersistent();
 		// Persistent references' 3D hung under our exterior cells (see AttachOne).
 		std::vector<RE::NiPointer<RE::NiAVObject>> borrowedPersistent;
 		// Bodies ClearPassage took out of the world, and that world.

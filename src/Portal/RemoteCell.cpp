@@ -267,6 +267,7 @@ namespace Portal
 		roundPersistent.clear();
 		attachedAt = std::chrono::steady_clock::now();
 		handedOver.clear();
+		handedPersistent.clear();
 		// A cell still loaded from the player's visit (they just came through the door) has nothing
 		// left to build; the long wait is for cells whose 3D is being loaded now.
 		bool preloaded = Cell3D(a_cell) != nullptr;
@@ -594,9 +595,15 @@ namespace Portal
 		// attaches it again when the player comes back out. Only if it is still ours: if the
 		// engine has hung it into the world again meanwhile (the player came back out another
 		// way), taking it off its parent would leave a hole where the building is.
+		handedPersistent.clear();
 		for (auto& object : borrowedPersistent) {
 			if (object->parent == root) {
 				root->DetachChild(object.get());
+			}
+			// A reference's own 3D, not a node of the engine's that holds several: one we loaded
+			// (PersistentIn), which the engine's attach of its cell on walking out leaves where it is.
+			if (auto* ref = handOver ? RE::TESObjectREFR::FindReferenceFor3D(object.get()) : nullptr; ref && ref->Get3D() == object.get()) {
+				handedPersistent.push_back(ref->GetFormID());
 			}
 		}
 		borrowedPersistent.clear();
@@ -629,6 +636,35 @@ namespace Portal
 		fadeForced = false;
 		adoptedLights = 0;
 		LightScene::Retire(std::move(scene));
+	}
+
+	void RemoteCell::HangHandedPersistent()
+	{
+		// Loaded by us while the player was indoors (a game loaded in a room after being outdoors in
+		// the same session), their 3D hung under the street. Handed over, it hung nowhere: the
+		// engine attaching their cell on the way out hangs only the 3D it loads itself, and Markarth's
+		// ground and rocks outside the Smelter Overseer's House were gone, only their collision left.
+		// ID 19165 is what the engine's cell attach (ID 18976, through ID 19187) puts each one in with.
+		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::TESObjectREFR*, bool, bool)> attachRef3D{ REL::ID(19165) };
+		int hung = 0, notAttached = 0;
+		for (const auto id : std::exchange(handedPersistent, {})) {
+			auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
+			auto* object = ref ? ref->Get3D() : nullptr;
+			if (!object || object->parent) {
+				continue;
+			}
+			// (ID 19165 crashed on a cell without 3D.)
+			auto* cell = ref->GetParentCell();
+			if (!Cell3D(cell) || cell->cellState.get() != CellState::kAttached) {
+				++notAttached;
+				continue;
+			}
+			attachRef3D(cell, ref, true, false);
+			++hung;
+		}
+		if (hung || notAttached) {
+			logger::info("portal: {} persistent reference(s) hung into their cells after walking out, {} left (cell not attached)", hung, notAttached);
+		}
 	}
 
 	void RemoteCell::Update(float a_delta)

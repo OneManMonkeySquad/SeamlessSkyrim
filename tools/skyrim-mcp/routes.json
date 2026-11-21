@@ -96,7 +96,7 @@
     ]
   },
   "markarth-smelter-house-out-and-in": {
-    "note": "Smelter Overseer's House (Markarth mines): walk out, walk back in, look out the door. Was: the street's ground and rocks missing through the doorway (persistent references merged with the street left at the street's coordinates).",
+    "note": "Smelter Overseer's House (Markarth mines): load (a reload if the game ran already), walk out, walk back in, look out the door, walk out again. Was: the street's ground and rocks missing through the doorway after walking in; after a reload, missing outside after walking out (player in the water).",
     "steps": [
       {
         "load": "SeamlessTestMarkarthMines"
@@ -142,6 +142,19 @@
       },
       {
         "wait": 4
+      },
+      {
+        "walk": {
+          "pos": [
+            -1936,
+            -950
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
       }
     ]
   },
