@@ -3,7 +3,7 @@
 - Doorways are drawn in front of transparent things.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
-- Understone Keep seen from Markarth's street costs ~11 ms of main thread per frame (frame ~19 ms) with its doorway in view. Also `Manager::MergedRoomOf` (a lock and set lookups) per draw and per shadow light, ~8%. Right after each merge, the light-occlusion rays (4000 per frame) take ~40% of the main thread for a second or two.
+- Understone Keep seen from Markarth's street: frame ~13.7 ms, ~9.6 ms with it hidden. Left: the game drawing it, the fork's light setup per shape with `LightOcclusion::Visibility` (~1.5 ms), our cull (~0.5 ms).
 - Walking out of Riften's jail into the street: the first frame outside takes ~280 ms (releasing the street ~90 ms, the teleport ~140 ms).
 - Whiterun's hanging shop signs: torn off and fallen on walking out of Belethor's, twice in ~30 walk-outs (`belethors-walk-out`; once right after loading the save coming from Riften); cause not found.
 - Whiterun's distant objects and trees gone right after walking out of Belethor's (the user had been in and out of it and the Bannered Mare a few times): every LOD node's object and tree layer state 2 (none), the land's normal, the mountains bare low LOD land until a game is loaded. Not reproduced in ~30 walk-outs of either of its doors (front and back), quick or after waiting inside.

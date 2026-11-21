@@ -4,8 +4,10 @@
 
 namespace
 {
+	// With the Havok world: one cache serves every space, and a space's pairs outlive its crossings.
 	struct Key
 	{
+		const RE::bhkWorld*   world;
 		const RE::BSGeometry* geometry;
 		const RE::NiLight*    light;
 		bool operator==(const Key&) const = default;
@@ -15,15 +17,32 @@ namespace
 	{
 		std::size_t operator()(const Key& a_key) const noexcept
 		{
-			return std::hash<const void*>()(a_key.geometry) ^ (std::hash<const void*>()(a_key.light) << 1);
+			// The table takes the low bits, and pointers' low bits are zeros: mixed (splitmix64's finaliser).
+			auto mix = [](std::uint64_t a_x) {
+				a_x = (a_x ^ (a_x >> 30)) * 0xBF58476D1CE4E5B9ull;
+				a_x = (a_x ^ (a_x >> 27)) * 0x94D049BB133111EBull;
+				return a_x ^ (a_x >> 31);
+			};
+			const auto bits = [](const void* a_pointer) { return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(a_pointer)); };
+			return static_cast<std::size_t>(mix(bits(a_key.geometry) ^ mix(bits(a_key.light) ^ mix(bits(a_key.world)))));
 		}
 	};
 
+	// All in the Havok world's coordinates, which don't change when the space is drawn elsewhere
+	// (merged at its door, unmerged, walked into and out of): measured once, a pair holds until the
+	// object, the light or the door it was measured with moves. Kept in where it is drawn, the
+	// cache was dropped with every crossing and the whole room measured again: Understone Keep,
+	// ~12000 pairs, took 40% of the main thread for a second or two after walking out of it.
 	struct Entry
 	{
 		float        visibility;
-		RE::NiPoint3 center;  // where the object was when measured (actors move)
+		RE::NiPoint3 center;  // the object's (actors move)
+		RE::NiPoint3 light;   // a light carried about, or a new light at a freed one's address
+		RE::NiPoint3 door;    // ThroughClosedDoor's door (another door of the same space)
 	};
+	std::unordered_map<Key, Entry, KeyHash> cache;
+	// Spaces come and go; their pairs are dropped only when there are this many.
+	constexpr std::size_t kMaxCached = 200000;
 
 	// See OutsideShell; dropped with cache. With where the light was: a light carried about (a
 	// torch) or a new light at a freed one's address is judged again.
@@ -31,6 +50,7 @@ namespace
 	{
 		bool         outside = false;
 		RE::NiPoint3 at;
+		bool         interior = false;
 	};
 	// One per room merged at once (Render::Backend::MergedRooms), by the room's slot: each room's
 	// lights are measured in its own Havok world, placed by its own door. Slot 0 also serves the
@@ -38,21 +58,21 @@ namespace
 	struct Space
 	{
 		RE::bhkWorld*                                        world = nullptr;
-		std::uint32_t                                        generation = UINT32_MAX;
 		RE::NiTransform                                      toPhysics;  // see SetWorld
 		std::optional<Portal::LightOcclusion::RoomDoor>      door;       // see SetWorld
-		std::unordered_map<Key, Entry, KeyHash>              cache;
-		std::unordered_map<const RE::NiLight*, ShellVerdict> outsideShell;
 		bool                                                 interior = false;  // see SetWorld
 	};
 	std::array<Space, 4> spaces;
-	std::uint32_t                              raysThisFrame = 0;
+	// With the world, like the cache.
+	std::unordered_map<Key, ShellVerdict, KeyHash> outsideShell;  // geometry null
 	std::uint32_t                              unmeasuredThisFrame = 0;
 	std::uint64_t                              raysTotal = 0;
 	std::uint32_t                              frame = 0;  // advanced with slot 0's SetWorld, once per frame
 	// Measuring a whole room at once (thousands of pairs) would be one long frame; the rest is
-	// measured over the next frames, and until then a pair counts as half lit.
-	constexpr std::uint32_t kRayBudgetPerFrame = 4000;
+	// measured over the next frames, and until then a pair counts as half lit. In time, not rays: a
+	// ray in a Dwemer hall's mesh costs ~3 us, and 4000 rays a frame were 12 ms.
+	constexpr double                           kBudgetMsPerFrame = 1.5;
+	double                                     msThisFrame = 0.0;
 	constexpr float         kUnmeasured = 0.5f;
 	// The door panel's half thickness and a little: a point on the panel is still in the room.
 	constexpr float kDoorSlack = 8.0f;
@@ -100,7 +120,6 @@ namespace
 		pick.rayInput.from = RE::hkVector4(a_from.x * scale, a_from.y * scale, a_from.z * scale, 0.0f);
 		pick.rayInput.to = RE::hkVector4(a_to.x * scale, a_to.y * scale, a_to.z * scale, 0.0f);
 		pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kLOS);
-		++raysThisFrame;
 		++raysTotal;
 		if (!a_world->PickObject(pick) || !pick.rayOutput.HasHit()) {
 			return true;
@@ -131,7 +150,6 @@ namespace
 			pick.rayInput.from = RE::hkVector4(a_source.x * scale, a_source.y * scale, a_source.z * scale, 0.0f);
 			pick.rayInput.to = RE::hkVector4(to.x * scale, to.y * scale, to.z * scale, 0.0f);
 			pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kLOS);
-			++raysThisFrame;
 			++raysTotal;
 			if (!a_world->PickObject(pick) || !pick.rayOutput.HasHit()) {
 				++escaped;
@@ -145,12 +163,12 @@ namespace
 	// the ray budget: within it, the shapes not measured yet were half lit by it meanwhile, and a
 	// view of the whole room at once (the doorway picture's camera) had Whiterun's Hall of the
 	// Dead and Jorrvaskr's Warmaidens far too bright.
-	bool LightOutside(Space& a_space, const RE::NiLight* a_light)
+	bool LightOutside(const Space& a_space, const RE::NiLight* a_light)
 	{
 		const auto source = a_space.toPhysics * a_light->world.translate;
-		auto [verdict, added] = a_space.outsideShell.try_emplace(a_light);
-		if (added || verdict->second.at.GetSquaredDistance(source) > 25.0f * 25.0f) {
-			verdict->second = { a_space.interior && OutsideShell(a_space.world, source), source };
+		auto [verdict, added] = outsideShell.try_emplace(Key{ a_space.world, nullptr, a_light });
+		if (added || verdict->second.at.GetSquaredDistance(source) > 25.0f * 25.0f || verdict->second.interior != a_space.interior) {
+			verdict->second = { a_space.interior && OutsideShell(a_space.world, source), source, a_space.interior };
 		}
 		return verdict->second.outside;
 	}
@@ -173,32 +191,21 @@ namespace
 
 namespace Portal::LightOcclusion
 {
-	void SetWorld(int a_slot, RE::bhkWorld* a_world, std::uint32_t a_generation, const RE::NiTransform& a_toPhysics, const std::optional<RoomDoor>& a_door, bool a_interior)
+	void SetWorld(int a_slot, RE::bhkWorld* a_world, const RE::NiTransform& a_toPhysics, const std::optional<RoomDoor>& a_door, bool a_interior)
 	{
 		if (a_slot < 0 || a_slot >= static_cast<int>(spaces.size())) {
 			return;
 		}
-		auto& [world, generation, toPhysics, door, cache, outsideShell, interior] = spaces[a_slot];
-		const bool doorMoved = a_door.has_value() != door.has_value() ||
-		                       (a_door && (a_door->center.GetDistance(door->center) > 0.01f || a_door->intoRoom.GetDistance(door->intoRoom) > 0.001f));
-		// Cached per drawn position, so a room placed anew (merged, unmerged, a door correction)
-		// is measured anew.
-		const bool moved = std::memcmp(&a_toPhysics.rotate, &toPhysics.rotate, sizeof(RE::NiMatrix3)) != 0 ||
-		                   a_toPhysics.translate.GetDistance(toPhysics.translate) > 0.01f;
-		if (a_generation != generation || !a_world || moved || doorMoved || a_interior != interior) {
-			cache.clear();
-			outsideShell.clear();
-		}
-		door = a_door;
-		interior = a_interior;
-		world = a_world;
-		generation = a_generation;
-		toPhysics = a_toPhysics;
+		spaces[a_slot] = { a_world, a_toPhysics, a_door, a_interior };
 		if (a_slot == 0) {
 			// Once per frame: slot 0 is set every frame, before the others.
 			++frame;
-			raysThisFrame = 0;
 			unmeasuredThisFrame = 0;
+			msThisFrame = 0.0;
+			if (cache.size() > kMaxCached) {
+				cache.clear();
+				outsideShell.clear();
+			}
 		}
 	}
 
@@ -225,21 +232,27 @@ namespace Portal::LightOcclusion
 		if (!space.world || !a_geometry || !a_light) {
 			return 1.0f;
 		}
-		const Key key{ a_geometry, a_light };
-		const auto center = a_geometry->worldBound.center;
-		if (const auto it = space.cache.find(key); it != space.cache.end() && it->second.center.GetSquaredDistance(center) < 25.0f * 25.0f) {
+		const Key  key{ space.world, a_geometry, a_light };
+		const auto center = space.toPhysics * a_geometry->worldBound.center;
+		const auto light = space.toPhysics * a_light->world.translate;
+		const auto door = space.door ? space.door->center : RE::NiPoint3{};
+		constexpr float kMoved = 25.0f * 25.0f;
+		if (const auto it = cache.find(key); it != cache.end() && it->second.center.GetSquaredDistance(center) < kMoved &&
+											 it->second.light.GetSquaredDistance(light) < kMoved && it->second.door.GetSquaredDistance(door) < kMoved) {
 			return it->second.visibility;
 		}
 		RE::BSReadLockGuard lock(space.world->worldLock);
 		if (LightOutside(space, a_light)) {
 			return 0.0f;
 		}
-		if (raysThisFrame >= kRayBudgetPerFrame) {
+		if (msThisFrame >= kBudgetMsPerFrame) {
 			++unmeasuredThisFrame;
 			return kUnmeasured;
 		}
+		const auto  started = std::chrono::steady_clock::now();
 		const float visibility = Measure(space, a_geometry, a_light);
-		space.cache[key] = { visibility, center };
+		msThisFrame += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+		cache[key] = { visibility, center, light, door };
 		return visibility;
 	}
 
@@ -247,9 +260,10 @@ namespace Portal::LightOcclusion
 	{
 		json bySlot = json::array();
 		for (const auto& space : spaces) {
-			bySlot.push_back({ { "pairs", space.cache.size() }, { "world", space.world != nullptr } });
+			bySlot.push_back({ { "world", space.world != nullptr } });
 		}
-		return { { "pairs", spaces[0].cache.size() }, { "raysTotal", raysTotal }, { "world", spaces[0].world != nullptr }, { "slots", bySlot } };
+		return { { "pairs", cache.size() }, { "raysTotal", raysTotal }, { "unmeasuredThisFrame", unmeasuredThisFrame }, { "world", spaces[0].world != nullptr },
+			{ "slots", bySlot } };
 	}
 }
 

@@ -15,6 +15,7 @@
 #include "Portal/PortalRender.h"
 #include "Portal/Travel.h"
 #include "Portal/RemoteCell.h"
+#include "Portal/ShapeSet.h"
 #include "Portal/StreetLOD.h"
 #include "Probe.h"
 #include "Render/Backend.h"
@@ -177,7 +178,7 @@ namespace
 		};
 		std::vector<Root>                          roots;
 		std::size_t                                next = 0;
-		std::unordered_set<const RE::BSGeometry*>  shapes;
+		Portal::ShapeSet                           shapes;
 		std::vector<RE::NiPointer<RE::BSGeometry>> strays;
 		RE::NiPoint3                               doorway;  // stray bones are measured from it
 	};
@@ -191,7 +192,7 @@ namespace
 		bool                    marked = false;  // listed at least once in this merge (MarkMergedShapes)
 		float                   markTimer = 0.0f;
 		std::optional<MarkPass> markPass;
-		std::unordered_set<const RE::BSGeometry*> shapes;  // under mergedShapesLock
+		Portal::ShapeSet        shapes;  // under mergedShapesLock
 		// Skinned shapes hidden for their stray bones (see HasStrayBones).
 		std::vector<RE::NiPointer<RE::BSGeometry>> strays;
 		// Shader properties whose "casts shadows" was taken off while merged (FinishMarkPass).
@@ -2323,22 +2324,22 @@ namespace Portal::Manager
 				LightScene::PrepareForView();
 			}
 			auto* remoteCell = portal ? remote.Cell() : nullptr;
-			LightOcclusion::SetWorld(0, remoteCell ? remoteCell->GetbhkWorld() : nullptr, remote.Generation(), toPhysics, roomDoor,
+			LightOcclusion::SetWorld(0, remoteCell ? remoteCell->GetbhkWorld() : nullptr, toPhysics, roomDoor,
 				remoteCell && remoteCell->IsInteriorCell());
 			// Each room merged beside it in its own Havok world, from its own door.
 			for (int slot = 1; slot < ::Render::Backend::kMaxMergedRooms; ++slot) {
 				const auto beside = std::ranges::find(besideRooms, slot, &BesideRoom::slot);
 				auto*      space = beside != besideRooms.end() ? KeptSpace(beside->cell) : nullptr;
 				if (!space) {
-					LightOcclusion::SetWorld(slot, nullptr, 0);
+					LightOcclusion::SetWorld(slot, nullptr);
 					continue;
 				}
 				try {
 					const auto mapping = Doors::Compute(Active{ beside->sourceDoor, beside->linkedDoor, beside->cell, space->Generation() });
-					LightOcclusion::SetWorld(slot, beside->cell->GetbhkWorld(), space->Generation(), mapping.toLinked,
+					LightOcclusion::SetWorld(slot, beside->cell->GetbhkWorld(), mapping.toLinked,
 						LightOcclusion::RoomDoor{ mapping.toLinked * mapping.sourceCenter, mapping.toLinked.rotate * mapping.inward, mapping.halfWidth, mapping.halfHeight }, true);
 				} catch (const std::exception&) {
-					LightOcclusion::SetWorld(slot, nullptr, 0);
+					LightOcclusion::SetWorld(slot, nullptr);
 				}
 			}
 		}
@@ -3681,7 +3682,9 @@ namespace Portal::Manager
 			std::scoped_lock lock(mergedShapesLock);
 			for (const auto* room : roomsBySlot) {
 				if (room) {
-					shapes.insert(shapes.end(), room->shapes.begin(), room->shapes.end());
+					for (const auto* shape : room->shapes) {
+						shapes.push_back(shape);
+					}
 				}
 			}
 		}
