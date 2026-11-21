@@ -141,11 +141,11 @@ namespace
 		}
 		ImGui::Text("Door: %s", Describe(pair.source).c_str());
 		ImGui::Text("Leads to: %s", Describe(pair.linked).c_str());
-		if (ImGui::Button("Save for this door")) {
+		ImGui::NewLine();
+		if (ImGui::Button("Save door settings")) {
 			Portal::Doors::SaveCorrection(pair.key->GetFormID());
 		}
-		ImGui::TextWrapped("Everything below applies at once; Save keeps it for this door (both directions).");
-		ImGui::Separator();
+		ImGui::NewLine();
 		bool portal = !Portal::Doors::PortalOff(pair.key->GetFormID());
 		if (ImGui::Checkbox("Seamless door (off: an ordinary door with a loading screen)", &portal)) {
 			Portal::Doors::SetPortalOff(pair.key->GetFormID(), !portal);
@@ -158,7 +158,7 @@ namespace
 		if (ImGui::Checkbox("Always open (not only when you come near)", &always)) {
 			Portal::Doors::SetAlwaysOpen(pair.key->GetFormID(), always);
 		}
-		ImGui::Separator();
+		ImGui::NewLine();
 		ImGui::TextWrapped("If the room behind the doorway doesn't line up with the outside, turn it here. It follows the slider "
 						   "live.");
 		float degrees = Portal::Doors::Correction(pair.key->GetFormID());
@@ -176,7 +176,7 @@ namespace
 		if (ImGui::Button("Reset")) {
 			Portal::Doors::SetCorrection(pair.key->GetFormID(), 0.0f);
 		}
-		ImGui::Separator();
+		ImGui::NewLine();
 		ImGui::TextWrapped("Move the inside against the outside (game units; sideways and further in as seen walking in):");
 		auto shift = Portal::Doors::Shift(pair.key->GetFormID());
 		bool moved = ImGui::SliderFloat("Sideways", &shift.x, -60.0f, 60.0f, "%.1f");
@@ -188,7 +188,7 @@ namespace
 		if (ImGui::Button("Reset position")) {
 			Portal::Doors::SetShift(pair.key->GetFormID(), {});
 		}
-		ImGui::Separator();
+		ImGui::NewLine();
 		ImGui::TextWrapped("Which end of the door is hinged (only guessed from the mesh):");
 		int style = static_cast<int>(Portal::Doors::Style(pair.key->GetFormID()));
 		bool changed = ImGui::RadioButton("Swing", &style, 0);
