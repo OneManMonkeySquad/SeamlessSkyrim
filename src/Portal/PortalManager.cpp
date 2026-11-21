@@ -2726,7 +2726,10 @@ namespace Portal::Manager
 					const auto  offset = bound.center - a_mapping.sourceCenter;
 					const float depth = offset.x * a_mapping.inward.x + offset.y * a_mapping.inward.y;
 					const float side = std::abs(offset.Dot(right));
-					const bool  inDoorway = depth > 1.0f && depth < 60.0f && side < a_mapping.halfWidth && std::abs(offset.z) < a_mapping.halfHeight &&
+					// Centred in the doorway's middle half: a blocker plugs the opening. The wall pieces
+					// beside a recessed frame (Black-Briar Meadery's) lie just as deep, centred near the
+					// frame's edge, and their culling cut holes into the wall next to the door.
+					const bool inDoorway = depth > 1.0f && depth < 60.0f && side < 0.5f * a_mapping.halfWidth && std::abs(offset.z) < 0.5f * a_mapping.halfHeight &&
 					                       bound.radius < a_mapping.halfWidth + a_mapping.halfHeight;
 					if (inDoorway && !a_shape->GetAppCulled()) {
 						a_shape->SetAppCulled(true);

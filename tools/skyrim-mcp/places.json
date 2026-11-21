@@ -21,6 +21,17 @@
       -3374.91259765625
     ]
   },
+  "blackbriar-meadery-door": {
+    "cell": "RiftenBlackBriarMeadery",
+    "headingDeg": 91.10099029541016,
+    "interior": true,
+    "note": "Inside Black-Briar Meadery, looking at the front door to Riften's street (the wall pieces beside the frame went missing while merged).",
+    "pos": [
+      2012.80859375,
+      -4522.44921875,
+      320.3499450683594
+    ]
+  },
   "mistveil-keep-door": {
     "cell": "RiftenCitySouth",
     "headingDeg": 178.61306762695312,
