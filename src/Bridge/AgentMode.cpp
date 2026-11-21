@@ -194,3 +194,61 @@ namespace AgentMode
 		}
 	}
 }
+
+namespace AgentMode
+{
+	namespace
+	{
+		std::atomic<bool> muted = false;
+		// The volume the game set before the mute, given back on unmute.
+		float audibleVolume = 1.0f;
+
+		RE::IXAudio2Voice* MasteringVoice(RE::BSXAudio2Audio* a_audio)
+		{
+			// IXAudio2MasteringVoice adds nothing that is needed here to IXAudio2Voice.
+			return reinterpret_cast<RE::IXAudio2Voice*>(a_audio->masteringVoice);
+		}
+
+		void ApplyMute(RE::BSXAudio2Audio* a_audio)
+		{
+			MasteringVoice(a_audio)->SetVolume(muted ? 0.0f : audibleVolume);
+		}
+
+		struct AudioInitHook
+		{
+			static bool Thunk(RE::BSXAudio2Audio* a_audio, REX::W32::HWND* a_window)
+			{
+				const bool initialized = func(a_audio, a_window);
+				// No audio device: the game runs without sound and has no mastering voice.
+				if (initialized) {
+					MasteringVoice(a_audio)->GetVolume(&audibleVolume);
+					ApplyMute(a_audio);
+					logger::info("agent mode: audio {}", muted ? "muted" : "on");
+				}
+				return initialized;
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
+	}
+
+	void InstallMute()
+	{
+		if (!Enabled()) {
+			return;
+		}
+		muted = EnvFlag("SEAMLESS_AGENT_MUTE");
+		REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_BSXAudio2Audio[0] };
+		AudioInitHook::func = vtable.write_vfunc(0x1, AudioInitHook::Thunk);
+	}
+
+	void SetMuted(bool a_muted)
+	{
+		muted = a_muted;
+		ApplyMute(RE::BSXAudio2GameSound::GetAudioImplementation());
+	}
+
+	bool Muted()
+	{
+		return muted;
+	}
+}

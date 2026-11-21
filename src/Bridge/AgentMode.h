@@ -7,6 +7,7 @@
 //   SEAMLESS_AGENT=1             launched by the MCP server
 //   SEAMLESS_AGENT_BACKGROUND=1  ...and kept on another virtual desktop
 //   SEAMLESS_AGENT_LOAD=<save>   ...and loads that save as soon as the main menu is up
+//   SEAMLESS_AGENT_MUTE=1        ...and starts silent
 //   SEAMLESS_TRAVEL_CAPTURE=<dir> ...and saves the first frames of every crossing and merge there
 namespace AgentMode
 {
@@ -25,4 +26,12 @@ namespace AgentMode
 	// instead of by the MCP server polling for the menu and then asking over the bridge. Call at
 	// kDataLoaded.
 	void InstallAutoLoad();
+
+	// Silences the game inside the process (XAudio2's mastering voice), not in the Windows volume
+	// mixer: Windows keeps an application's mixer mute across runs, so a game that crashed or was
+	// closed while muted left the user's own games silent. Call from SKSEPluginLoad, before the
+	// game creates its audio.
+	void InstallMute();
+	void SetMuted(bool a_muted);
+	[[nodiscard]] bool Muted();
 }

@@ -115,6 +115,9 @@ Launching and the bridge:
   user started has no bridge, and the plugin log says `agent mode: off`.
 - Background mode moves the game window to a second virtual desktop **once** per launch and then
   leaves it alone. `game_window_mode("show")` brings it to the front.
+- Launched games are silent (`game_audio` toggles it). The plugin mutes XAudio2 inside the game,
+  never the Windows volume mixer: Windows keeps a mixer mute across runs, so a crash while muted
+  left the user's own games silent.
 - Changes to `server.py` only apply after the MCP server is reconnected (`/mcp` in Claude Code).
 - `tools\build.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
 
@@ -163,6 +166,17 @@ Diagnostics:
   - `find_nodes {name}`: nodes by name in the world's and the portal's scene;
   - `orphans {cell?}`: the remote cells' references whose 3D hangs nowhere, and each portal
     graph's always-drawn and pending lists.
+
+Frame rate:
+- `merged_cull` returns frame times (`frames`) and the main thread's time in the player view
+  (`viewMs`, culling and draw submission). `{"mode": 3}` hides the merged room, which shows what it
+  costs; `{"mode": 2}` puts it back.
+- `travel_profile {file}` samples the main thread for 1.5 s from the next crossing. For a steady
+  view, `move_to` back in front of the door right after crossing. The first second or two after a
+  merge is the light-occlusion rays catching up (`lightOcclusion.raysTotal` in `portal_status`).
+- `sampler_report.py file [from_ms to_ms]` names the functions in SeamlessSkyrim's and the fork's
+  frames from their build folders' PDBs, so the DLLs in the game must be those builds.
+- The camera moving changes the numbers a lot. Measure with nobody at the controls.
 
 ## Graphics debugging
 

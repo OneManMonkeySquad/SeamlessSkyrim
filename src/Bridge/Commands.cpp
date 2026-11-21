@@ -1,5 +1,6 @@
 #include "Bridge/Commands.h"
 
+#include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
 #include "Bridge/ReverseEngineering.h"
 #include "Portal/DoorPair.h"
@@ -796,6 +797,9 @@ namespace Bridge
 			{ "move_to", { MoveTo } },
 			{ "walk_to", { WalkTo } },
 			{ "walk_stop", { WalkStop } },
+			// Off the main thread: XAudio2 takes volume changes from any thread, so this also works
+			// while the game is busy loading.
+			{ "audio", { [](const json& a) { AgentMode::SetMuted(a.at("muted").get<bool>()); return json{ { "muted", AgentMode::Muted() } }; }, false } },
 			// Diagnostics: third-person camera zoom and where the camera ends up relative to the player.
 			{ "camera", { [](const json& a) {
 				 auto* camera = RE::PlayerCamera::GetSingleton();

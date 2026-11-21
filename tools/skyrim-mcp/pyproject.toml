@@ -10,6 +10,5 @@ dependencies = [
     "numpy>=2.2.6",
     "pillow>=10",
     "psutil>=5.9",
-    "pycaw>=20260927",
     "pyvda>=0.6.0",
 ]

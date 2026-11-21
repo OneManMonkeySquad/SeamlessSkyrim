@@ -25,7 +25,6 @@ import psutil
 from mcp.server.fastmcp import FastMCP, Image
 import comtypes
 from PIL import Image as PILImage
-from pycaw.pycaw import AudioUtilities
 from pyvda import AppView, VirtualDesktop, get_virtual_desktops
 
 import retools
@@ -256,11 +255,8 @@ class Background:
         self.enabled = True
         self.user_window = 0
         self.user_desktop = 1
+        # Applied by the plugin at the next launch (SEAMLESS_AGENT_MUTE).
         self.mute = True
-        self.muted = False
-        # A game launched to be heard: Windows keeps an application's mixer mute across runs, so
-        # one left muted (a crash, a kill) is unmuted once its audio session exists.
-        self.unmute_pending = False
         # The game window already moved away once. After that it is left alone: moving it again
         # (and switching the user back each time the game took the foreground) kept throwing the
         # user off the game's desktop when they went there to watch or play.
@@ -310,11 +306,6 @@ class Background:
     def apply(self) -> None:
         self.restore_user()
         self.park()
-        # The audio session only exists once the game starts playing sound, so keep trying.
-        if self.mute and not self.muted:
-            self.muted = set_game_muted(True)
-        elif self.unmute_pending and set_game_muted(False):
-            self.unmute_pending = False
 
     def guard(self, seconds: float) -> None:
         """Keep applying for a while after an agent action, on a background thread."""
@@ -334,19 +325,6 @@ class Background:
             except Exception as e:
                 print(f"guard: {e}", file=sys.stderr)
             time.sleep(0.15)
-
-
-def set_game_muted(muted: bool) -> bool:
-    """Mute/unmute the game's own audio session (the Windows volume mixer entry)."""
-    try:
-        comtypes.CoInitialize()  # MCP tools may run on worker threads without COM
-    except OSError:
-        pass
-    for session in AudioUtilities.GetAllSessions():
-        if session.Process and session.Process.name().lower() == GAME_EXE.lower():
-            session.SimpleAudioVolume.SetMute(int(muted), None)
-            return True
-    return False
 
 
 background = Background()
@@ -444,11 +422,11 @@ def game_window_mode(mode: str) -> dict[str, Any]:
 
 @mcp.tool()
 def game_audio(muted: bool) -> dict[str, Any]:
-    """Mute or unmute the game (muted by default when launched through game_launch)."""
+    """Mute or unmute the game (muted by default when launched through game_launch); also applies
+    to later launches in this session."""
     background.mute = muted
-    background.muted = muted and set_game_muted(True)
-    if not muted:
-        set_game_muted(False)
+    if game_process():
+        return bridge.call("audio", muted=muted)
     return {"muted": muted}
 
 
@@ -463,8 +441,6 @@ def game_launch(save: str | None = None, timeout_seconds: float = 300, backgroun
     if game_process():
         return {"error": "Skyrim is already running", "status": game_status()}
     background.enabled = background_mode
-    background.muted = False
-    background.unmute_pending = not background.mute
     background.parked_hwnd = 0
     background.remember_user_window()
     background.guard(timeout_seconds)
@@ -475,6 +451,11 @@ def game_launch(save: str | None = None, timeout_seconds: float = 300, backgroun
         # The plugin then stops the game from activating its own window (src/Bridge/AgentMode.cpp);
         # otherwise Windows follows each activation to the game's desktop and drags the user along.
         env["SEAMLESS_AGENT_BACKGROUND"] = "1"
+    if background.mute:
+        # Muted inside the game (AgentMode::InstallMute), never in the Windows volume mixer: Windows
+        # keeps a mixer mute across runs, and a game that crashed while muted left the user's own
+        # games silent.
+        env["SEAMLESS_AGENT_MUTE"] = "1"
     if save:
         # The plugin loads it itself the moment the main menu opens (AgentMode::InstallAutoLoad).
         env["SEAMLESS_AGENT_LOAD"] = save
@@ -513,13 +494,6 @@ def game_quit(force: bool = False, timeout_seconds: float = 30) -> dict[str, Any
     proc = game_process()
     if not proc:
         return {"quit": True, "note": "was not running"}
-    # Windows keeps an application's mixer mute across runs: left muted, the user's own games
-    # started without sound. A failure here must not keep the game from quitting.
-    try:
-        set_game_muted(False)
-    except Exception as e:  # noqa: BLE001
-        print(f"unmute on quit failed: {e}", file=sys.stderr)
-    background.muted = False
     if not force:
         try:
             bridge.call("console", command="qqq")
