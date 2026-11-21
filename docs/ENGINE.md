@@ -123,6 +123,8 @@ the same change that needed them.
 - **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
   (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).
+  It also frees the old graph's list of occlusion shapes (`BSPortalGraph` + 0x10): before the
+  skip, every remote attach left the street without its occlusion planes.
 - **A switch node's hidden child** (`NiSwitchNode`, a coin bag or mushroom picked or not) is never
   updated: its world transform stays at the origin, and the switch node's bound takes it in.
 
@@ -162,6 +164,14 @@ the same change that needed them.
   - The ID 415022 loop isn't a cull: ID 76557 only clears each process's collected geometry.
   - The cull in `RenderDepth` (ID 107139 + 0x710) is the player's skeleton.
   - `ShadowSceneNode` vfunc 0x34 (OnVisible) is never called for the world scene indoors.
+- **Occlusion:** the per-object cull (ID 76553, a culling process's vtable slot 0x16) tests an
+  object against the process's compound frustum (ID 76821), which holds the occlusion planes and
+  boxes of the world scene's graph, unless the cull mode is kAllPass or kIgnoreMultiBounds; then
+  only against the view (ID 76564). A room merged behind a street's cliff was hidden by them
+  through its doorway (`MergedCull` culls merged cells ignoring multibounds).
+- **The main view's culling process** is a `BSGeometryListCullingProcess` (vtable ID 196460, the
+  process in ID 415022), not a `BSCullingProcess` (vtable ID 238422): a hook on one vtable misses
+  the other.
 - **`BSCullingProcess::AppendVirtual`** (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 

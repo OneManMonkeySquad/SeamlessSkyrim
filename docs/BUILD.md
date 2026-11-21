@@ -178,6 +178,8 @@ Diagnostics:
     parent, and each node's physics body (flags, motion type, where the physics has it, its
     constraints);
   - `find_nodes {name}`: nodes by name in the world's and the portal's scene;
+  - `world_occluders {action?}`: the world scene's occlusion planes and boxes; `"clear"` takes
+    them out of its list (to see whether they hide something), `"restore"` puts them back;
   - `orphans {cell?}`: the remote cells' references whose 3D hangs nowhere, and each portal
     graph's always-drawn and pending lists.
 

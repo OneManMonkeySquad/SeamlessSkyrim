@@ -297,5 +297,22 @@
         }
       }
     ]
+  },
+  "warrens-door-look-in": {
+    "note": "Markarth's mines, in front of the Warrens' door (00016F6D), looking in. Was: only the floor by the door, then sky: the street's occlusion planes culled the merged Warrens. The check can't see this; look at the picture.",
+    "steps": [
+      {
+        "load": "SeamlessTestWarrensDoor"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "looking-in"
+        }
+      }
+    ]
   }
 }

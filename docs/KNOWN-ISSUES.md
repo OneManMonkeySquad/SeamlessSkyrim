@@ -11,4 +11,6 @@
 - Loading saves one after another across worldspaces (Whiterun's Belethor's, Riften's jail) with portals on crashes now and then (ID 19165 putting an actor's 3D into a cell without 3D; TESWaterSystem::AddWater while the street is attached), also without the persistent references' 3D loading. During the sectors work (APPROACHES.md, 5), loading a save, travelling to Swindler's Den and loading again crashed with all of that switched off.
 - The game hung (main thread spinning) right after walking into Mistveil Keep, in a session that had
   run Markarth's Smelter Overseer's House and Understone Keep routes before loading the Riften save
-  (`run_suite`). Not seen with Mistveil's route alone; not looked into.
+  (`run_suite`). Seen twice that way, not with Mistveil's route alone. Sampled: the main thread
+  stays in Community Shaders' shadow-map pass (`Main_RenderShadowMaps`), drawing instanced grass
+  (`GrassOptimizations::DrawInstanceTriShape`) through our `DrawPassHook`. Not looked into further.

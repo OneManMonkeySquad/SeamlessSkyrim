@@ -6,6 +6,7 @@
   "routes": [
     "markarth-smelter-house-out-and-in",
     "understone-keep-walk-in-out",
-    "mistveil-keep-walk-in"
+    "mistveil-keep-walk-in",
+    "warrens-door-look-in"
   ]
 }

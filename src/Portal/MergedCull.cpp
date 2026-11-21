@@ -88,6 +88,50 @@ namespace Portal::MergedCull
 			return std::ranges::find(mergedRooms, a_node) != mergedRooms.end();
 		}
 
+		// The merged cells' 3D. Written by Set on the main thread between views, read by the cull's
+		// jobs during one, for every object culled: no lock.
+		std::array<const RE::NiAVObject*, 64> mergedCellRoots{};
+		std::size_t                           mergedCellRootCount = 0;
+
+		bool IsMergedCellRoot(const RE::NiAVObject* a_node)
+		{
+			return a_node && std::ranges::find(mergedCellRoots.begin(), mergedCellRoots.begin() + mergedCellRootCount, a_node) != mergedCellRoots.begin() + mergedCellRootCount;
+		}
+
+		// A merged cell's root, one of its nodes (actors, statics...) or what hangs directly in one:
+		// the main view's cull hands a cell's nodes and what they hold to its jobs (ID 36643), so the
+		// cull doesn't always start at the cell's root.
+		bool InMergedCell(const RE::NiAVObject* a_object)
+		{
+			return IsMergedCellRoot(a_object) || (a_object->parent && (IsMergedCellRoot(a_object->parent) || IsMergedCellRoot(a_object->parent->parent)));
+		}
+
+		// The occlusion planes and boxes of the player's space (the cliffs and walls around a door)
+		// know nothing of doorways, and a merged room lies behind them. The per-object cull (ID 76553,
+		// BSCullingProcess's Process) tests each object against the process's compound frustum,
+		// which holds them (ID 76821): most of the Warrens seen from Markarth's mines wasn't drawn,
+		// only its floor by the door and the sky beyond. A merged cell and the nodes in it (the main
+		// view hands a cell's nodes to its jobs one by one, ID 36643) are culled ignoring multibounds,
+		// which leaves the compound frustum out and tests against the view only; MergedCull itself
+		// culls them against the doorway. Until the remote attach stopped changing the world scene's
+		// graph, each one emptied the occluder list as a side effect (ENGINE.md, SetPortalGraph),
+		// which hid this.
+		struct ProcessHook
+		{
+			static void Thunk(RE::BSCullingProcess* a_process, RE::NiAVObject* a_object, std::int32_t a_alphaGroupIndex)
+			{
+				using Type = RE::BSCullingProcess::BSCPCullingType;
+				if (a_process->cullMode.get() != Type::kNormal || !mergedCellRootCount || !InMergedCell(a_object)) {
+					func(a_process, a_object, a_alphaGroupIndex);
+					return;
+				}
+				a_process->cullMode = Type::kIgnoreMultiBounds;
+				func(a_process, a_object, a_alphaGroupIndex);
+				a_process->cullMode = Type::kNormal;
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
+
 		// An interior built of room bounds (Mistveil Keep) is culled through its portal graph, which
 		// the world's scene doesn't have. Merged, the main view (ID 36643) missed two parts of it:
 		// - A room's cull (ID 75886) walks into its children only when the culling process's graph
@@ -590,6 +634,16 @@ namespace Portal::MergedCull
 			return;
 		}
 		RoomCullHook::func = vtable.write_vfunc(0x34, RoomCullHook::Thunk);
+		// BSCullingProcess's and BSGeometryListCullingProcess's (the main view's, ID 415022) share it.
+		const auto processExpected = REL::Relocation<std::uintptr_t>{ REL::ID(76553) }.address();
+		for (const auto vtableId : { 238422, 196460 }) {
+			REL::Relocation<std::uintptr_t> processVtable{ REL::ID(vtableId) };
+			if (*reinterpret_cast<const std::uintptr_t*>(processVtable.address() + 0x16 * sizeof(std::uintptr_t)) != processExpected) {
+				logger::warn("portal: a culling process's Process (vtable ID {}) is not ID 76553; the player's space's occluders hide merged rooms", vtableId);
+				continue;
+			}
+			ProcessHook::func = processVtable.write_vfunc(0x16, ProcessHook::Thunk);
+		}
 	}
 
 	void Set(std::vector<Room> a_rooms)
@@ -598,9 +652,15 @@ namespace Portal::MergedCull
 		// Not the room the player has walked into: the engine culls it with its own graph then.
 		auto*                              here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		std::vector<const RE::NiAVObject*> found;
+		std::vector<const RE::NiAVObject*> roots;
 		for (const auto& room : rooms) {
 			for (auto* cell : room.cells) {
 				auto* loaded = cell != here ? cell->GetRuntimeData().loadedData : nullptr;
+				// Not a street merged into an interior: hung in the room at its door, it is culled through
+				// that room's portals, which the compound frustum holds (Riften's jail).
+				if (auto* root = loaded && !room.street ? loaded->cell3D.get() : nullptr) {
+					roots.push_back(root);
+				}
 				if (auto* graph = loaded ? loaded->portalGraph.get() : nullptr) {
 					for (const auto& node : graph->rooms) {
 						found.push_back(node.get());
@@ -608,6 +668,8 @@ namespace Portal::MergedCull
 				}
 			}
 		}
+		mergedCellRootCount = std::min(roots.size(), mergedCellRoots.size());
+		std::copy_n(roots.begin(), mergedCellRootCount, mergedCellRoots.begin());
 		std::scoped_lock lock(roomsLock);
 		mergedRooms = std::move(found);
 	}

@@ -941,6 +941,41 @@ namespace Bridge
 				 }
 				 return json{ { "enabled", Portal::Manager::MergeEnabled() } };
 			 } } },
+			// Diagnostics: the world scene's graph's occlusion shapes. "list"; "clear": its list emptied
+			// (kept aside); "restore": put back. The list: first, last, count at the graph's +0x10, each
+			// node next, prev, shape (as ShadowSceneNode::SetPortalGraph, ID 106385, walks it).
+			{ "world_occluders", { [](const json& a) {
+				 struct Node
+				 {
+					 Node*                 next;
+					 Node*                 prev;
+					 RE::BSOcclusionShape* shape;
+				 };
+				 struct List
+				 {
+					 Node*         first;
+					 Node*         last;
+					 std::uint32_t count;
+				 };
+				 static std::optional<std::pair<List*, List>> aside;
+				 auto* world = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+				 auto* graph = world->GetRuntimeData().portalGraph;
+				 auto* list = graph ? reinterpret_cast<List*>(reinterpret_cast<std::uintptr_t>(graph) + 0x10) : nullptr;
+				 const auto action = a.value("action", std::string("list"));
+				 if (action == "clear" && list && !aside) {
+					 aside = std::pair{ list, *list };
+					 *list = {};
+				 } else if (action == "restore" && aside) {
+					 *aside->first = aside->second;
+					 aside.reset();
+				 }
+				 json shapes = json::array();
+				 for (auto* node = list ? list->first : nullptr; node; node = node->next) {
+					 const auto& t = node->shape->translation;
+					 shapes.push_back(std::format("{} ({:.0f} {:.0f} {:.0f}) state {}", node->shape->IsOcclusionPlane() ? "plane" : "box", t.x, t.y, t.z, node->shape->visibilityState));
+				 }
+				 return json{ { "graph", std::format("{:X}", reinterpret_cast<std::uintptr_t>(graph)) }, { "count", list ? list->count : 0 }, { "aside", aside.has_value() }, { "shapes", shapes } };
+			 } } },
 			// Tests (run_suite's checks): see Portal::Manager::SceneCheck.
 			{ "scene_check", { [](const json& a) { return Portal::Manager::SceneCheck(a.value("radius", 3000.0f)); } } },
 			{ "merged_shapes", { [](const json& a) {

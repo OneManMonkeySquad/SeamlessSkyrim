@@ -899,9 +899,12 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
                         # Hung: where its main thread spins, for sampler_report.py, then a fresh game.
                         outcome = "hung"
                         profile = suite_run_dir / f"{name}__hang.samples"
-                        bridge.call("profile", file=str(profile), seconds=2.0)
-                        time.sleep(3)
-                        done.append(f"main thread sampled into {profile}")
+                        try:
+                            bridge.call("profile", file=str(profile), seconds=2.0)
+                            time.sleep(3)
+                            done.append(f"main thread sampled into {profile}")
+                        except BridgeError:
+                            outcome = "crashed"  # the bridge thread is gone too: a crash in progress
                         game_quit(force=True)
                 if outcome == "ok" and not route_checks:
                     outcome = "error"
