@@ -152,7 +152,11 @@ namespace Portal::MergedCull
 				using Type = RE::BSCullingProcess::BSCPCullingType;
 				// The engine's own function reads it as a BSCullingProcess, whichever process it is.
 				auto& process = static_cast<RE::BSCullingProcess&>(a_process);
-				if (process.cullMode.get() != Type::kNormal || !IsMergedRoom(a_room)) {
+				// Also when ProcessHook has already switched the merged cell to ignoring multibounds:
+				// passed on as it was, the room culled its children but not what straddles its
+				// portals, and Mistveil Keep's hall stood without walls and ceiling.
+				const auto mode = process.cullMode.get();
+				if ((mode != Type::kNormal && mode != Type::kIgnoreMultiBounds) || !IsMergedRoom(a_room)) {
 					func(a_room, a_process, a_alphaGroupIndex);
 					return;
 				}
@@ -172,7 +176,7 @@ namespace Portal::MergedCull
 						cull(shared, a_process, static_cast<std::uint32_t>(a_alphaGroupIndex));
 					}
 				}
-				process.cullMode = Type::kNormal;
+				process.cullMode = mode;
 			}
 			static inline REL::Relocation<decltype(Thunk)> func;
 		};

@@ -1033,6 +1033,15 @@ namespace
 				}
 			}
 		}
+		// In a room, the tree LOD (464 instanced shapes looking out of Mistveil Keep at Riften) came
+		// into the sun's shadow map (Interior Sun) twice now and then; that batch's list then looped,
+		// its last pass leading back to its first, and the game hung drawing it. Not through the
+		// shadow maps' own culls of the LOD (left out, it still came in), nor through the main view's
+		// lists (the shapes never pass through them): what adds them twice isn't known. Without the
+		// distant trees the view out lacks only those (the street's own trees are real ones).
+		if (netimmerse_cast<RE::BSMultiBoundRoom*>(branch)) {
+			RE::BGSTerrainManager::GetTreeNode()->SetAppCulled(true);
+		}
 		if (branch) {
 			HangInto(branch, root);
 			for (auto* cell : remote.Cells()) {

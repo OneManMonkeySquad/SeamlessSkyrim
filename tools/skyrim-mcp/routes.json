@@ -252,7 +252,7 @@
         "place": "understone-keep-front"
       },
       {
-        "wait": 5
+        "wait": 10
       },
       {
         "check": {

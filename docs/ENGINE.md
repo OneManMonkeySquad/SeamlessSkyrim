@@ -169,6 +169,12 @@ the same change that needed them.
   boxes of the world scene's graph, unless the cull mode is kAllPass or kIgnoreMultiBounds; then
   only against the view (ID 76564). A room merged behind a street's cliff was hidden by them
   through its doorway (`MergedCull` culls merged cells ignoring multibounds).
+- **Tree LOD in an interior's room:** the street's distant tree LOD (`BSMultiStreamInstanceTriShape`,
+  shader type 9) hung in a room of the interior came into the sun's shadow map (Interior Sun)
+  twice now and then: that batch's pass list then led from its last pass back to its first, and
+  `BSBatchRenderer::RenderBatches` (ID 107642, from ID 107133) drew it forever. Its shapes never
+  pass through a process's AppendVirtual; keeping the LOD out of the shadow maps' culls, or
+  `kCastShadows` off on their shader properties, didn't stop it.
 - **The main view's culling process** is a `BSGeometryListCullingProcess` (vtable ID 196460, the
   process in ID 415022), not a `BSCullingProcess` (vtable ID 238422): a hook on one vtable misses
   the other.
