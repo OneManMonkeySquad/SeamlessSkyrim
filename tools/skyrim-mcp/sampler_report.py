@@ -3,12 +3,14 @@
     python sampler_report.py <file> [from_ms] [to_ms] [--top N] [--chain "ID 75708"]
 
 Prints inclusive and exclusive sample counts per function (SkyrimSE frames resolved to Address
-Library IDs, other modules by name) for the samples in the time window. With --chain, prints the
-most common call chains around the given function instead (frames as "ID n+0xoffset").
-Other modules' offsets can be resolved with their PDB via dbghelp (SymFromAddr).
+Library IDs, SeamlessSkyrim and the Community Shaders fork to functions from their PDBs, other
+modules by name) for the samples in the time window. With --chain, prints the most common call
+chains around the given function instead (frames as "ID n+0xoffset").
 """
 import argparse
 import collections
+import glob
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,13 +28,40 @@ args = parser.parse_args()
 d = server.disassembler()
 cache: dict[tuple[str, bool], str] = {}
 
+# Named from the builds' PDBs: the DLLs in the game must be these builds, or the names are wrong.
+# The system's dbghelp found no symbols in them; Visual Studio's llvm-symbolizer does.
+OWN_MODULES = {
+    "SeamlessSkyrim": Path(__file__).parents[2] / "build/RelWithDebInfo/SeamlessSkyrim.dll",
+    "CommunityShaders": Path("E:/projects/CommunityShaders-Seamless/build/ALL/Release/CommunityShaders.dll"),
+}
+SYMBOLIZER = next(iter(sorted(glob.glob("C:/Program Files/Microsoft Visual Studio/*/*/VC/Tools/MSVC/*/bin/Hostx64/x64/llvm-symbolizer.exe"))), None)
+symbols: dict[tuple[str, int], str] = {}
+
+
+def symbolize(stacks: list[list[str]]) -> None:
+    if not SYMBOLIZER:
+        return
+    for module, dll in OWN_MODULES.items():
+        offsets = sorted({int(f.split("+")[1], 16) for stack in stacks for f in stack if f.startswith(module + "+")})
+        if not offsets or not dll.exists():
+            continue
+        # Addresses as the DLL's preferred image base has them.
+        out = subprocess.run([SYMBOLIZER, "--obj", str(dll), "--no-inlines", "-s"], input="\n".join(hex(0x180000000 + o) for o in offsets),
+                             capture_output=True, text=True).stdout
+        for offset, block in zip(offsets, out.strip().split("\n\n")):
+            lines = block.split("\n")
+            where = f" ({Path(lines[1]).name})" if len(lines) > 1 else ""
+            symbols[(module, offset)] = f"{module}!{lines[0][:100]}{where}"
+
 
 def label(frame: str, with_offset: bool) -> str:
     key = (frame, with_offset)
     if key not in cache:
         module, offset = frame.split("+")
         offset = int(offset, 16)
-        if module != "SkyrimSE":
+        if (module, offset) in symbols:
+            cache[key] = symbols[(module, offset)] + (f"+0x{offset:X}" if with_offset else "")
+        elif module != "SkyrimSE":
             cache[key] = module
         else:
             nearest = d.ids.nearest(offset)
@@ -50,6 +79,7 @@ for line in open(args.file):
     ms, stack = line.rstrip("\n").split("\t")
     if args.start <= float(ms) <= args.end:
         samples.append([f for f in stack.split(",") if f])
+symbolize(samples)
 
 if args.chain:
     chains = collections.Counter()

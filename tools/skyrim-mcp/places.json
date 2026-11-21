@@ -53,5 +53,16 @@
       -100351.9609375,
       11496.474609375
     ]
+  },
+  "understone-keep-front": {
+    "cell": "Wilderness",
+    "headingDeg": 253.3440704345703,
+    "interior": false,
+    "note": "Markarth street facing Understone Keep's door (00016E47), keep merged through the doorway",
+    "pos": [
+      -178770.0,
+      3388.278076171875,
+      -2182.92919921875
+    ]
   }
 }

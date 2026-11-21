@@ -68,7 +68,8 @@ Changes by file:
 - `src/Features/LightLimitFix.cpp/.h`
   - `SetupPortalStrictLights`: passes drawn with the light scene in `BSShaderManager::State` slot 3
     (the portal's) get their strict lights from that scene, nearest first; each light is
-    converted (inverse-square lights) *before* its reach is tested; shadow-casting lights are
+    converted (inverse-square lights) *before* its reach is tested, once per scene per frame
+    (per shape, that took a third of the main thread with Understone Keep merged); shadow-casting lights are
     scaled by `SeamlessPortal_LightVisibility` and lose the shadow flag (no shadow maps there).
     Called from `BSLightingShader_SetupGeometry_After`. Also for shapes of a room merged into the
     world (main pass, `seamlessDoor.enabled` and `SeamlessPortal_IsMergedShape`): their lights stay
