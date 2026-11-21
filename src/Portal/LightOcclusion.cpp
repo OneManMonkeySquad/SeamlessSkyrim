@@ -49,6 +49,7 @@ namespace
 	std::uint32_t                              raysThisFrame = 0;
 	std::uint32_t                              unmeasuredThisFrame = 0;
 	std::uint64_t                              raysTotal = 0;
+	std::uint32_t                              frame = 0;  // advanced with slot 0's SetWorld, once per frame
 	// Measuring a whole room at once (thousands of pairs) would be one long frame; the rest is
 	// measured over the next frames, and until then a pair counts as half lit.
 	constexpr std::uint32_t kRayBudgetPerFrame = 4000;
@@ -195,6 +196,7 @@ namespace Portal::LightOcclusion
 		toPhysics = a_toPhysics;
 		if (a_slot == 0) {
 			// Once per frame: slot 0 is set every frame, before the others.
+			++frame;
 			raysThisFrame = 0;
 			unmeasuredThisFrame = 0;
 		}
@@ -207,8 +209,18 @@ namespace Portal::LightOcclusion
 
 	float Visibility(RE::BSGeometry* a_geometry, RE::NiLight* a_light)
 	{
-		// A shape of a room merged beside the shown one is lit by that room's lights alone.
-		const int slot = a_geometry ? Portal::Manager::MergedRoomOf(a_geometry) : -1;
+		// A shape of a room merged beside the shown one is lit by that room's lights alone. Asked
+		// for each of a shape's shadow-casting lights in a row: the room looked up once per shape
+		// (the lookup takes a lock and searches each room's shapes).
+		static thread_local const RE::BSGeometry* lastShape = nullptr;
+		static thread_local std::uint32_t         lastFrame = 0;
+		static thread_local int                   lastSlot = -1;
+		if (a_geometry != lastShape || frame != lastFrame) {
+			lastShape = a_geometry;
+			lastFrame = frame;
+			lastSlot = a_geometry ? Portal::Manager::MergedRoomOf(a_geometry) : -1;
+		}
+		const int slot = lastSlot;
 		auto&     space = spaces[slot > 0 && slot < static_cast<int>(spaces.size()) ? slot : 0];
 		if (!space.world || !a_geometry || !a_light) {
 			return 1.0f;

@@ -171,9 +171,11 @@ Frame rate:
 - `merged_cull` returns frame times (`frames`) and the main thread's time in the player view
   (`viewMs`, culling and draw submission). `{"mode": 3}` hides the merged room, which shows what it
   costs; `{"mode": 2}` puts it back.
-- `travel_profile {file}` samples the main thread for 1.5 s from the next crossing. For a steady
-  view, `move_to` back in front of the door right after crossing. The first second or two after a
-  merge is the light-occlusion rays catching up (`lightOcclusion.raysTotal` in `portal_status`).
+- `profile {file, seconds}` samples the main thread now; `travel_profile {file}` for 1.5 s from
+  the next crossing. The first second or two after a merge is the light-occlusion rays catching up
+  (`lightOcclusion.raysTotal` in `portal_status`).
+- What the merged room costs: a profile with `merged_cull {"mode": 3}` and one without, compared
+  function by function (the sampler takes the same number of samples per second either way).
 - `sampler_report.py file [from_ms to_ms]` names the functions in SeamlessSkyrim's and the fork's
   frames from their build folders' PDBs, so the DLLs in the game must be those builds.
 - The camera moving changes the numbers a lot. Measure with nobody at the controls.

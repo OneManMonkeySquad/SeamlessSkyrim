@@ -3,6 +3,7 @@
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
 #include "Bridge/ReverseEngineering.h"
+#include "Bridge/Sampler.h"
 #include "Portal/DoorPair.h"
 #include "Portal/LightScene.h"
 #include "Portal/MergedCull.h"
@@ -1330,6 +1331,13 @@ namespace Bridge
 				 return status;
 			 } } },
 			{ "travel_options", { Portal::Travel::SetOptions } },
+			// Samples the main thread now, for {seconds} (default 3), into {file}: a steady view, where
+			// travel_profile starts at a crossing.
+			{ "profile", { [](const json& a) {
+				 const auto file = a.at("file").get<std::string>();
+				 Sampler::Start(std::filesystem::path(file), a.value("seconds", 3.0));
+				 return json{ { "file", file } };
+			 } } },
 			{ "travel_profile", { [](const json& a) {
 				 const auto file = a.at("file").get<std::string>();
 				 Portal::Travel::ProfileNext(std::filesystem::path(file));
