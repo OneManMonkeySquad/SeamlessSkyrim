@@ -951,7 +951,11 @@ namespace
 		int taken = 0;
 		for (auto& node : remote.borrowedPersistent) {
 			const bool known = std::ranges::any_of(mergedLOD->persistent, [&](const MergedLOD::Moved& a_moved) { return a_moved.node == node; });
-			if (known || !node->parent) {
+			// Only while it still hangs where AdoptPersistent put it. 3D we loaded (PersistentIn) can
+			// be hung into its cell by the engine afterwards (a mod's persistent references placed in
+			// the street's cell): it moves with the cell, and moved here as well it stood the move's
+			// distance beyond, out of sight (Markarth's mines: barrels, crates, pipes, scaffolding).
+			if (known || node->parent != remote.Scene()) {
 				continue;
 			}
 			mergedLOD->persistent.push_back({ node, RE::NiPointer<RE::NiNode>(node->parent), node->local });
@@ -3722,6 +3726,145 @@ namespace Portal::Manager
 			}
 		}
 		return out;
+	}
+
+	json SceneCheck(float a_radius)
+	{
+		// Things that stand still where their reference stands (no physics, no animation, not doors,
+		// which the portal hides or swings): what a merge or a hand-over that went wrong leaves
+		// hanging nowhere or in the wrong place.
+		const auto still3D = [](RE::TESObjectREFR* a_ref) -> RE::NiAVObject* {
+			auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+			if (!base || a_ref->IsDisabled() || a_ref->IsDeleted() || a_ref->As<RE::Actor>() ||
+				!base->Is(RE::FormType::Static, RE::FormType::MovableStatic, RE::FormType::Tree, RE::FormType::Flora, RE::FormType::Furniture, RE::FormType::Container) ||
+				static_cast<RE::TESObject*>(base)->IsMarker()) {
+				return nullptr;
+			}
+			return a_ref->Get3D();
+		};
+		// In an interior built of rooms, what lies outside them hangs nowhere and is drawn through
+		// the graph of the player's cell (ENGINE.md, Culling).
+		auto*      playerLoaded = RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetRuntimeData().loadedData;
+		const auto* graph = playerLoaded ? playerLoaded->portalGraph.get() : nullptr;
+		const auto inScene = [&](const RE::NiAVObject* a_object) {
+			while (a_object->parent) {
+				a_object = a_object->parent;
+			}
+			const auto listed = [&](const auto& a_list) { return std::ranges::any_of(a_list, [&](const auto& a_child) { return a_child.get() == a_object; }); };
+			return a_object == RE::Main::WorldRootNode() || (graph && (listed(graph->alwaysRenderChildren) || listed(graph->pendingAlwaysRenderAdds)));
+		};
+		struct Part
+		{
+			int                      checked = 0;
+			std::vector<std::string> problems;
+		};
+		// a_toWorld: where the space's own coordinates are drawn.
+		const auto checkRef = [&](Part& a_part, RE::TESObjectREFR* a_ref, const RE::NiTransform& a_toWorld) {
+			auto* object = still3D(a_ref);
+			if (!object) {
+				return;
+			}
+			++a_part.checked;
+			const auto expected = a_toWorld * a_ref->GetPosition();
+			const auto& at = object->world.translate;
+			auto*       model = a_ref->GetBaseObject()->As<RE::TESModel>();
+			const auto  name = std::format("{:08X} '{}'", a_ref->GetFormID(), model ? model->GetModel() : "");
+			if (!inScene(object)) {
+				a_part.problems.push_back(std::format("{} hangs nowhere", name));
+			} else if (at.GetDistance(expected) > 50.0f) {
+				a_part.problems.push_back(std::format("{} drawn at ({:.0f} {:.0f} {:.0f}), belongs at ({:.0f} {:.0f} {:.0f})", name, at.x, at.y, at.z, expected.x, expected.y, expected.z));
+			}
+		};
+		const auto checkCellRefs = [&](Part& a_part, RE::TESObjectCELL* a_cell, const RE::NiPoint3& a_center, const RE::NiTransform& a_toWorld) {
+			a_cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+				if (a_ref && a_ref->GetPosition().GetDistance(a_center) <= a_radius) {
+					checkRef(a_part, a_ref, a_toWorld);
+				}
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+		};
+		const auto partJson = [](const Part& a_part) {
+			const auto shown = std::min<std::size_t>(a_part.problems.size(), 40);
+			return json{ { "checked", a_part.checked }, { "problemCount", a_part.problems.size() },
+				{ "problems", std::vector<std::string>(a_part.problems.begin(), a_part.problems.begin() + shown) } };
+		};
+
+		// The player's own space, drawn where it stands.
+		auto*      player = RE::PlayerCharacter::GetSingleton();
+		auto*      here = player->GetParentCell();
+		const auto center = player->GetPosition();
+		Part       own;
+		std::vector<RE::TESObjectCELL*> ownCells{ here };
+		if (auto* tes = RE::TES::GetSingleton(); !here->IsInteriorCell() && tes->gridCells) {
+			ownCells.clear();
+			for (std::uint32_t x = 0; x < tes->gridCells->length; ++x) {
+				for (std::uint32_t y = 0; y < tes->gridCells->length; ++y) {
+					if (auto* cell = tes->gridCells->GetCell(x, y); cell && cell->IsAttached()) {
+						ownCells.push_back(cell);
+					}
+				}
+			}
+			if (auto* world = here->GetRuntimeData().worldSpace; world && world->persistentCell) {
+				ownCells.push_back(world->persistentCell);
+			}
+		}
+		for (auto* cell : ownCells) {
+			checkCellRefs(own, cell, center, RE::NiTransform());
+		}
+		json result{ { "cell", Probe::DescribeCell(here) }, { "here", partJson(own) }, { "merged", nullptr } };
+		bool ok = own.problems.empty();
+
+		// The space merged behind the door, drawn moved to the door.
+		const auto portal = GetActive();
+		if (portal && remote.merged) {
+			const auto toSource = Doors::Compute(*portal).toLinked.Invert();
+			auto*      linked = Lookup(portal->linkedDoor);
+			const auto linkedAt = linked->GetPosition();
+			const bool street = !remote.Cell()->IsInteriorCell();
+			Part       merged;
+			for (auto* cell : remote.Cells()) {
+				checkCellRefs(merged, cell, linkedAt, toSource);
+			}
+			if (auto* world = street ? remote.Cell()->GetRuntimeData().worldSpace : nullptr; world && world->persistentCell) {
+				checkCellRefs(merged, world->persistentCell, linkedAt, toSource);
+			}
+			if (street) {
+				// The land of each cell, by where its quads are drawn (horizontally: the move turns
+				// only about the vertical).
+				for (auto* cell : remote.Cells()) {
+					auto* land = cell->GetRuntimeData().cellLand;
+					auto* data = land ? land->loadedData : nullptr;
+					auto* coordinates = cell->GetCoordinates();
+					const auto cellCenter = toSource * RE::NiPoint3{ (coordinates->cellX + 0.5f) * 4096.0f, (coordinates->cellY + 0.5f) * 4096.0f, 0.0f };
+					for (int quad = 0; data && quad < 4; ++quad) {
+						auto* mesh = data->mesh[quad];
+						if (!mesh) {
+							continue;
+						}
+						++merged.checked;
+						const auto& c = mesh->worldBound.center;
+						if (!inScene(mesh)) {
+							merged.problems.push_back(std::format("land of {:08X} quad {} hangs nowhere", cell->GetFormID(), quad));
+						} else if (std::hypot(c.x - cellCenter.x, c.y - cellCenter.y) > 3000.0f) {
+							merged.problems.push_back(std::format("land of {:08X} quad {} drawn around ({:.0f} {:.0f}), belongs around ({:.0f} {:.0f})", cell->GetFormID(), quad, c.x, c.y, cellCenter.x, cellCenter.y));
+						}
+					}
+				}
+				if (!mergedLOD) {
+					merged.problems.push_back("the distant LOD isn't shown with the street");
+				} else if (mergedLOD->root->world.translate.GetDistance(toSource.translate) > 1.0f) {
+					const auto& at = mergedLOD->root->world.translate;
+					merged.problems.push_back(std::format("the distant LOD drawn at ({:.0f} {:.0f} {:.0f}), belongs at ({:.0f} {:.0f} {:.0f})", at.x, at.y, at.z, toSource.translate.x,
+						toSource.translate.y, toSource.translate.z));
+				}
+			}
+			ok &= merged.problems.empty();
+			result["merged"] = partJson(merged);
+			result["merged"]["space"] = Probe::DescribeCell(remote.Cell());
+			result["merged"]["street"] = street;
+		}
+		result["ok"] = ok;
+		return result;
 	}
 
 	json MergeTest()

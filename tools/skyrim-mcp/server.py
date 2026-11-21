@@ -758,7 +758,181 @@ def run_step(step: dict[str, Any]) -> str:
         route_bursts += 1
         # Doesn't wait: the steps after it are what the frames should show.
         return f"capturing {start_burst(route_capture / f'burst_{route_bursts:02}', int(arg))} frames"
-    raise ValueError(f"unknown step '{kind}' (load, place, walk, activate, console, heading, move, wait, frames)")
+    if kind == "check":
+        return check_step(arg or {})
+    raise ValueError(f"unknown step '{kind}' (load, place, walk, activate, console, heading, move, wait, frames, check)")
+
+
+# ---- checks and the test suite -------------------------------------------------------------
+#
+# A route's {"check": {...}} step asks the plugin whether everything that stands still around the
+# player and in the space merged behind the door hangs in the scene where it belongs (bridge
+# `scene_check`), and takes a picture. Pictures can't be compared automatically (time of day,
+# people walking by); the check can. run_suite runs the routes listed in suite.json and puts
+# each picture beside the one last accepted.
+
+SUITE_FILE = Path(__file__).resolve().parent / "suite.json"
+SUITE_REFERENCE = Path(__file__).resolve().parent / "suite-reference"
+SUITE_RUNS = Path(tempfile.gettempdir()) / "skyrim-mcp" / "suite"
+# Set while run_suite runs a route: where its pictures go. route_checks: the checks made since the
+# route started.
+suite_route: str | None = None
+suite_run_dir: Path | None = None
+route_checks: list[dict[str, Any]] = []
+
+
+def take_picture(path: Path, max_width: int = 960) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = path.with_suffix(".raw.jpg")
+    raw.unlink(missing_ok=True)
+    bridge.call("screenshot", path=str(raw))
+    with PILImage.open(raw) as img:
+        img = img.convert("RGB")
+        if img.width > max_width:
+            img = img.resize((max_width, round(img.height * max_width / img.width)), PILImage.LANCZOS)
+        img.save(path, format="JPEG", quality=85)
+    raw.unlink(missing_ok=True)
+
+
+def check_step(arg: dict[str, Any]) -> str:
+    """{"check": {}}: scene_check (radius 3000), and a picture while run_suite runs. Options:
+    "radius"; "merged": true or false, whether a space should be merged behind the door (not
+    checked when left out); "name": the picture's name within the route (default: its number)."""
+    result = bridge.call("scene_check", radius=float(arg.get("radius", 3000)))
+    problems: list[str] = []
+    for part in ("here", "merged"):
+        if result.get(part):
+            problems += [f"{part}: {p}" for p in result[part]["problems"]]
+            if result[part]["problemCount"] > len(result[part]["problems"]):
+                problems.append(f"{part}: ... {result[part]['problemCount']} in all")
+    if "merged" in arg and bool(arg["merged"]) != (result.get("merged") is not None):
+        problems.insert(0, f"expected the space behind the door {'merged' if arg['merged'] else 'not merged'}")
+    number = len(route_checks) + 1
+    picture = None
+    if suite_run_dir is not None and suite_route:
+        picture = suite_run_dir / f"{suite_route}__{arg.get('name', number)}.jpg"
+        take_picture(picture)
+    route_checks.append({
+        "check": arg.get("name", number),
+        "ok": not problems,
+        "cell": result.get("cell"),
+        "checked": {"here": result["here"]["checked"], "merged": (result.get("merged") or {}).get("checked")},
+        "problems": problems,
+        "picture": str(picture) if picture else None,
+    })
+    counts = f"here {result['here']['checked']}" + (f", merged {result['merged']['checked']}" if result.get("merged") else "")
+    return f"check ok ({counts})" if not problems else f"check FAILED ({counts}): {len(problems)} problem(s), first: {problems[0]}"
+
+
+def suite_sheet(checks: list[dict[str, Any]]) -> bytes:
+    """One row per check: the accepted picture on the left, this run's on the right."""
+    from PIL import ImageDraw
+
+    width, height, label = 640, 270, 22
+    rows = [c for c in checks if c.get("picture")]
+    sheet = PILImage.new("RGB", (2 * width, max(1, len(rows)) * (height + label)), (24, 24, 24))
+    draw = ImageDraw.Draw(sheet)
+    for i, check in enumerate(rows):
+        y = i * (height + label)
+        now = Path(check["picture"])
+        reference = SUITE_REFERENCE / now.name
+        status = "ok" if check["ok"] else f"FAILED: {check['problems'][0]}"
+        draw.text((6, y + 4), f"{now.stem}  (left: accepted, right: now)  {status}"[:160], fill=(255, 255, 255) if check["ok"] else (255, 90, 90))
+        for column, path in enumerate((reference, now)):
+            if path.exists():
+                with PILImage.open(path) as img:
+                    sheet.paste(img.convert("RGB").resize((width, height)), (column * width, y + label))
+            else:
+                draw.text((column * width + 10, y + label + 10), "no accepted picture yet", fill=(200, 200, 200))
+    out = io.BytesIO()
+    sheet.save(out, format="JPEG", quality=80)
+    return out.getvalue()
+
+
+def main_thread_answers() -> bool:
+    try:
+        bridge.call("state")
+        return True
+    except BridgeError:
+        return False
+
+
+@mcp.tool()
+def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any]:
+    """Run the test routes of suite.json (or the given ones) and report each route's checks.
+
+    Each route's {"check": {...}} steps ask the plugin whether everything that stands still around
+    the player and in the space merged behind the door hangs in the scene where it belongs (the
+    merged street's land and distant LOD too), and take a picture. Returns a summary and a sheet
+    with each picture beside the one last accepted; accept: this run's pictures become the
+    accepted ones. Launches the game if it isn't running; a route the game crashed or hung in
+    (its main thread sampled first, for sampler_report.py) is run once more after a relaunch.
+    Takes a few minutes.
+    """
+    global suite_route, suite_run_dir, route_checks
+    suite = load_json(SUITE_FILE)
+    all_routes = load_json(ROUTES_FILE)
+    names = routes or suite["routes"]
+    suite_run_dir = fresh_dir(SUITE_RUNS / time.strftime("%Y%m%d-%H%M%S"))
+    results: list[dict[str, Any]] = []
+    all_checks: list[dict[str, Any]] = []
+    try:
+        for name in names:
+            steps = all_routes[name]["steps"]
+            for attempt in (1, 2):
+                suite_route, route_checks = name, []
+                done: list[str] = []
+                outcome = "ok"
+                try:
+                    if not game_process():
+                        game_launch(save=next((s["load"] for s in steps if "load" in s), None))
+                    for step in steps:
+                        done.append(f"{json.dumps(step)} -> {run_step(step)}")
+                        if "load" in step:
+                            # The same light in every run, for the pictures.
+                            for command in suite.get("afterLoad", []):
+                                bridge.call("console", command=command)
+                except Exception as e:  # noqa: BLE001 -- reported with the steps that ran
+                    done.append(f"FAILED: {e}")
+                    outcome = "error" if game_process() else "crashed"
+                    if outcome == "error" and not main_thread_answers():
+                        # Hung: where its main thread spins, for sampler_report.py, then a fresh game.
+                        outcome = "hung"
+                        profile = suite_run_dir / f"{name}__hang.samples"
+                        bridge.call("profile", file=str(profile), seconds=2.0)
+                        time.sleep(3)
+                        done.append(f"main thread sampled into {profile}")
+                        game_quit(force=True)
+                if outcome == "ok" and not route_checks:
+                    outcome = "error"
+                    done.append("the route has no check step")
+                if outcome == "ok" and not all(c["ok"] for c in route_checks):
+                    outcome = "failed"
+                if outcome in ("crashed", "hung") and attempt == 1:
+                    results.append({"route": name, "result": f"{outcome}; run once more", "steps": done})
+                    continue
+                break
+            all_checks += route_checks
+            results.append({"route": name, "result": outcome, "checks": [{k: v for k, v in c.items() if k != "picture"} for c in route_checks],
+                            "steps": done if outcome != "ok" else len(done)})
+    finally:
+        suite_route = None
+    if accept:
+        import shutil
+
+        SUITE_REFERENCE.mkdir(exist_ok=True)
+        for check in all_checks:
+            if check.get("picture"):
+                shutil.copy2(check["picture"], SUITE_REFERENCE / Path(check["picture"]).name)
+    summary = {
+        "passed": sum(r["result"] == "ok" for r in results),
+        "of": len(names),
+        "results": results,
+        "pictures": str(suite_run_dir),
+        "accepted": accept,
+    }
+    suite_run_dir = None
+    return [json.dumps(summary, indent=1), Image(data=suite_sheet(all_checks), format="jpeg")]
 
 
 @mcp.tool()
@@ -767,7 +941,7 @@ def route_save(name: str, steps: list[dict[str, Any]], note: str = "") -> dict[s
     {"load": save}, {"place": name}, {"walk": walk_to arguments}, {"activate": ref},
     {"console": command}, {"heading": degrees}, {"move": [x, y, z]}, {"wait": seconds},
     {"frames": n} (with run_route's capture: a burst of the next n frames, taken while the steps
-    after it run)."""
+    after it run), {"check": {...}} (the scene checked, see run_suite)."""
     routes = load_json(ROUTES_FILE)
     routes[name] = {"steps": steps, "note": note}
     store_json(ROUTES_FILE, routes)

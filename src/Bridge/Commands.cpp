@@ -941,6 +941,8 @@ namespace Bridge
 				 }
 				 return json{ { "enabled", Portal::Manager::MergeEnabled() } };
 			 } } },
+			// Tests (run_suite's checks): see Portal::Manager::SceneCheck.
+			{ "scene_check", { [](const json& a) { return Portal::Manager::SceneCheck(a.value("radius", 3000.0f)); } } },
 			{ "merged_shapes", { [](const json& a) {
 				 const auto& p = a.at("near");
 				 return json{ { "shapes", Portal::Manager::MergedShapesReport({ p.at(0).get<float>(), p.at(1).get<float>(), p.at(2).get<float>() }, a.value("far", 3000.0f)) } };
@@ -1404,11 +1406,12 @@ namespace Bridge
 			{ "travel_options", { Portal::Travel::SetOptions } },
 			// Samples the main thread now, for {seconds} (default 3), into {file}: a steady view, where
 			// travel_profile starts at a crossing.
+			// Off the main thread: it samples the main thread from its own, also when that one hangs.
 			{ "profile", { [](const json& a) {
 				 const auto file = a.at("file").get<std::string>();
 				 Sampler::Start(std::filesystem::path(file), a.value("seconds", 3.0));
 				 return json{ { "file", file } };
-			 } } },
+			 }, false } },
 			{ "travel_profile", { [](const json& a) {
 				 const auto file = a.at("file").get<std::string>();
 				 Portal::Travel::ProfileNext(std::filesystem::path(file));

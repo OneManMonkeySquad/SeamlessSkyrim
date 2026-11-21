@@ -161,6 +161,10 @@ namespace Portal::Manager
 
 	// Diagnostics: merge the current portal's cell now, see RemoteCell::Merge.
 	json MergeTest();
+	// Tests: still things (statics, trees, furniture...) within a_radius of the player in the player's
+	// own space, and of the door in the merged space, that hang nowhere or aren't drawn where they
+	// belong; the merged street's land and distant LOD the same. "ok": none found.
+	json SceneCheck(float a_radius);
 	// Diagnostics: merged shapes (or their skin bones) farther than a_far from a_near.
 	json MergedShapesReport(const RE::NiPoint3& a_near, float a_far);
 	[[nodiscard]] bool IsMergedShape(const RE::BSGeometry* a_shape);

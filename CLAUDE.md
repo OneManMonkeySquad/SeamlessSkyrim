@@ -66,6 +66,8 @@ Don't call `cmake` directly: it isn't on `PATH`.
   door seen closed for a frame, low detail showing briefly). Take every frame instead:
   `run_route(..., capture=true)` or `capture_frames` (see `docs/BUILD.md`), before and after the
   change.
+- "Run the tests" means `run_suite` (see `docs/BUILD.md`). A bug that broke a path a second time
+  earns its route a place in `tools/skyrim-mcp/suite.json`, with `check` steps.
 - After a shader include changes or the shader cache is cleared, shaders compile in the background
   for minutes. Don't judge a test before they are done.
 

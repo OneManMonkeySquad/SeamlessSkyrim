@@ -1,0 +1,11 @@
+{
+  "note": "Routes run_suite runs by default: the paths that broke more than once, not every stored route. afterLoad: console commands after each load step, for the same light in every picture.",
+  "afterLoad": [
+    "set gamehour to 13"
+  ],
+  "routes": [
+    "markarth-smelter-house-out-and-in",
+    "understone-keep-walk-in-out",
+    "mistveil-keep-walk-in"
+  ]
+}

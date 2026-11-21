@@ -139,6 +139,18 @@ Scripts beside the MCP server (for loops, and commands with no MCP tool such as 
 - `re_read` takes an offset from the module base. For a heap address pass `address - base`; the
   base is `(Get-Process SkyrimSE).MainModule.BaseAddress` (0x7FF73F6A0000 on every launch so far).
 
+Test suite (`run_suite`):
+- Runs the routes listed in `tools/skyrim-mcp/suite.json`: only paths that broke more than once,
+  not every stored route. Launches the game if needed; a route the game crashed in runs once more.
+- A route step `{"check": {"name": ..., "merged": true}}` calls bridge `scene_check`: still things
+  (statics, trees, furniture, containers) around the player and around the door in the merged
+  space must hang in the scene where their reference puts them, and a merged street's land and
+  distant LOD too. It also takes a picture.
+- The pictures come back beside the last accepted ones (`accept=true` makes this run's the
+  accepted ones; kept in `tools/skyrim-mcp/suite-reference/`, not in git). Look at them: the check
+  can't see a wrong colour or a missing person.
+- From a script: `getattr(server.run_suite, "fn", server.run_suite)()`, as for other MCP tools.
+
 Every frame of a moment (a flash on crossing, a door drawn closed once, low detail over the real
 town falls between screenshots):
 - `run_route(name, capture=true)` saves the frames of each crossing and of the merge that follows
