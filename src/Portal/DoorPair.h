@@ -59,11 +59,10 @@ namespace Portal::Doors
 	[[nodiscard]] RE::FormID CorrectionDoor(RE::FormID a_source, bool a_sourceOutdoors, RE::FormID a_linked, bool a_linkedOutdoors);
 	[[nodiscard]] float              Correction(RE::FormID a_door);
 	void                             SetCorrection(RE::FormID a_door, float a_degrees);
+	// Everything the menu sets for the pair (turn, shift, hinge and the switches) at once: the
+	// menu applies each live and keeps it only on "Save for this door", so trying a setting out
+	// doesn't change the file.
 	void                             SaveCorrection(RE::FormID a_door);
-	// Only the pair's switches (PortalOff, OpensInward, AlwaysOpen), which the menu saves as they
-	// are clicked: left to "Save for this door" (kept for the turn and shift, tuned live and saved
-	// when they look right), a switch lasted only until the game was quit.
-	void                             SaveSwitches(RE::FormID a_door);
 	// The inside moved against the outside, in the outdoor door's frame: x to the right (seen
 	// walking in), y further in, z up; in game units. Stored with the turn.
 	[[nodiscard]] RE::NiPoint3       Shift(RE::FormID a_door);
@@ -79,12 +78,12 @@ namespace Portal::Doors
 	[[nodiscard]] OpenStyle Style(RE::FormID a_door);
 	void                    SetStyle(RE::FormID a_door, OpenStyle a_style);
 
-	// The pair's portal switched off (the menu, saved as switched: SaveSwitches): an ordinary door
+	// The pair's portal switched off (the menu, stored with the correction): an ordinary door
 	// again, with its loading screen. Either door of the pair may be passed.
 	[[nodiscard]] bool PortalOff(RE::FormID a_door);
 	void               SetPortalOff(RE::FormID a_door, bool a_off);
 
-	// Which way the pair's door opens (the menu, saved as switched: SaveSwitches): outwards, into the
+	// Which way the pair's door opens (the menu, stored with the correction): outwards, into the
 	// street, unless set to open inwards (between two interiors "outwards" is the correction
 	// door's side). The same seen from either side: of the two doors standing in the doorway, the
 	// one in the space it opens into is swung (SwingingDoor), the other hidden while it is open.

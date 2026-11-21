@@ -60,6 +60,7 @@ namespace
 		if (!available) {
 			ImGui::TextWrapped("Off for this session: set bEnabled=1 under [Portals] in SeamlessSkyrim.ini and restart the game.");
 		}
+		ImGui::NewLine();
 		ImGui::TextWrapped("Rendering: %s", Render::Backend::Name());
 		if (available && !Render::Backend::CanMerge()) {
 			ImGui::TextWrapped("Rooms aren't drawn into the world with this renderer (see [Render] sBackend in SeamlessSkyrim.ini).");
@@ -68,15 +69,18 @@ namespace
 		if (ImGui::Checkbox("Draw rooms into the world (seen from outside)", &merge)) {
 			Portal::Manager::SetMergeEnabled(merge);
 		}
+		ImGui::NewLine();
 		float light = Portal::Manager::MergedLightScale() * 100.0f;
 		if (ImGui::SliderFloat("Room light seen from outside (%)", &light, 5.0f, 100.0f, "%.0f")) {
 			Portal::Manager::SetMergedLightScale(light / 100.0f);
 		}
+		ImGui::NewLine();
 		float doorDistance = Portal::Manager::DoorOpenDistance();
 		if (ImGui::SliderFloat("Doors open within (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
 			Portal::Manager::SetDoorOpenDistance(doorDistance);
 		}
 		ImGui::TextWrapped("The space behind a door starts loading 300 units further out and is let go 700 units further out.");
+		ImGui::NewLine();
 		int shown = Portal::Manager::ShownRooms();
 		if (ImGui::SliderInt("Rooms active at once", &shown, 1, Portal::Manager::kMaxShownRooms)) {
 			Portal::Manager::SetShownRooms(shown);
@@ -89,12 +93,14 @@ namespace
 			ImGui::TextWrapped("This renderer draws one room at a time: the others stay loaded out of sight, and their open doors "
 							   "show a picture.");
 		}
+		ImGui::NewLine();
 		bool pause = Portal::Manager::PauseUnseenRooms();
 		if (ImGui::Checkbox("Pause rooms nobody can see", &pause)) {
 			Portal::Manager::SetPauseUnseenRooms(pause);
 		}
 		ImGui::TextWrapped("A loaded room whose doorway is out of view isn't simulated or drawn until it comes into view; "
 						   "the room at the door you're at always runs.");
+		ImGui::NewLine();
 		{
 			// Presets rather than a slider: each size is a texture and a file per door, so a few
 			// steps that double are all that's worth offering.
@@ -119,6 +125,7 @@ namespace
 							   "Larger is sharper; each door is taken again at the new size when next seen open (doors to the outdoors "
 							   "keep one per part of the day, of the doorway only: a 25th of the size).");
 		}
+		ImGui::NewLine();
 		bool step = Portal::Manager::StepExterior();
 		if (ImGui::Checkbox("Street physics while indoors (people outside walk)", &step)) {
 			Portal::Manager::SetStepExterior(step);
@@ -134,25 +141,26 @@ namespace
 		}
 		ImGui::Text("Door: %s", Describe(pair.source).c_str());
 		ImGui::Text("Leads to: %s", Describe(pair.linked).c_str());
+		if (ImGui::Button("Save for this door")) {
+			Portal::Doors::SaveCorrection(pair.key->GetFormID());
+		}
+		ImGui::TextWrapped("Everything below applies at once; Save keeps it for this door (both directions).");
 		ImGui::Separator();
 		bool portal = !Portal::Doors::PortalOff(pair.key->GetFormID());
 		if (ImGui::Checkbox("Seamless door (off: an ordinary door with a loading screen)", &portal)) {
 			Portal::Doors::SetPortalOff(pair.key->GetFormID(), !portal);
-			Portal::Doors::SaveSwitches(pair.key->GetFormID());
 		}
 		bool inward = Portal::Doors::OpensInward(pair.key->GetFormID());
 		if (ImGui::Checkbox("Opens inward (off: outward, into the street)", &inward)) {
 			Portal::Doors::SetOpensInward(pair.key->GetFormID(), inward);
-			Portal::Doors::SaveSwitches(pair.key->GetFormID());
 		}
 		bool always = Portal::Doors::AlwaysOpen(pair.key->GetFormID());
 		if (ImGui::Checkbox("Always open (not only when you come near)", &always)) {
 			Portal::Doors::SetAlwaysOpen(pair.key->GetFormID(), always);
-			Portal::Doors::SaveSwitches(pair.key->GetFormID());
 		}
 		ImGui::Separator();
 		ImGui::TextWrapped("If the room behind the doorway doesn't line up with the outside, turn it here. It follows the slider "
-						   "live; Save keeps it for this door (both directions).");
+						   "live.");
 		float degrees = Portal::Doors::Correction(pair.key->GetFormID());
 		if (ImGui::SliderFloat("Turn the inside (degrees)", &degrees, -15.0f, 15.0f, "%.1f")) {
 			Portal::Doors::SetCorrection(pair.key->GetFormID(), degrees);
@@ -188,10 +196,6 @@ namespace
 		changed |= ImGui::RadioButton("Swing, other hinge", &style, 1);
 		if (changed) {
 			Portal::Doors::SetStyle(pair.key->GetFormID(), static_cast<Portal::Doors::OpenStyle>(style));
-		}
-		ImGui::Separator();
-		if (ImGui::Button("Save for this door")) {
-			Portal::Doors::SaveCorrection(pair.key->GetFormID());
 		}
 	}
 }

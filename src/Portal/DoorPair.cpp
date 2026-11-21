@@ -725,20 +725,14 @@ namespace Portal::Doors
 		const auto shiftValue = std::format(L"{:.1f},{:.1f},{:.1f}", shift.x, shift.y, shift.z);
 		const bool shifted = shift.x != 0.0f || shift.y != 0.0f || shift.z != 0.0f;
 		::WritePrivateProfileStringW(L"DoorOffset", wkey.c_str(), shifted ? shiftValue.c_str() : nullptr, CorrectionsFile().c_str());
-		logger::info("portal: door {} saved: turned {:.2f} degrees, opens with style {}", key, degrees, style);
-		SaveSwitches(a_door);
-	}
-
-	void SaveSwitches(RE::FormID a_door)
-	{
-		const std::wstring wkey = Paths::Widen(CorrectionKey(a_door));
-		const bool         off = PortalOff(a_door);
-		const bool         inward = OpensInward(a_door);
-		const bool         open = AlwaysOpen(a_door);
+		const bool off = PortalOff(a_door);
+		const bool inward = OpensInward(a_door);
+		const bool open = AlwaysOpen(a_door);
 		::WritePrivateProfileStringW(L"DoorPortal", wkey.c_str(), off ? L"0" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorOpensIn", wkey.c_str(), inward ? L"1" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorAlwaysOpen", wkey.c_str(), open ? L"1" : nullptr, CorrectionsFile().c_str());
-		logger::info("portal: door {} switches saved:{}{}{}", CorrectionKey(a_door), off ? " portal off" : " portal on", inward ? ", opens inward" : "", open ? ", always open" : "");
+		logger::info("portal: door {} saved: turned {:.2f} degrees, opens with style {}{}{}{}", key, degrees, style,
+			off ? ", portal off" : ", portal on", inward ? ", opens inward" : "", open ? ", always open" : "");
 	}
 
 	RE::NiPoint3 Shift(RE::FormID a_door)
