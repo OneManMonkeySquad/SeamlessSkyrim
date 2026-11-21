@@ -5,7 +5,8 @@
 // through the doorway. Looking at the house, the whole room behind its wall was set up and drawn
 // for nothing. This leaves out, for the length of the player's view, what the mask would throw
 // away whole: everything when no line of sight passes the doorway, otherwise the parts lying
-// wholly outside the space seen through it (Render/DoorwayPlanes.h).
+// wholly outside the space seen through it (Render/DoorwayPlanes.h). An interior built of rooms is
+// also culled through its portals, as the engine culls the current cell.
 namespace Portal::MergedCull
 {
 	struct Room
@@ -42,6 +43,8 @@ namespace Portal::MergedCull
 	void AfterView();
 
 	void                 SetMode(Mode a_mode);
+	// On by default: an interior's rooms culled through their portals (see Walk). Off for comparing.
+	void                 SetRoomCull(bool a_on);
 	// kOff (the default), kWhole or kShapes. Diagnostics: both change the sun's shadows, see Cull.
 	void                 SetStreetMode(Mode a_mode);
 	[[nodiscard]] Mode   GetMode();

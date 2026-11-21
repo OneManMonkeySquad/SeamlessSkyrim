@@ -58,6 +58,12 @@ The room's 3D is hung into the world scene, moved by the door mapping, and the g
 draws it at full quality. The render backend (RENDER-BACKENDS.md) masks the two spaces per pixel
 at the door plane and lights the room's shapes with the room's own light.
 
+Before the main view, `MergedCull` hides what the mask would throw away whole: everything when no
+line of sight passes the doorway, otherwise the shapes outside the space seen through it. An
+interior built of rooms is also culled through its portals, from the doorway or from the room the
+camera stands in: rooms not seen through a chain of portals aren't drawn, and the others are
+tested against what is seen of them (Understone Keep from Markarth's street: frame 35 to 19 ms).
+
 On its own it only works one way: the outdoors' terrain, LOD, sky and water are global systems
 and can't be moved into the interior. What made the other way possible is 9: the interior's
 scene takes the street in, and the outdoors' global systems turn out to survive indoors.

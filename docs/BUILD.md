@@ -177,6 +177,14 @@ Frame rate:
 - `sampler_report.py file [from_ms to_ms]` names the functions in SeamlessSkyrim's and the fork's
   frames from their build folders' PDBs, so the DLLs in the game must be those builds.
 - The camera moving changes the numbers a lot. Measure with nobody at the controls.
+- Left alone, the game's idle camera starts orbiting the player after a while (camera state 1 in
+  bridge `camera`), so pictures and numbers taken a few seconds apart look in different
+  directions. `console setini "fAutoVanityModeDelay:Camera" 100000` and bridge
+  `camera_view {firstPerson: true}` before comparing.
+- `merged_cull {"rooms": false}` turns the cull through an interior's portals off, for A/B
+  pictures and times from the same spot.
+- `move_to` across the door plane into the merged room teleports into its cell at the street's
+  coordinates (the player falls in the void): load the game again.
 
 ## Graphics debugging
 

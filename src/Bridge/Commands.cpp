@@ -1253,10 +1253,14 @@ namespace Bridge
 				 }
 				 return result;
 			 } } },
-			// Diagnostics / measuring: the merged room's cull (Portal/MergedCull.h), mode 0-3.
+			// Diagnostics / measuring: the merged room's cull (Portal/MergedCull.h), mode 0-3, rooms
+			// (through portals) on or off.
 			{ "merged_cull", { [](const json& a) {
 				 if (a.contains("mode")) {
 					 Portal::MergedCull::SetMode(static_cast<Portal::MergedCull::Mode>(std::clamp(a.at("mode").get<int>(), 0, 3)));
+				 }
+				 if (a.contains("rooms")) {
+					 Portal::MergedCull::SetRoomCull(a.at("rooms").get<bool>());
 				 }
 				 if (a.contains("street")) {
 					 Portal::MergedCull::SetStreetMode(static_cast<Portal::MergedCull::Mode>(std::clamp(a.at("street").get<int>(), 0, 2)));

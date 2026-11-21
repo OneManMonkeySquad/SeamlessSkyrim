@@ -119,6 +119,12 @@ the same change that needed them.
   kIgnoreMultiBounds.
 - **A portal's shared geometry:** `BSPortal::portalSharedNode`; the portals are in
   `BSMultiBoundRoom::portalList`, the rooms in the cell's `loadedData->portalGraph->rooms`.
+- **A portal's rectangle:** `BSOcclusionPlane::corners` is all zeros in a loaded cell. The
+  rectangle is `translation + rotation * (±size.x, 0, ±size.y)`, in the cell's own coordinates
+  (Understone Keep's and Mistveil Keep's portals; size taken as half extents, which is at worst
+  too big). `entranceRoom` / `exitRoom` are the rooms on either side; rooms have no names.
+- **A room's `worldBound`** can be huge (Understone Keep: radius ~93000, centred half way to the
+  origin); its multibound (`QPointWithin`) is the one to test points with.
 - **Objects outside the rooms** (`BSPortalGraph::alwaysRenderChildren`) hang nowhere in the scene.
   The scene's cull with the graph (ID 106322) culls them one by one.
   - 3D finished after the cell's attach waits in `pendingAlwaysRenderAdds`. It is taken in only

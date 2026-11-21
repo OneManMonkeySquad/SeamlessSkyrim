@@ -148,5 +148,42 @@
         "wait": 1
       }
     ]
+  },
+  "understone-keep-walk-in-out": {
+    "note": "Markarth: in front of Understone Keep (roomed interior, merged through the doorway), walk in, look round inside, walk back out into the street.",
+    "steps": [
+      {
+        "place": "understone-keep-front"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            -179330,
+            3235
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "walk": {
+          "pos": [
+            -1983,
+            -2950
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
+      }
+    ]
   }
 }

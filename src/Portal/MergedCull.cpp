@@ -25,7 +25,29 @@ namespace Portal::MergedCull
 		std::unordered_set<const RE::NiAVObject*> keep;
 		std::unordered_set<const RE::NiAVObject*> aboveKept;
 
-		Plane planes[5];
+		Plane                  planes[5];
+		std::span<const Plane> current = planes;  // what Classify tests: the doorway's, or a room's seen through portals
+
+		// An interior built of rooms joined by portals (Understone Keep) is culled through them, as
+		// the engine does when it is the current cell: the rooms seen through the doorway (or from
+		// the room the camera stands in) and on through their portals are drawn, each tested
+		// against what is seen of it; the other rooms not at all. Drawn whole within the doorway's
+		// view, the keep's halls behind walls cost half the frame.
+		bool roomCull = true;
+		struct SeenRoom
+		{
+			const RE::BSMultiBoundRoom* room;
+			std::vector<Plane>          planes;   // the door plane (seen through the doorway) and the edges of the last portal seen through
+			bool                        several;  // reached more than one way: tested as the rest of the cell
+		};
+		std::vector<SeenRoom>                     seenRooms;   // this view, the room being culled
+		std::vector<const RE::BSMultiBoundRoom*>  graphRooms;  // its cells' rooms; empty: no room is culled
+		std::unordered_set<const RE::NiAVObject*> aboveRooms;  // never drawn whole without looking at the rooms below
+		constexpr std::size_t                     kMaxRoomVisits = 256;
+		std::size_t                               roomVisits = 0;
+		std::string                               lastRoomsWhy;
+		std::uint32_t                             lastRoomsSeen = 0;
+		std::uint32_t                             lastRoomsTotal = 0;
 
 		// A bound this big or this far from the door is no bound of the room as merged (one the
 		// engine fixed in the cell's own coordinates and not yet moved, see RemoteCell::MoveBounds):
@@ -97,7 +119,10 @@ namespace Portal::MergedCull
 					if (!shared) {
 						continue;
 					}
-					const auto* owner = portal->entranceRoom && IsMergedRoom(portal->entranceRoom) ? portal->entranceRoom : portal->exitRoom;
+					// A room left out by the cull through portals (Walk) has no OnVisible; the room on
+					// the portal's other side draws what straddles it then.
+					const auto drawn = [](const RE::BSMultiBoundRoom* a_side) { return a_side && IsMergedRoom(a_side) && !a_side->GetAppCulled(); };
+					const auto* owner = drawn(portal->entranceRoom) ? portal->entranceRoom : portal->exitRoom;
 					if (owner == a_room) {
 						static REL::Relocation<void (*)(RE::NiAVObject*, RE::NiCullingProcess&, std::uint32_t)> cull{ REL::ID(70267) };
 						cull(shared, a_process, static_cast<std::uint32_t>(a_alphaGroupIndex));
@@ -142,7 +167,7 @@ namespace Portal::MergedCull
 				return Side::kCrosses;
 			}
 			bool within = true;
-			for (const auto& plane : planes) {
+			for (const auto& plane : current) {
 				const auto side = SideOf(plane, a_center, a_radius);
 				if (side == Side::kOutside) {
 					return Side::kOutside;
@@ -151,6 +176,8 @@ namespace Portal::MergedCull
 			}
 			return within ? Side::kInside : Side::kCrosses;
 		}
+
+		void WalkChildren(RE::NiAVObject* a_object);
 
 		void Walk(RE::NiAVObject* a_object)
 		{
@@ -168,8 +195,22 @@ namespace Portal::MergedCull
 				}
 				return;
 			}
+			if (auto* room = netimmerse_cast<RE::BSMultiBoundRoom*>(a_object); room && std::ranges::find(graphRooms, room) != graphRooms.end()) {
+				const auto seen = std::ranges::find(seenRooms, room, &SeenRoom::room);
+				if (seen == seenRooms.end()) {
+					if (!guarded) {
+						Hide(a_object);
+						return;
+					}
+				} else if (!seen->several) {
+					const auto outer = std::exchange(current, std::span<const Plane>(seen->planes));
+					WalkChildren(a_object);
+					current = outer;
+					return;
+				}
+			}
 			const auto side = Classify(a_object->worldBound.center, a_object->worldBound.radius);
-			if (side == Side::kInside) {
+			if (side == Side::kInside && !aboveRooms.contains(a_object)) {
 				return;
 			}
 			// Not a room whole: it culls its portals' shared geometry (RoomCullHook), which may be
@@ -178,6 +219,11 @@ namespace Portal::MergedCull
 				Hide(a_object);
 				return;
 			}
+			WalkChildren(a_object);
+		}
+
+		void WalkChildren(RE::NiAVObject* a_object)
+		{
 			if (auto* node = a_object->AsNode()) {
 				for (auto& child : node->GetChildren()) {
 					if (child) {
@@ -229,6 +275,197 @@ namespace Portal::MergedCull
 			return outside == 0;
 		}
 
+		using Polygon = std::vector<RE::NiPoint3>;
+
+		// What of a_polygon (convex) lies on the kept side of a_plane.
+		Polygon Clip(const Polygon& a_polygon, const Plane& a_plane)
+		{
+			Polygon kept;
+			for (std::size_t i = 0; i < a_polygon.size(); ++i) {
+				const auto&  a = a_polygon[i];
+				const auto&  b = a_polygon[(i + 1) % a_polygon.size()];
+				const double atA = a_plane.At(a);
+				const double atB = a_plane.At(b);
+				if (atA >= 0.0) {
+					kept.push_back(a);
+				}
+				if ((atA >= 0.0) != (atB >= 0.0)) {
+					kept.push_back(a + (b - a) * static_cast<float>(atA / (atA - atB)));
+				}
+			}
+			return kept;
+		}
+
+		// A portal's rectangle where the room is drawn. BSOcclusionPlane::corners is all zeros in
+		// a loaded cell; the rectangle is its local XZ plane, size its half width and half height
+		// (Understone Keep's portals across corridors: rotation identity or a quarter turn about Z),
+		// in the cell's own coordinates, which RemoteCell::Merge moves to the door with the cell's 3D.
+		Polygon PortalPolygon(const RE::BSPortal& a_portal, const RE::NiTransform& a_toWorld)
+		{
+			Polygon polygon;
+			for (const auto& [x, z] : { std::pair{ -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f } }) {
+				const RE::NiPoint3 local{ x * a_portal.size.x, 0.0f, z * a_portal.size.y };
+				polygon.push_back(a_toWorld * (a_portal.translation + a_portal.rotation * local));
+			}
+			return polygon;
+		}
+
+		// a_base: the door plane, seen through the doorway; none from inside the room.
+		void SeeRoom(const RE::BSMultiBoundRoom* a_room, const std::vector<Plane>& a_planes, const std::optional<Plane>& a_base, const RE::NiPoint3& a_eye,
+			const RE::NiTransform& a_toWorld, std::vector<const RE::BSPortal*>& a_path)
+		{
+			if (++roomVisits > kMaxRoomVisits) {
+				return;
+			}
+			if (const auto seen = std::ranges::find(seenRooms, a_room, &SeenRoom::room); seen != seenRooms.end()) {
+				seen->several = true;
+			} else {
+				seenRooms.push_back({ a_room, a_planes, false });
+			}
+			for (const auto* portal : a_room->portalList) {
+				const auto* next = portal->entranceRoom == a_room ? portal->exitRoom : portal->entranceRoom;
+				if (!next || std::ranges::find(graphRooms, next) == graphRooms.end() || std::ranges::find(a_path, portal) != a_path.end()) {
+					continue;
+				}
+				auto polygon = PortalPolygon(*portal, a_toWorld);
+				for (const auto& plane : a_planes) {
+					polygon = Clip(polygon, plane);
+					if (polygon.size() < 3) {
+						break;
+					}
+				}
+				if (polygon.size() < 3) {
+					continue;
+				}
+				// Seen through the part of the portal that is seen: the base plane, and a plane through
+				// the camera and each edge of that part. No plane of the portal itself: a room's
+				// shapes reach past its portals.
+				RE::NiPoint3 middle;
+				for (const auto& corner : polygon) {
+					middle += corner;
+				}
+				middle = middle / static_cast<float>(polygon.size());
+				std::vector<Plane> through;
+				if (a_base) {
+					through.push_back(*a_base);
+				}
+				for (std::size_t i = 0; i < polygon.size(); ++i) {
+					const auto& a = polygon[i];
+					const auto& b = polygon[(i + 1) % polygon.size()];
+					// An edge in line with the camera gives no plane; leaving it out sees more.
+					if ((a - a_eye).Cross(b - a).Length() > 1.0f) {
+						through.push_back(Render::Doorway::EdgePlane(a_eye, a, b - a, middle));
+					}
+				}
+				a_path.push_back(portal);
+				SeeRoom(next, through, a_base, a_eye, a_toWorld, a_path);
+				a_path.pop_back();
+			}
+		}
+
+		// The camera's view frustum, widened a little as in DoorwayInView.
+		std::optional<std::vector<Plane>> ViewPlanes(const RE::NiCamera& a_camera)
+		{
+			const auto& frustum = a_camera.GetRuntimeData2().viewFrustum;
+			if (frustum.bOrtho) {
+				return std::nullopt;
+			}
+			// A camera looks along its local X, with Y up and Z to the right.
+			const auto&        m = a_camera.world.rotate;
+			const RE::NiPoint3 forward{ m.entry[0][0], m.entry[1][0], m.entry[2][0] };
+			const RE::NiPoint3 upward{ m.entry[0][1], m.entry[1][1], m.entry[2][1] };
+			const RE::NiPoint3 rightward{ m.entry[0][2], m.entry[1][2], m.entry[2][2] };
+			constexpr float    kWiden = 1.15f;
+			const auto&        eye = a_camera.world.translate;
+			const auto         corner = [&](float a_right, float a_up) { return eye + forward + rightward * (a_right * kWiden) + upward * (a_up * kWiden); };
+			const RE::NiPoint3 corners[] = { corner(frustum.fLeft, frustum.fBottom), corner(frustum.fRight, frustum.fBottom), corner(frustum.fRight, frustum.fTop),
+				corner(frustum.fLeft, frustum.fTop) };
+			std::vector<Plane> view;
+			for (std::size_t i = 0; i < std::size(corners); ++i) {
+				const auto& a = corners[i];
+				const auto& b = corners[(i + 1) % std::size(corners)];
+				view.push_back(Render::Doorway::EdgePlane(eye, a, b - a, eye + forward));
+			}
+			return view;
+		}
+
+		// The rooms of a_cell seen from the camera, through the doorway or (a_inside) from the room
+		// it stands in: graphRooms, seenRooms. False when its rooms aren't culled (no room graph, or
+		// no room to start from).
+		bool SeeRooms(RE::TESObjectCELL* a_cell, const Render::Doorway::Door& a_door, const RE::NiCamera& a_camera, bool a_inside)
+		{
+			const auto& eye = a_camera.world.translate;
+			auto* loaded = a_cell->GetRuntimeData().loadedData;
+			auto* graph = loaded ? loaded->portalGraph.get() : nullptr;
+			auto* cell3D = loaded ? loaded->cell3D.get() : nullptr;
+			if (!graph || !cell3D || graph->rooms.empty()) {
+				return false;
+			}
+			for (const auto& room : graph->rooms) {
+				graphRooms.push_back(room.get());
+			}
+			// The rooms the camera stands in, or those the doorway opens into: a little way into the
+			// merged space.
+			std::vector<const RE::BSMultiBoundRoom*> entrances;
+			const auto enter = [&](const RE::NiPoint3& a_probe) {
+				for (const auto& room : graph->rooms) {
+					if (room->QPointWithin(a_probe) && std::ranges::find(entrances, room.get()) == entrances.end()) {
+						entrances.push_back(room.get());
+					}
+				}
+			};
+			if (a_inside) {
+				enter(eye);
+			} else {
+				for (const float depth : { 16.0f, 64.0f, 160.0f }) {
+					enter(a_door.center + a_door.normal * depth);
+				}
+			}
+			const auto start = a_inside ? ViewPlanes(a_camera) : std::optional(std::vector<Plane>(std::begin(planes), std::end(planes)));
+			if (entrances.empty() || !start) {
+				lastRoomsWhy = a_inside ? "the camera in none of the rooms" : "the door in none of the rooms";
+				graphRooms.clear();
+				return false;
+			}
+			const auto                       base = a_inside ? std::nullopt : std::optional<Plane>(planes[0]);
+			std::vector<const RE::BSPortal*> path;
+			for (const auto* entrance : entrances) {
+				SeeRoom(entrance, *start, base, eye, cell3D->world, path);
+			}
+			if (roomVisits > kMaxRoomVisits) {
+				lastRoomsWhy = "too many ways through the portals";
+				graphRooms.clear();
+				seenRooms.clear();
+				return false;
+			}
+			for (const auto* room : graphRooms) {
+				for (auto* up = room->parent; up; up = up->parent) {
+					aboveRooms.insert(up);
+				}
+			}
+			lastRoomsWhy = std::format("{} {} room(s), {} way(s) through portals", entrances.size(), a_inside ? "camera" : "entrance", roomVisits);
+			lastRoomsSeen += static_cast<std::uint32_t>(seenRooms.size());
+			lastRoomsTotal += static_cast<std::uint32_t>(graph->rooms.size());
+			return true;
+		}
+
+		void ForgetRooms()
+		{
+			graphRooms.clear();
+			seenRooms.clear();
+			aboveRooms.clear();
+			roomVisits = 0;
+			current = planes;
+		}
+
+		bool HasRooms(const Room& a_room)
+		{
+			return std::ranges::any_of(a_room.cells, [](RE::TESObjectCELL* a_cell) {
+				auto* loaded = a_cell->GetRuntimeData().loadedData;
+				return loaded && loaded->portalGraph && !loaded->portalGraph->rooms.empty();
+			});
+		}
+
 		// The rooms are culled one after the other, each against its own doorway; they are disjoint
 		// subtrees, so what one keeps says nothing about another.
 		// a_unseen: no line of sight reaches the room (the camera stands in another one).
@@ -236,11 +473,15 @@ namespace Portal::MergedCull
 		{
 			const auto* room = &a_room;
 			const auto door = Render::Doorway::Door::From(room->door);
-			if (door.cameraMerged && mode != Mode::kHideAll) {
-				// The camera stands in the room: it is the space seen everywhere.
+			// The camera stands in the room: it is the space seen everywhere, but for its rooms the
+			// camera can't see into.
+			const bool inside = door.cameraMerged && mode != Mode::kHideAll;
+			if (inside) {
 				++stats.cameraInside;
 				stats.lastWhy = "camera in the room";
-				return;
+				if (!roomCull || !HasRooms(a_room)) {
+					return;
+				}
 			}
 			// The street casts the sun's shadows (Interior Sun), into the room too: hidden whole while
 			// the doorway was off screen, the sunlit patches on the room's walls changed; shape by
@@ -255,14 +496,15 @@ namespace Portal::MergedCull
 				return;
 			}
 			doorCenter = door.center;
-			const char* none = mode == Mode::kHideAll                               ? "hidden by hand" :
+			const char* none = inside                                               ? nullptr :
+			                   mode == Mode::kHideAll                               ? "hidden by hand" :
 			                   a_unseen                                             ? "camera in another room" :
 			                   room->doorShut                                      ? "door shut" :
 			                   !Render::Doorway::Planes(door, camera->world.translate, planes) ? "camera behind the door plane" :
 			                   !DoorwayInView(door)                                 ? "doorway off screen" :
 			                                                                          nullptr;
 			if (!none && wanted == Mode::kWhole) {
-				stats.lastWhy = "doorway seen";
+				stats.lastWhy = inside ? "camera in the room" : "doorway seen";
 				return;
 			}
 			keep.clear();
@@ -294,24 +536,34 @@ namespace Portal::MergedCull
 					if (none) {
 						HideAll(root);
 					} else {
+						if (roomCull) {
+							SeeRooms(cell, door, *camera, inside);
+						}
+						// From inside, only rooms are culled: the engine culls the rest against the view.
+						if (inside) {
+							current = {};
+						}
 						Walk(root);
+						ForgetRooms();
 					}
 				}
 			}
-			for (const auto& root : room->roots) {
+			for (const auto& root : inside ? std::span<const RE::NiPointer<RE::NiAVObject>>() : std::span(room->roots)) {
 				if (none) {
 					HideAll(root.get());
 				} else {
 					Walk(root.get());
 				}
 			}
-			stats.lastWhy = none ? none : "doorway seen";
+			stats.lastWhy = none ? none : inside ? "camera in the room" : "doorway seen";
 			++(none ? stats.noneSeen : stats.shapeCulls);
 		}
 
 		void Cull()
 		{
 			stats.lastTested = 0;
+			lastRoomsSeen = lastRoomsTotal = 0;
+			lastRoomsWhy = roomCull ? "no room graph" : "off";
 			if (rooms.empty() || mode == Mode::kOff) {
 				stats.lastWhy = rooms.empty() ? "nothing merged" : "off";
 				return;
@@ -389,6 +641,12 @@ namespace Portal::MergedCull
 		}
 	}
 
+	void SetRoomCull(bool a_on)
+	{
+		roomCull = a_on;
+		stats.index = 0;
+	}
+
 	void SetMode(Mode a_mode)
 	{
 		mode = a_mode;
@@ -432,6 +690,7 @@ namespace Portal::MergedCull
 			{ "lastHidden", stats.lastHidden },
 			{ "viewMs", summary(stats.viewMs) },
 			{ "cullMs", summary(stats.cullMs) },
+			{ "rooms", { { "on", roomCull }, { "seen", lastRoomsSeen }, { "of", lastRoomsTotal }, { "why", lastRoomsWhy } } },
 		};
 	}
 }
