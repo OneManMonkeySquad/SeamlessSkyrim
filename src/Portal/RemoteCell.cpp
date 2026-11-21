@@ -1709,18 +1709,54 @@ namespace Portal
 		// took objRoot's first child, the temporary node manager, and the game crashed the next
 		// frame in its update (ID 13292); a merged room vanished from the street. A held cell is
 		// left loaded and only drops out of the buffer; its own release puts it back in.
-		struct EvictInteriorHook
+		// ID 13721 has some 25 callers, and hooked at the buffer's eviction alone the same crash
+		// came from another (walking about Dawnstar with the White Hall kept behind its door): the
+		// hook sits at its entry.
+		bool KeepHeld(RE::TESObjectCELL* a_cell)
 		{
-			static void Thunk(RE::TESDataHandler* a_data, RE::TESObjectCELL* a_cell)
-			{
-				if (RemoteCell::Holds(a_cell)) {
-					logger::info("portal: {} kept loaded, out of the interior buffer (held behind a door)", Probe::DescribeCell(a_cell));
-					return;
-				}
-				func(a_data, a_cell);
+			if (!RemoteCell::Holds(a_cell)) {
+				return false;
 			}
-			static inline REL::Relocation<decltype(Thunk)> func;
-		};
+			logger::info("portal: {} kept loaded, not unloaded by the engine (held behind a door)", Probe::DescribeCell(a_cell));
+			return true;
+		}
+
+		void InstallUnloadHook()
+		{
+			// Its first 9 bytes, test rdx, rdx / je to its ret, are redone by the stub.
+			REL::Relocation<std::uintptr_t> unload{ REL::ID(13721) };
+			const auto*                     code = reinterpret_cast<const std::uint8_t*>(unload.address());
+			std::int32_t                    toEnd = 0;
+			std::memcpy(&toEnd, code + 5, sizeof(toEnd));
+			if (code[0] != 0x48 || code[1] != 0x85 || code[2] != 0xD2 || code[3] != 0x0F || code[4] != 0x84 || code[9 + toEnd] != 0xC3) {
+				logger::warn("portal: ID 13721 isn't as expected; held rooms can be unloaded by the engine (a crash)");
+				return;
+			}
+			std::array<std::uint8_t, 59> stub{
+				0x51, 0x52, 0x41, 0x50, 0x41, 0x51,  // push rcx, rdx, r8, r9
+				0x48, 0x83, 0xEC, 0x28,              // sub rsp, 28h
+				0x48, 0x89, 0xD1,                    // mov rcx, rdx (the cell)
+				0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,  // mov rax, KeepHeld
+				0xFF, 0xD0,                          // call rax
+				0x48, 0x83, 0xC4, 0x28,              // add rsp, 28h
+				0x41, 0x59, 0x41, 0x58, 0x5A, 0x59,  // pop r9, r8, rdx, rcx
+				0x84, 0xC0,                          // test al, al
+				0x75, 0x13,                          // jnz ret
+				0x48, 0x85, 0xD2,                    // test rdx, rdx (the original's)
+				0x74, 0x0E,                          // jz ret
+				0xFF, 0x25, 0, 0, 0, 0,              // jmp [rip]
+				0, 0, 0, 0, 0, 0, 0, 0,              //   ID 13721 + 9
+				0xC3                                 // ret
+			};
+			const auto keep = reinterpret_cast<std::uintptr_t>(&KeepHeld);
+			const auto resume = unload.address() + 9;
+			std::memcpy(stub.data() + 15, &keep, sizeof(keep));
+			std::memcpy(stub.data() + 50, &resume, sizeof(resume));
+			auto& trampoline = SKSE::GetTrampoline();
+			auto* copy = trampoline.allocate(stub.size());
+			std::memcpy(copy, stub.data(), stub.size());
+			trampoline.write_branch<5>(unload.address(), reinterpret_cast<std::uintptr_t>(copy));
+		}
 	}
 
 	bool RemoteCell::Holds(const RE::TESObjectCELL* a_cell)
@@ -1730,10 +1766,7 @@ namespace Portal
 
 	void RemoteCell::InstallGridHook()
 	{
-		REL::Relocation<std::uintptr_t> evict{ REL::ID(13435), 0x7C };
-		if (Hooks::CallsTo(evict.address(), 13721, "portal: interior buffer eviction")) {
-			EvictInteriorHook::func = SKSE::GetTrampoline().write_call<5>(evict.address(), EvictInteriorHook::Thunk);
-		}
+		InstallUnloadHook();
 		REL::Relocation<std::uintptr_t> site{ REL::ID(13317), 0xF4 };
 		if (!Hooks::CallsTo(site.address(), 15951, "portal: grid ready check")) {
 			logger::warn("portal: street cells are detached when walking out");

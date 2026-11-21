@@ -4,5 +4,5 @@
 - Physics objects can break
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
 - Walking out of Riften's jail into the street: the first frame outside takes ~280 ms (releasing the street ~90 ms, the teleport ~140 ms).
-- Whiterun's hanging shop signs: Arcadia's Cauldron's tore off and fell once on walking out of Belethor's (1 in ~25 walk-outs, `belethors-walk-out`); cause not found.
+- Whiterun's hanging shop signs: torn off and fallen on walking out of Belethor's, twice in ~30 walk-outs (`belethors-walk-out`; once right after loading the save coming from Riften); cause not found.
 - Three crashes while reloading saves and walking out of Belethor's over and over (two in ID 19165, an actor's 3D put into a cell without 3D, one in d3d11 from FaceGen textures); one followed the door mapping bug fixed since, the others not tied to a cause.
