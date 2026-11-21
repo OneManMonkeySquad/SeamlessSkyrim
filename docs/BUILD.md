@@ -153,6 +153,11 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   the scene's cull with the graph (ID 106322) culls them one by one. 3D finished after the cell's
   attach waits in `pendingAlwaysRenderAdds`, taken in only while the graph is the scene's: in a
   cell attached behind a door, most of Riften's jail and Mistveil Keep's dais steps.
+- In an interior with a portal graph the main view tests what lies outside the rooms against the
+  view through the rooms' portals (the process's compound frustum; kIgnoreMultiBounds skips that
+  test): a street hung outside the rooms is not drawn. Listed as always-render with the graph it
+  is, but then also in the sun's shadow map, which crashed (EngineFixes' alpha test fix, a pass
+  without a shader). Hung under a room it is culled with that room's view.
 - `BSCullingProcess::AppendVirtual` (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 

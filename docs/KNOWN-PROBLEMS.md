@@ -2,3 +2,5 @@
 - Physics objects/arrows are not teleported through portal
 - Portals draws in front of transparent things
 - Physics objects can break
+- The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
+- Walking out of Riften's jail into the street: the first frame outside takes ~280 ms (releasing the street ~90 ms, the teleport ~140 ms).

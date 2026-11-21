@@ -91,5 +91,32 @@
         "wait": 1
       }
     ]
+  },
+  "riften-jail-walk-out": {
+    "note": "Riften jail, at its door to the street (000A8FDC, roomed interior): look out, then walk out. Was: only sky, water and particles through the doorway, and the player stopped at the door plane.",
+    "steps": [
+      {
+        "load": "SeamlessTestRiftenJail"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "frames": 20
+      },
+      {
+        "walk": {
+          "pos": [
+            400,
+            -1920
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 1
+      }
+    ]
   }
 }

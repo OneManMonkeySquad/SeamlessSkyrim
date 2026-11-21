@@ -964,7 +964,8 @@ namespace
 		}
 	}
 
-	void MergeLOD(const RE::NiTransform& a_toSource)
+	// a_door: the interior's door the street is seen through.
+	void MergeLOD(const RE::NiTransform& a_toSource, RE::TESObjectREFR* a_door)
 	{
 		Portal::StreetLOD::Show(remote.Cell(), a_toSource.Invert(), true);
 		auto* land = RE::BGSTerrainManager::GetLODRoot().get();
@@ -989,12 +990,23 @@ namespace
 		// Hung into the interior's statics branch (the one holding the most shapes), the street and
 		// the LOD are culled into the main view with the interior's own contents. Left under the
 		// world scene, only the sky was drawn through the doorway.
+		// An interior built of rooms (Riften's jail) is culled through its portal graph: what lies
+		// outside its rooms is tested against the view through the rooms' portals, and the street
+		// beyond the door is outside all of them (only the sky, the water and the street's
+		// particles were drawn). There the street hangs in the room of the door it is seen through,
+		// and is culled with that room's view.
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		auto* loaded = here ? here->GetRuntimeData().loadedData : nullptr;
 		auto* interior3D = loaded && loaded->cell3D ? loaded->cell3D->AsNode() : nullptr;
 		RE::NiNode* branch = nullptr;
 		std::size_t most = 0;
-		if (interior3D) {
+		for (auto* up = a_door && a_door->Get3D() ? a_door->Get3D()->parent : nullptr; up && !branch; up = up->parent) {
+			if (auto* room = netimmerse_cast<RE::BSMultiBoundRoom*>(up)) {
+				branch = room;
+				most = room->GetChildren().size();
+			}
+		}
+		if (interior3D && !branch) {
 			for (auto& child : interior3D->GetChildren()) {
 				auto* node = child ? child->AsNode() : nullptr;
 				if (node && node->GetChildren().size() > most) {
@@ -1014,7 +1026,7 @@ namespace
 			state.branch.reset(branch);
 		}
 		state.toSource = a_toSource;
-		logger::info("portal: distant LOD shown in the interior{}", branch ? std::format(", it and the street hung into the interior's branch of {} objects", most) : std::string());
+		logger::info("portal: distant LOD shown in the interior{}", branch ? std::format(", it and the street hung into the interior's {} of {} objects", netimmerse_cast<RE::BSMultiBoundRoom*>(branch) ? "room at the door" : "branch", most) : std::string());
 		// The upscaler's motion vectors: moved in one step, the distant land and objects reached back to
 		// where they were drawn outdoors, and with DLSS the view out was low resolution and shimmered.
 		Portal::SettleMotion(root);
@@ -1451,7 +1463,11 @@ namespace
 		const bool  pullIn = !merged && !Mergeable(a_portal.cell, a_player->GetParentCell());
 		// Only right at the threshold: the building's collision is also the porch and the steps in
 		// front of the door, and with it gone earlier the player sank into the ground on the way up.
-		if (merged && depth > -25.0f && side <= mapping.halfWidth + 20.0f) {
+		// Also with the street merged into the interior: a room's door can stand against a wall
+		// that closes the void behind it (Riften's jail), and the player stopped short of the
+		// crossing, the street in view.
+		const bool throughWall = merged || MergedOutdoors();
+		if (throughWall && depth > -25.0f && side <= mapping.halfWidth + 20.0f) {
 			// Seconds, not frames: counted per frame it looked again twice as often at 120 fps.
 			if (passage.empty() || (passageCheck -= a_delta) <= 0.0f) {
 				passageCheck = 1.0f / 6.0f;  // what the per-frame count came to at 60 fps
@@ -1461,7 +1477,7 @@ namespace
 			ClosePassage();
 		}
 		// With the room's collision copied in, its floor carries the player through the doorway.
-		if (merged && !passage.empty() && !remote.CollisionMerged()) {
+		if (throughWall && !passage.empty() && !remote.CollisionMerged()) {
 			HoldPassageHeight(a_player, true);
 		}
 		if (merged && remote.CollisionMerged()) {
@@ -2246,7 +2262,7 @@ namespace Portal::Manager
 						MergeRoomCollision(*portal, here->GetbhkWorld());
 					}
 					if (MergedOutdoors()) {
-						MergeLOD(toSource);
+						MergeLOD(toSource, Lookup(portal->sourceDoor));
 					}
 					// The room's lights, still in the engine's scene from when it was the player's
 					// space (walked out of it just now), into the portal's before the first frame:
