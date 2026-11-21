@@ -12,3 +12,7 @@
 - Looking out of an interior built of rooms (Mistveil Keep at Riften), the street's distant tree
   LOD is hidden: there it came into the sun's shadow map twice now and then, the batch list looped
   and the game hung (ENGINE.md, Culling). What adds it twice isn't known.
+- Walking out of the Smelter Overseer's House (Markarth's mines), first time after loading the
+  save: a flat grey wall, like distant LOD, drawn over the pipe and the city behind the house's
+  corner. In each of 22 full suite runs (22:05–23:03), then in none of 7 runs after; cause not
+  looked into.
