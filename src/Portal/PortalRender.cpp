@@ -3158,4 +3158,25 @@ namespace Portal::Render
 		return std::array<float, 10>{ w.fogNear, w.fogFar, w.fogPower, w.fogMax, w.fogNearColor.red, w.fogNearColor.green, w.fogNearColor.blue, w.fogFarColor.red,
 			w.fogFarColor.green, w.fogFarColor.blue };
 	}
+
+	std::optional<std::array<float, 10>> CellFog(RE::TESObjectCELL* a_cell)
+	{
+		auto* own = a_cell && a_cell->IsInteriorCell() ? a_cell->GetLighting() : nullptr;
+		if (!own) {
+			return std::nullopt;
+		}
+		auto*      lightingTemplate = a_cell->GetRuntimeData().lightingTemplate;
+		const auto pick = [&](RE::INTERIOR_DATA::Inherit a_what) -> const RE::INTERIOR_DATA& {
+			return lightingTemplate && own->lightingTemplateInheritanceFlags.any(a_what) ? lightingTemplate->data : *own;
+		};
+		using Inherit = RE::INTERIOR_DATA::Inherit;
+		const float fogNear = pick(Inherit::kFogNear).fogNear;
+		const float fogFar = pick(Inherit::kFogFar).fogFar;
+		const auto& colors = pick(Inherit::kFogColor);
+		// No fog at all (the engine's own "no fog" when both distances are 0): a most-it-covers of 0.
+		const float most = fogFar > fogNear ? pick(Inherit::kFogMax).fogClamp : 0.0f;
+		return std::array<float, 10>{ fogNear, std::max(fogFar, fogNear + 1.0f), pick(Inherit::kFogPower).fogPower, most, colors.fogColorNear.red / 255.0f,
+			colors.fogColorNear.green / 255.0f, colors.fogColorNear.blue / 255.0f, colors.fogColorFar.red / 255.0f, colors.fogColorFar.green / 255.0f,
+			colors.fogColorFar.blue / 255.0f };
+	}
 }

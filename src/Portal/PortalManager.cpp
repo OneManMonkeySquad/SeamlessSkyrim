@@ -3214,7 +3214,11 @@ namespace Portal::Manager
 					} else {
 						AimSunShadow(nullptr);
 					}
-					const auto fog = street ? Render::MergedFog() : std::nullopt;
+					// The merged space is fogged as its own: seen from the street, the hall of a keep a
+					// few thousand units deep stood in the street's haze, bluish, where the doorway's
+					// picture before the merge (and the hall once walked in) had the keep's own. One fog
+					// for all merged rooms (the shaders take one): the shown room's.
+					const auto fog = street ? Render::MergedFog() : Render::CellFog(a_portal.cell);
 					SendMergedFog(fog ? fog->data() : nullptr);
 				}
 			}

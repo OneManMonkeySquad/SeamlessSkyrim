@@ -2,4 +2,4 @@
 - Physics objects/arrows are not teleported through portal
 - Portals draws in front of transparent things
 - Mistveil Keep from the street: the steps up to the jarl's dais (000A33E7, RifRmBgKeepFloorSteps01) are missing, a pale strip behind the table. Its 3D is loaded but hangs nowhere (no parent, in neither scene) while the cell is attached by the portal; walked in, the engine draws them.
-- Mistveil Keep from the street: the merged hall is bluish (street fog over its depth), warmer in the doorway picture shown before the merge; the switch is visible.
+- Physics objects can break

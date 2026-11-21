@@ -62,4 +62,7 @@ namespace Portal::Render
 	// a few thousand units deep and dark, turned the distant mountains black): near, far, power,
 	// most it covers, near colour, far colour. From the weather, as WeatherLighting.
 	[[nodiscard]] std::optional<std::array<float, 10>> MergedFog();
+	// The same for a room merged into the street: the interior's own fog (its lighting, or its
+	// lighting template's where it inherits), laid out as MergedFog.
+	[[nodiscard]] std::optional<std::array<float, 10>> CellFog(RE::TESObjectCELL* a_cell);
 }

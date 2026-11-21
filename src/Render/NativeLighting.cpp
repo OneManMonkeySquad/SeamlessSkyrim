@@ -69,7 +69,9 @@ namespace
 	// depth with the active scene's fog: with the street merged into an interior, the interior's
 	// (near, black) turned the distant mountains seen through the doorway black. While the street's
 	// fog is set, the composite gets a copy of the fog property carrying it; the interior itself
-	// lies well inside the street's fog distance and is barely touched.
+	// lies well inside the street's fog distance and is barely touched. Only then: the composite
+	// fogs every pixel alike, and a room merged into the street (its own fog set for its shapes)
+	// would have fogged the street as the room.
 	struct CompositeFogHook
 	{
 		static void* Thunk(int a_index)
@@ -80,7 +82,9 @@ namespace
 				std::scoped_lock lock(lightingLock);
 				fog = mergedFog;
 			}
-			if (!property || !fog || !Render::Native::MergedDoorSet()) {
+			auto*      here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+			const bool streetMerged = here && here->IsInteriorCell();
+			if (!property || !fog || !streetMerged || !Render::Native::MergedDoorSet()) {
 				return property;
 			}
 			alignas(16) static std::byte copy[0x90];
