@@ -10,10 +10,6 @@ https://github.com/OneManMonkeySquad/CommunityShaders-Seamless (branch `seamless
 
 Building: `docs/BUILD.md`.
 
-## Contributions
-
-I'm still actively working on this and doing large changes. I don't need bug reports and pull requests for now. Please have a few days of patience.
-
 ## License
 
 GPL-3.0-or-later: SeamlessSkyrim is free software; you can redistribute it and/or modify it

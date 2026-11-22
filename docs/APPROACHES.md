@@ -49,8 +49,7 @@ Each missing feature would need its own re-implementation, and it would never qu
 ## 2. Crossing without a loading screen
 
 The engine's own door teleport, with the loading screen, its waits and the autosave skipped. The
-street is handed over to the engine still attached. About 70 ms per crossing, of which ~25 ms
-comes from two crime-gold mods.
+street is handed over to the engine still attached. About 45 ms per crossing.
 
 ## 3. Render-merge (looking in)
 
