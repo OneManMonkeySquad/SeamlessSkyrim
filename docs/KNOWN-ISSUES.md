@@ -51,3 +51,8 @@
 - Standing at Solitude's gate in the city (the Battle for Solitude save), both gates lost their 3D
   once, 25 s after walking up, and the portal stopped drawing ("a door has no 3D"); the city behind
   the gate showed. Once; not after a reload. Cause not looked into.
+- `coc` out of Solitude's Hall of the Dead with the street merged in: the portal was let go, then
+  attached to the Hall's door again before the load, and stayed active and merged in Belethor's
+  until a second `coc`. Once.
+- Walking out of Belethor's (`belethors-walk-out`): one frame just after the crossing drawn almost
+  white, as if overexposed. Once in two runs. Cause not looked into.

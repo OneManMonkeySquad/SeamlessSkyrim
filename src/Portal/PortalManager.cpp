@@ -2832,61 +2832,6 @@ namespace Portal::Manager
 			}
 		}
 
-		// The interior's own things standing in the doorway just beyond the door (Belethor's has a
-		// static panel 20 units behind its door, from a mod: a blocker for the void behind the closed
-		// door). The portal pass's quad used to cover them; with the street merged in they stood in
-		// the open doorway. Their shapes are culled while the street is merged.
-		std::vector<RE::NiPointer<RE::BSGeometry>> hiddenBlockers;
-
-		void HideBlockersInDoorway(RE::TESObjectREFR* a_source, const Doors::Mapping& a_mapping)
-		{
-			auto* cell = a_source->GetParentCell();
-			if (!cell) {
-				return;
-			}
-			const RE::NiPoint3 right{ a_mapping.inward.y, -a_mapping.inward.x, 0.0f };
-			// Shape by shape: the doorway's own wall piece holds the blocker (Belethor's: the wall with
-			// the door frame, culled whole, left a hole above the door).
-			cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
-				auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
-				auto* object = a_ref ? a_ref->Get3D() : nullptr;
-				if (!object || !base || a_ref == a_source || base->Is(RE::FormType::Door) || a_ref->As<RE::Actor>() ||
-					object->worldBound.center.GetDistance(a_mapping.sourceCenter) > object->worldBound.radius + 200.0f) {
-					return RE::BSContainer::ForEachResult::kContinue;
-				}
-				int hidden = 0;
-				RE::BSVisit::TraverseScenegraphGeometries(object, [&](RE::BSGeometry* a_shape) {
-					const auto& bound = a_shape->worldBound;
-					const auto  offset = bound.center - a_mapping.sourceCenter;
-					const float depth = offset.x * a_mapping.inward.x + offset.y * a_mapping.inward.y;
-					const float side = std::abs(offset.Dot(right));
-					// Centred in the doorway's middle half: a blocker plugs the opening. The wall pieces
-					// beside a recessed frame (Black-Briar Meadery's) lie just as deep, centred near the
-					// frame's edge, and their culling cut holes into the wall next to the door.
-					const bool inDoorway = depth > 1.0f && depth < 60.0f && side < 0.5f * a_mapping.halfWidth && std::abs(offset.z) < 0.5f * a_mapping.halfHeight &&
-					                       bound.radius < a_mapping.halfWidth + a_mapping.halfHeight;
-					if (inDoorway && !a_shape->GetAppCulled()) {
-						a_shape->SetAppCulled(true);
-						hiddenBlockers.emplace_back(a_shape);
-						++hidden;
-					}
-					return RE::BSVisit::BSVisitControl::kContinue;
-				});
-				if (hidden) {
-					logger::info("portal: {} shape(s) of {:08X} hidden, they stand in the doorway beyond the door", hidden, a_ref->GetFormID());
-				}
-				return RE::BSContainer::ForEachResult::kContinue;
-			});
-		}
-
-		void ShowBlockers()
-		{
-			for (auto& shape : hiddenBlockers) {
-				shape->SetAppCulled(false);
-			}
-			hiddenBlockers.clear();
-		}
-
 		void SendMergedLighting(int a_slot, const float* a_lighting)
 		{
 			::Render::Backend::SetMergedLighting(a_slot, a_lighting);
@@ -3261,9 +3206,6 @@ namespace Portal::Manager
 			Doors::Swing(swung, swung == room ? intoRoom : intoRoom * -1.0f, SwingEase(a_room.swing), settings);
 			if (!std::exchange(a_room.extraScanned, true)) {
 				HideDoorsInDoorway(a_room, source, mapping.sourceCenter);
-				if (street) {
-					HideBlockersInDoorway(source, mapping);
-				}
 			}
 			// At once in the merge's first frame (and after someone walked through the doorway,
 			// RefreshMergedShapes); otherwise twice a second, spread over frames (MarkPass).
@@ -3432,7 +3374,6 @@ namespace Portal::Manager
 			a_room.actors.clear();
 			if (a_slot == 0) {
 				UnmergeLOD();
-				ShowBlockers();
 				SendInteriorSun(false);
 				SendMergedFog(nullptr);
 				AimSunShadow(nullptr);

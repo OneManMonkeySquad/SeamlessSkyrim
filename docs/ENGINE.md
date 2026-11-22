@@ -221,6 +221,10 @@ Found porting the plugin; each was checked in the code of both.
 - **The main view's culling process** is a `BSGeometryListCullingProcess` (vtable ID 196460, the
   process in ID 415022), not a `BSCullingProcess` (vtable ID 238422): a hook on one vtable misses
   the other.
+- **What closes a doorway** (a panel behind the door hiding the void: Belethor's, from a mod; the
+  cap inside Solitude's Hall of the Dead's arch, `SMdDEntSol01.nif`) can be one shape with the
+  frame and reveals round it, so culling shapes takes the frame too. Nothing culls them: beyond the
+  door plane and seen through the doorway, the doorway mask already leaves them out per pixel.
 - **`BSCullingProcess::AppendVirtual`** (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
 

@@ -285,6 +285,53 @@
       }
     ]
   },
+  "solitude-hall-of-the-dead-walk-out": {
+    "note": "Solitude's Hall of the Dead: look at the arched door to the city, then walk out. Was: the arch's inner frame culled while the street was merged in (sky and void round the doorway).",
+    "steps": [
+      {
+        "load": "SeamlessTestSolitudeHallOfTheDead"
+      },
+      {
+        "wait": 12
+      },
+      {
+        "place": "solitude-hall-of-the-dead-door"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "door"
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -700,
+            -976
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "name": "outside"
+        }
+      }
+    ]
+  },
   "understone-keep-walk-in-out": {
     "note": "Markarth: in front of Understone Keep (roomed interior, merged through the doorway), walk in, look round inside, walk back out into the street.",
     "steps": [

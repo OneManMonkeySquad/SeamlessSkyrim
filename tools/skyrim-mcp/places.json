@@ -76,6 +76,17 @@
       -8416.486328125
     ]
   },
+  "solitude-hall-of-the-dead-door": {
+    "cell": "SolitudeHalloftheDead",
+    "headingDeg": 268.2568054199219,
+    "interior": true,
+    "note": "Inside Solitude's Hall of the Dead, looking at the arched door to the city (the arch's inner frame was culled as a blocker while merged).",
+    "pos": [
+      -87.59336853027344,
+      -990.448486328125,
+      0.34994757175445557
+    ]
+  },
   "understone-keep-front": {
     "cell": "Wilderness",
     "headingDeg": 253.3440704345703,
