@@ -13,6 +13,7 @@ The archive holds:
   CommunityShaders\...                     every file the fork changed or added under package\
                                            and features\*\ since -CsBase
   LICENSE, SOURCE.txt                      the GPL text and where the source of both parts is
+  THIRD-PARTY-NOTICES.txt                  the licenses of the libraries built into both DLLs
 
 The Community Shaders part is a separate option because it is only a patch: installed without
 Community Shaders, its DLL runs with none of the shaders and data it expects and rendering breaks.
@@ -126,6 +127,54 @@ foreach ($path in $forkChanged | Sort-Object -Unique) {
 $forkDirty = Invoke-Git status --porcelain -- src package features
 if ($forkDirty) { Write-Warning "The fork has uncommitted changes:`n$($forkDirty -join "`n")" }
 
+# ---- third-party notices ---------------------------------------------------------------------
+# Both DLLs link vcpkg's libraries statically and compile in the code under extern\; MIT and BSD
+# ask for each one's notice to travel with the binary. Collected from the build trees, so a new
+# dependency can't be left out.
+# Compared without whitespace: the copies differ in line endings.
+function Get-Words([string]$Path) { ((Get-Content -Raw -LiteralPath $Path) -replace '\s+', ' ').Trim() }
+$gplWords = Get-Words (Join-Path $repo 'LICENSE')
+
+function Get-Notices([string]$VcpkgShare, [string]$Extern, [hashtable]$More = @{}) {
+	$sections = [ordered]@{}
+	foreach ($dir in Get-ChildItem -LiteralPath $VcpkgShare -Directory) {
+		# Folders without one hold only CMake config of a port with another name (nlohmann_json).
+		$copyright = Join-Path $dir.FullName 'copyright'
+		if (Test-Path -LiteralPath $copyright) { $sections[$dir.Name] = @($copyright) }
+	}
+	foreach ($dir in Get-ChildItem -LiteralPath $Extern -Directory) {
+		$places = @($dir.FullName, (Join-Path $dir.FullName 'licenses')) | Where-Object { Test-Path -LiteralPath $_ }
+		$sections[$dir.Name] = @(Get-ChildItem -LiteralPath $places -File |
+			Where-Object { $_.Name -match '^(LICENSE|COPYING|EXCEPTIONS)|notices|licenses' -and $_.Extension -in '', '.txt', '.md' } |
+			ForEach-Object FullName)
+		if (-not $sections[$dir.Name]) { throw "No license file found in $($dir.FullName)." }
+	}
+	foreach ($name in $More.Keys) { $sections[$name] = @($More[$name]) }
+
+	$text = [Text.StringBuilder]::new()
+	foreach ($name in $sections.Keys) {
+		[void]$text.Append("`n$('=' * 100)`n$name`n$('=' * 100)`n")
+		foreach ($path in $sections[$name]) {
+			$content = Get-Content -Raw -LiteralPath $path
+			# CommonLib and Community Shaders are GPL-3 themselves; one copy of it is enough.
+			if ((Get-Words $path) -eq $gplWords) { $content = "GNU General Public License, version 3: see LICENSE.`n" }
+			[void]$text.Append("`n--- $(Split-Path $path -Leaf) ---`n`n$content")
+		}
+	}
+	$text.ToString()
+}
+
+$notices = @"
+SeamlessSkyrim.dll and the patched CommunityShaders.dll are built with the code below. Each part's
+copyright notice and license follow.
+
+####  In SeamlessSkyrim.dll  ####
+$(Get-Notices (Join-Path $repo 'build\vcpkg_installed\x64-windows-static-md\share') (Join-Path $repo 'extern'))
+
+####  In CommunityShaders.dll (the CommunityShaders option)  ####
+$(Get-Notices (Join-Path $CsFork 'build\ALL\vcpkg_installed\x64-windows-static-md-release\share') (Join-Path $CsFork 'extern') @{ 'Community Shaders' = (Join-Path $CsFork 'EXCEPTIONS.md') })
+"@
+
 # ---- stage and zip ---------------------------------------------------------------------------
 $stage = Join-Path ([IO.Path]::GetTempPath()) "SeamlessSkyrim-release-$PID"
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
@@ -137,9 +186,11 @@ try {
 	}
 	# The GPL asks for the license text and the way to the source to travel with the binaries.
 	Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
+	[IO.File]::WriteAllText((Join-Path $stage 'THIRD-PARTY-NOTICES.txt'), $notices)
 	[IO.File]::WriteAllText((Join-Path $stage 'SOURCE.txt'), @"
 SeamlessSkyrim $version is free software, licensed under the GNU General Public License,
-version 3 or (at your option) any later version: see LICENSE.
+version 3 or (at your option) any later version: see LICENSE. The libraries built into it and
+into CommunityShaders.dll, and their licenses: see THIRD-PARTY-NOTICES.txt.
 
 Source of SeamlessSkyrim:
   $SourceUrl

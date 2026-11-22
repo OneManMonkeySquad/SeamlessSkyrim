@@ -25,4 +25,8 @@ GPL-3.0-or-later: SeamlessSkyrim is free software; you can redistribute it and/o
 under the terms of the GNU General Public License as published by the Free Software Foundation,
 either version 3 of the License, or (at your option) any later version. See `LICENSE`.
 
-`extern/SKSEMenuFramework` is under its own MIT license.
+The plugin is built with code under other licenses, each kept with that code: CommonLibSSE NG
+(GPL-3.0-or-later with exceptions, parts MIT and BSD) and SKSE Menu Framework (MIT) in `extern/`,
+and through vcpkg DirectXMath, DirectXTK, fmt, nlohmann/json, spdlog (MIT), rapidcsv and xbyak
+(BSD-3-Clause). The release archive's `THIRD-PARTY-NOTICES.txt` holds all their notices, and
+those of the libraries in the patched Community Shaders.

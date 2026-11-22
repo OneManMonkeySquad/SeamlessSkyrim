@@ -69,8 +69,10 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
   the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
   instead of the native one. It still can't tell Community Shaders versions apart: the option's text says 1.9.1.
-- `LICENSE` and `SOURCE.txt` at the archive's root, outside both options: the GPL text and the
-  GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`).
+- `LICENSE`, `SOURCE.txt` and `THIRD-PARTY-NOTICES.txt` at the archive's root, outside both
+  options: the GPL text, the GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`),
+  and the license of every library in both DLLs, gathered from each build tree's
+  `vcpkg_installed/<triplet>/share/*/copyright` and the license files under `extern/`.
 - Quit the game first: `-Build` runs the post-build copy into the game, which fails while it runs.
   Without `-Build` a DLL older than its sources stops the script.
 
