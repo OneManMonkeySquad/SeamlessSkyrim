@@ -40,10 +40,11 @@
   (`PortalRender.cpp`, `RecentOutdoors`).
 - A door's 3D rebuilt while held open is noticed at the next `Doors::Open` on it; the door the
   player came out of is opened once and waits for another opener.
-- Solitude's gate seen from the city: where the portal pass draws sky, the city's own walls
-  behind the gate show (a dark brick wall over the upper half of the gateway). The gates of the
-  two worldspaces stand 290 units apart, so the discard that shows the player's own sky through a
-  city gate (`PortalRender.cpp`, `ViewSize.z`) finds the gatehouse there instead.
+- Walking out of Solitude's gate and turning round at once: for up to 4 s the gateway shows
+  Tamriel's own side of the gatehouse (a brick wall), until the view back is attached after the
+  purge (`Travel.cpp`, `purgeDeadline`).
+- Through Solitude's gate from the city: the snowy mountains behind the fort, seen once outside,
+  aren't there; the city's worldspace's own distance shows where the portal pass drew sky.
 - Sven and Hilde's house door in Riverwood (01CBB0): its hand turn (-1.6°) was made against the
   door's teleport marker and not converted when the doorway took the door's panel instead (the
   door was locked in every save at hand). The others were.

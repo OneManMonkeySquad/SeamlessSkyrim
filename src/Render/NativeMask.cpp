@@ -26,7 +26,7 @@
 // in is kept inside X (one draw, five clip distances). A shape of the camera's own space is kept
 // outside X; that isn't convex, so it is drawn in up to five disjoint convex pieces (not P0; P0 and
 // not P1; P0, P1 and not P2; ...). Shapes whose bounds lie wholly on one side are drawn once,
-// unchanged or not at all.
+// unchanged or not at all. Through a city gate X has a sixth plane, where its far gate stands.
 //
 // The geometry shader has to match the vertex shader's outputs exactly, so one is generated per
 // output signature from the vertex shader's bytecode (BSGraphics::VertexShader keeps it), compiled
@@ -44,14 +44,16 @@ namespace
 
 	std::mutex                         stateLock;
 	std::optional<Door>                door;        // under stateLock
+	float                              gatePassage = 0.0f;  // under stateLock; Render::Backend::SetGatePassage
 	std::optional<std::array<float, 4>> portalClip;  // under stateLock
 	std::atomic<bool>                  portalPass = false;
 	bool                               ready = false;
 
 	// ---- one draw's cut, worked out at the shader's per-draw setup -------------------------
 
-	constexpr int kPlanesPerPiece = 5;
-	constexpr int kMaxPieces = 5;
+	// X's five planes, and a city gate's passage end.
+	constexpr int kPlanesPerPiece = 6;
+	constexpr int kMaxPieces = 6;
 
 	struct Piece
 	{
@@ -214,17 +216,19 @@ namespace
 	void PlanMerged(const RE::BSRenderPass* a_pass)
 	{
 		std::optional<Door> d;
+		float               passage;
 		{
 			std::scoped_lock lock(stateLock);
 			d = door;
+			passage = gatePassage;
 		}
 		if (!d || !InWorldPass() || Portal::Manager::IsPlayerShape(a_pass->geometry)) {
 			return;
 		}
 		const bool mergedSpace = Portal::Manager::IsMergedShape(a_pass->geometry);
 		const bool cameraSpace = mergedSpace == d->cameraMerged;
-		Plane planes[5];
-		if (!Render::Doorway::Planes(*d, Eye(), planes)) {
+		Plane doorway[5];
+		if (!Render::Doorway::Planes(*d, Eye(), doorway)) {
 			if (!cameraSpace) {
 				job.active = job.skip = true;
 				++stats.passesLeftOut;
@@ -232,11 +236,18 @@ namespace
 			return;
 		}
 
+		Plane planes[kPlanesPerPiece];
+		std::ranges::copy(doorway, planes);
+		int count = 5;
+		if (passage > 0.0f) {
+			// A city gate: X ends where the far gate stands in the world (the fork's SeamlessDoorClips).
+			planes[count++] = Render::Doorway::Through(d->center + d->normal * passage, d->normal * -1.0f);
+		}
 		const auto& bound = a_pass->geometry->worldBound;
-		Side sides[5];
+		Side sides[kPlanesPerPiece];
 		bool clear = false;  // wholly outside X
 		bool within = true;  // wholly inside X
-		for (int i = 0; i < 5; ++i) {
+		for (int i = 0; i < count; ++i) {
 			sides[i] = SideOf(planes[i], bound);
 			clear |= sides[i] == Side::kOutside;
 			within &= sides[i] == Side::kInside;
@@ -257,7 +268,7 @@ namespace
 			}
 			job.active = true;
 			job.pieces = 1;
-			SetPiece(job.piece[0], planes, 5);
+			SetPiece(job.piece[0], planes, count);
 			++stats.passesCut;
 			return;
 		}
@@ -272,7 +283,7 @@ namespace
 		}
 		job.active = true;
 		job.pieces = 0;
-		for (int k = 0; k < 5; ++k) {
+		for (int k = 0; k < count; ++k) {
 			// Piece k: planes 0..k-1 kept, plane k cut away.
 			bool empty = sides[k] == Side::kInside;
 			for (int i = 0; i < k && !empty; ++i) {
@@ -281,7 +292,7 @@ namespace
 			if (empty) {
 				continue;
 			}
-			Plane piece[5];
+			Plane piece[kPlanesPerPiece];
 			for (int i = 0; i < k; ++i) {
 				piece[i] = planes[i];
 			}
@@ -409,16 +420,16 @@ namespace
 			return std::nullopt;
 		}
 		return std::format(
-			"cbuffer SeamlessClip : register(b0) {{ float4 SeamlessPlanes[5]; }};\n"
+			"cbuffer SeamlessClip : register(b0) {{ float4 SeamlessPlanes[6]; }};\n"
 			"struct V {{\n{0}}};\n"
-			"struct G {{\n{0}\tfloat4 seamlessClip0 : SV_ClipDistance0;\n\tfloat seamlessClip1 : SV_ClipDistance1;\n}};\n"
+			"struct G {{\n{0}\tfloat4 seamlessClip0 : SV_ClipDistance0;\n\tfloat2 seamlessClip1 : SV_ClipDistance1;\n}};\n"
 			"[maxvertexcount(3)]\n"
 			"void main(triangle V input[3], inout TriangleStream<G> stream) {{\n"
 			"\t[unroll] for (uint i = 0; i < 3; ++i) {{\n"
 			"\t\tG o;\n{1}"
 			"\t\tfloat4 p = input[i].f{2};\n"
 			"\t\to.seamlessClip0 = float4(dot(SeamlessPlanes[0], p), dot(SeamlessPlanes[1], p), dot(SeamlessPlanes[2], p), dot(SeamlessPlanes[3], p));\n"
-			"\t\to.seamlessClip1 = dot(SeamlessPlanes[4], p);\n"
+			"\t\to.seamlessClip1 = float2(dot(SeamlessPlanes[4], p), dot(SeamlessPlanes[5], p));\n"
 			"\t\tstream.Append(o);\n"
 			"\t}}\n"
 			"}}\n",
@@ -797,6 +808,12 @@ namespace Render::Native
 			return;
 		}
 		door = Door::From(a_door);
+	}
+
+	void SetGatePassage(float a_depth)
+	{
+		std::scoped_lock lock(stateLock);
+		gatePassage = a_depth;
 	}
 
 	bool MergedDoorSet()

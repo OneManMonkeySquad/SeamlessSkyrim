@@ -10,6 +10,7 @@ namespace Render::Native
 
 	// NativeMask.cpp: the doorway mask and the portal pass's far-door clip.
 	void SetDoor(const float* a_door);
+	void SetGatePassage(float a_depth);
 	void SetPortalClip(const float* a_plane);
 	void SetPortalPass(bool a_active);
 	[[nodiscard]] json DescribeMask();

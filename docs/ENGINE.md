@@ -104,6 +104,10 @@ Found porting the plugin; each was checked in the code of both.
 - **Frame:** `Main::RenderPlayerView` (ID 36559) → shadow maps → `RenderDepth` (107139) →
   `RenderShadowmasks` (107140) → `RenderWorld` (107142, executes the accumulated draw lists) →
   `RenderFirstPersonView` (107129) → `RenderWaterEffects` (36560) → post.
+- **The main view's depth prepass** (`RenderDepth`) draws most statics with the Utility shader's
+  shadow map technique (vertex descriptor 0xC000, RenderShadowmap | Clamped), skinned ones with
+  RenderDepth (0x2004). The technique doesn't tell a shadow map from the main view; the depth
+  target does (`RendererShadowState::depthStencil`, `kSHADOWMAPS` and the like).
 - **The main camera** is the world-root camera (ID 403513, camera at +0x128). `RenderPlayerView`
   pushes it into every light scene's culling process (ID 415016 count, ID 415022 array) and calls
   ID 107132 (camera).

@@ -192,6 +192,9 @@ namespace Portal
 		// it changes.
 		[[nodiscard]] std::uint32_t Generation() const { return generation; }
 
+		// Exterior cells around the door's (1 = the 3x3 block).
+		static constexpr int kNeighbourRadius = 1;
+
 	private:
 		std::uint32_t                      generation = 0;
 		static inline std::uint32_t        lastGeneration = 0;
@@ -201,9 +204,6 @@ namespace Portal
 		static constexpr float kQuietSecondsRequired = 1.5f;
 		static constexpr float kQuietSecondsPreloaded = 0.0f;  // drawn the frame it is attached
 		float                  quietRequired = kQuietSecondsRequired;
-
-		// Exterior cells around the door's (1 = the 3x3 block).
-		static constexpr int kNeighbourRadius = 1;
 
 		static RE::NiAVObject* Cell3D(const RE::TESObjectCELL* a_cell);
 		static bool            Attachable(const RE::TESObjectCELL* a_cell);

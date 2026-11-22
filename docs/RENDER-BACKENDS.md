@@ -36,7 +36,8 @@ world space and clip distances interpolate perspective-correctly, so the cut is 
 - The rule is the fork's `SeamlessDoorClips`: X = beyond the door plane (5-unit margin) and seen
   through the doorway's rectangle. X is convex (the plane, plus four planes through the camera and
   the doorway's edges). The other space's shapes are kept in X (one draw); the camera's space's
-  shapes outside X, drawn as up to five disjoint convex pieces. Shapes whose bounding sphere is
+  shapes outside X, drawn as up to five disjoint convex pieces. Through a city gate X ends where
+  the portal pass's cells end (`SetGatePassage`): a sixth plane and piece. Shapes whose bounding sphere is
   50 units clear of a plane are drawn unchanged, or not at all, without a geometry shader.
 - Planes are turned into clip space with the renderer's current view-projection (row vectors,
   camera-relative, as `DrawDoorQuad` uses it), so the portal pass's camera works the same way.

@@ -51,6 +51,11 @@ namespace Render::Backend
 	// The street merged into an interior: its fog (near, far, power, most it covers, near colour,
 	// far colour).
 	void SetMergedFog(const float* a_fog);
+	// A city gate seen through as a merged door in room 0 (the portal pass draws the other side):
+	// the world's own shapes are masked through it only up to a_depth beyond its plane, where its far
+	// gate stands in the world; 0 when room 0 isn't a gate. Only when CanMaskGate().
+	[[nodiscard]] bool CanMaskGate();
+	void               SetGatePassage(float a_depth);
 	// The street merged into an interior gets the sun's shadows. Community Shaders only.
 	void SetInteriorSun(bool a_on);
 	// The player walked out of a doorway: lighting that builds up over time is settled at once.

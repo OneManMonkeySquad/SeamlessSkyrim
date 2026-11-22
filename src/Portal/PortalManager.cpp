@@ -19,6 +19,7 @@
 #include "Portal/StreetLOD.h"
 #include "Probe.h"
 #include "Render/Backend.h"
+#include "Render/DoorwayPlanes.h"
 
 #include <Windows.h>
 
@@ -2079,6 +2080,7 @@ namespace Portal::Manager
 		bool DemoteShown(RE::TESObjectCELL* a_here, const Active& a_portal);
 		void UpdateBeside(RE::TESObjectCELL* a_here, float a_delta, std::vector<MergedCull::Room>& a_culls);
 		Portal::RemoteCell* KeptSpace(const RE::TESObjectCELL* a_cell);
+		void UpdateGateMask(RE::TESObjectCELL* a_here);
 	}
 
 	namespace
@@ -2437,6 +2439,7 @@ namespace Portal::Manager
 			}
 			approachLimit = Approach(player, *portal, a_delta);
 		}
+		UpdateGateMask(here);
 		UpdateBeside(here, a_delta, culls);
 		MergedCull::Set(std::move(culls));
 		PublishRooms();
@@ -2959,6 +2962,47 @@ namespace Portal::Manager
 		void SendMergedDoor(int a_slot, const float* a_door)
 		{
 			::Render::Backend::SetMergedDoor(a_slot, a_door);
+		}
+
+		bool gateMasked = false;  // room 0's doorway is the city gate's (UpdateGateMask)
+
+		// Through a city gate the portal pass draws the other worldspace, and where it drew nothing
+		// (the sky, beyond its few cells) the world's own shows: the two share their coordinates,
+		// distant land and sky. Where the two gates stand apart, the world's own side of the
+		// gatehouse lies in between, and showed instead (Solitude's: a brick wall where the sky
+		// was). The gate is masked like a merged room's doorway, in room 0, which a gate's portal
+		// leaves free; the world's shapes as far as the portal pass draws the other side: its cells
+		// reach a whole cell past the far gate in every direction (RemoteCell::kNeighbourRadius).
+		// Masked only up to the far gate, the world's outer arch around it stood in the sky as an
+		// outline, the part of it beyond the far gate's plane.
+		void UpdateGateMask(RE::TESObjectCELL* a_here)
+		{
+			std::optional<float> passage;
+			float                door[12];
+			const auto           portal = ActivePortal();
+			if (portal && ::Render::Backend::CanMaskGate() && !a_here->IsInteriorCell() && !portal->cell->IsInteriorCell()) {
+				if (const auto mapping = Doors::TryCompute(*portal)) {
+					const auto  farGate = mapping->toLinked * mapping->sourceCenter - mapping->sourceCenter;
+					const float depth = farGate.x * mapping->inward.x + farGate.y * mapping->inward.y;
+					if (depth > ::Render::Doorway::kMargin) {
+						constexpr float kCellSize = 4096.0f;
+						passage = depth + kCellSize * Portal::RemoteCell::kNeighbourRadius;
+						const float values[12] = { mapping->sourceCenter.x, mapping->sourceCenter.y, mapping->sourceCenter.z, mapping->inward.x, mapping->inward.y, 0.0f,
+							mapping->inward.y, -mapping->inward.x, 0.0f, mapping->halfWidth, mapping->halfHeight, 0.0f };
+						std::ranges::copy(values, door);
+					}
+				}
+			}
+			if (passage) {
+				SendMergedDoor(0, door);
+				::Render::Backend::SetGatePassage(*passage);
+				gateMasked = true;
+			} else if (std::exchange(gateMasked, false)) {
+				if (!remote.merged) {
+					SendMergedDoor(0, nullptr);
+				}
+				::Render::Backend::SetGatePassage(0.0f);
+			}
 		}
 
 		// Rebuilt on the main thread, read by the renderer (same thread in Skyrim, but a lock

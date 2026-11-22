@@ -48,6 +48,7 @@ Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = featur
 | `SeamlessPortal_SetMergedRoomLighting(int room, const float[19])` | Render-merge: a merged room's own directional light (3 colour, 3 direction towards the light), directional ambient (3x4 rows), world space, and a scale for the space's lights and ambient (`SeamlessRemoteDirDirection[room].w`, applied in `Lighting.hlsl` as `seamlessLightScale`); `nullptr` = lit like the world. |
 | `SeamlessPortal_SetMergedLighting(const float[19])` | Room 0's lighting (as above). |
 | `SeamlessPortal_SetInteriorSun(bool)` | The street merged into an interior: Interior Sun's sun light and shadows on (`InteriorSun::seamlessSun`), as for an interior flagged for them; also sets `SeamlessParams.w` so `Lighting.hlsl` applies the sun's shadows to the merged street only. SeamlessSkyrim points the engine's sun shadow light (`ShadowSceneNode::sunShadowDirLight`) at the outdoor sun meanwhile by giving it a directional light of its own (`AimSunShadow` in `PortalManager.cpp`). |
+| `SeamlessPortal_SetGatePassage(float depth)` | Room 0's doorway is a city gate, the other worldspace drawn by the portal pass up to `depth` beyond it (SeamlessSkyrim: the far gate's distance plus the portal's cells); 0: not a gate (`State::seamlessGatePassage`, uploaded as `SeamlessParams.y`). `SeamlessDoorClips` then masks the world's shapes through room 0's doorway only up to that depth, and the portal pass (`BeginPortalSharedData`) leaves room 0 out. Through Solitude's gate the city's side of the gatehouse, a brick wall, stood where the sky was. |
 | `SeamlessPortal_SetMergedFog(const float[10])` | The merged space's fog (near, far, power, most it covers, near colour, far colour): the street merged into an interior gets the weather's, a room merged into the street its cell's own (most it covers 0 for an interior without fog); `nullptr` = fogged like the world. One for all merged rooms. Uploaded as `SeamlessRemoteFogParam/Near/Far` (appended to `SharedData`). Applied in `Lighting.hlsl` to shapes flagged `SeamlessRemote` (forward), and in `ISSAOComposite.hlsl` (the deferred fog) to pixels `SeamlessDoorClips(position, false)` takes from the interior. Without it the interior's fog turned the distant mountains black. |
 | `SeamlessPortal_SettleSkylighting()` | The player walked out of a doorway: for the next 16 probe updates, Skylighting takes each probe at full confidence from its first sample (`SkylightingSettings.SeamlessSettle`, `UpdateProbesCS.hlsl`), stored as confident so the usual accumulation carries on. Its probes are kept by position, the player jumps from the interior's coordinates to the street's, and the usual fade-in (a loading screen hides it) lit the street under roofs and porches as if open to the sky for a second or two. |
 | `bool SeamlessPortal_OutdoorSunDirection(float hour, const float[3] vanillaSunPosition, float[3] towardSun)` | The street merged into an interior: the direction toward the sun outdoors at `hour`, as Sky Sync turns it (`SkySync::OutdoorSunDirection`, which repeats `Update`'s windows, the alternate sun path and `ShadowFader`'s elevation clamp without the dusk heading lock). Indoors the sky updates no sun, so SeamlessSkyrim computes vanilla's sun position itself and asks this for the light outdoors would have (`OutdoorSunDirection` in `PortalRender.cpp`). False when Sky Sync is off or doesn't place the sun (night); SeamlessSkyrim then uses vanilla's light direction, which by day is about 13 degrees flatter than Sky Sync's. |
@@ -140,8 +141,8 @@ Changes by file:
   merged room (doors: `SeamlessDoorPlane/Center/Right[4]`, plane `w` 1 while that room is merged;
   lighting: `SeamlessRemoteDirColor[4]`, `SeamlessRemoteDirDirection[4]` with the light scale in
   `w`, `SeamlessRemoteAmbient[12]`, three rows per room), then `SeamlessParams` (`x` any room
-  merged, `z` camera in room 0, `w` sun shadows for the merged street; `y` unused since the light
-  scale moved per room). Must match `SharedDataCB` in `State.h`; float4 arrays pack at 16 bytes per
+  merged, `y` room 0 is a city gate (`SeamlessPortal_SetGatePassage`), `z` camera in room 0, `w`
+  sun shadows for the merged street). Must match `SharedDataCB` in `State.h`; float4 arrays pack at 16 bytes per
   element on both sides. Fields after the arrays moved, so every shader reading `Seamless*` fields
   (Lighting, Utility, Effect, ISSAOComposite) must be recompiled: clear those cache folders.
   `SeamlessDoorClips(position, mergedSpace, room = 0)`: the per-pixel rule that masks the spaces
@@ -175,8 +176,12 @@ Changes by file:
   mask (SV_Position-derived in the main and portal views). Needed because the plugin's near-plane
   push only clipped correctly when looking straight through a doorway: from close by at an angle,
   the back of the far building's doorway (a closed door) showed in the portal.
-- `Utility.hlsl` (depth prepass and friends): the same `discard` in the pixel shader (not in
-  shadow-map variants), so masked shapes don't leave depth behind. The position is rebuilt from
+- `Utility.hlsl` (depth prepass and friends): the same `discard` in the pixel shader, so masked
+  shapes don't leave depth behind. Not into shadow maps: `ExtraFlags::SeamlessLightView` (bit 13),
+  set in `UpdateLightingShaderPermutation` when the depth target is a shadow map's
+  (`kSHADOWMAPS`, `kSHADOWMAPS_ESRAM`, `kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM`,
+  `kPRECIPITATION_OCCLUSION_MAP`). Not by the technique: the engine draws most statics' main-view
+  depth with `RenderShadowmap` (0xC000) too, and those kept their depth through a doorway. The position is rebuilt from
   `SV_Position` with `CameraViewProjInverse`; **do not add vertex shader outputs here**: it shifts
   the vertex shader's rounding, the lighting pass (depth test EQUAL) z-fights with the prepass
   and the ground turns white and scribbled.

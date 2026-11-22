@@ -20,6 +20,7 @@ namespace
 		void (*setMergedRoomDoor)(int, const float*) = nullptr;
 		void (*setMergedRoomLighting)(int, const float*) = nullptr;
 		void (*setMergedFog)(const float*) = nullptr;
+		void (*setGatePassage)(float) = nullptr;
 		void (*setInteriorSun)(bool) = nullptr;
 		void (*settleSkylighting)() = nullptr;
 		void (*setPortalClip)(const float*) = nullptr;
@@ -41,6 +42,7 @@ namespace
 		Find(a_module, "SeamlessPortal_SetMergedRoomDoor", fork.setMergedRoomDoor);
 		Find(a_module, "SeamlessPortal_SetMergedRoomLighting", fork.setMergedRoomLighting);
 		Find(a_module, "SeamlessPortal_SetMergedFog", fork.setMergedFog);
+		Find(a_module, "SeamlessPortal_SetGatePassage", fork.setGatePassage);
 		Find(a_module, "SeamlessPortal_SetInteriorSun", fork.setInteriorSun);
 		Find(a_module, "SeamlessPortal_SettleSkylighting", fork.settleSkylighting);
 		Find(a_module, "SeamlessPortal_SetPortalClip", fork.setPortalClip);
@@ -182,6 +184,20 @@ namespace Render::Backend
 		}
 	}
 
+	bool CanMaskGate()
+	{
+		return (kind == Kind::kCommunityShaders && fork.setGatePassage && fork.setMergedRoomDoor) || (kind == Kind::kNative && Render::Native::Ready());
+	}
+
+	void SetGatePassage(float a_depth)
+	{
+		if (kind == Kind::kCommunityShaders) {
+			fork.setGatePassage(a_depth);
+		} else if (kind == Kind::kNative) {
+			Render::Native::SetGatePassage(a_depth);
+		}
+	}
+
 	void SetInteriorSun(bool a_on)
 	{
 		if (kind == Kind::kCommunityShaders && fork.setInteriorSun) {
@@ -259,6 +275,7 @@ namespace Render::Backend
 			{ "communityShadersLoaded", communityShadersLoaded },
 			{ "communityShadersFork", fork.setMergedDoor != nullptr },
 			{ "mergedRooms", MergedRooms() },
+			{ "masksGates", CanMaskGate() },
 			{ "enb", Render::Enb::Describe() },
 		};
 		if (kind == Kind::kNative) {
