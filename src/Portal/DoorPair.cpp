@@ -330,8 +330,10 @@ namespace Portal::Doors
 		return cell3D ? cell3D->world : RE::NiTransform{};
 	}
 
-	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, bool a_otherEnd)
+	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, RE::FormID a_settings)
 	{
+		const bool  otherEnd = Style(a_settings) == OpenStyle::kSwingOtherEnd;
+		const float degrees = SwingDegrees(a_settings);
 		auto* door3D = a_door ? a_door->Get3D() : nullptr;
 		if (!door3D || !a_door->GetBaseObject()) {
 			return;
@@ -377,14 +379,14 @@ namespace Portal::Doors
 			const float high = wideX ? leaf.box.max.x : leaf.box.max.y;
 			const float pivot = wideX ? leaf.pivot.x : leaf.pivot.y;
 			bool        hingeHigh = node != door3D && std::abs(pivot - high) < std::abs(pivot - low);
-			hingeHigh ^= a_otherEnd;
+			hingeHigh ^= otherEnd;
 			const float        hingeEnd = hingeHigh ? high : low;
 			const float        span = (high - low) * (hingeHigh ? -1.0f : 1.0f);
 			const float        thinMiddle = wideX ? 0.5f * (leaf.box.min.y + leaf.box.max.y) : 0.5f * (leaf.box.min.x + leaf.box.max.x);
 			const RE::NiPoint3 hinge = wideX ? RE::NiPoint3{ hingeEnd, thinMiddle, 0.0f } : RE::NiPoint3{ thinMiddle, hingeEnd, 0.0f };
 			const RE::NiPoint3 free = wideX ? RE::NiPoint3{ span, 0.0f, 0.0f } : RE::NiPoint3{ 0.0f, span, 0.0f };
 			const float        sign = (-free.y * room.x + free.x * room.y) >= 0.0f ? 1.0f : -1.0f;  // the free end turns towards the room
-			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.0f) * RE::deg_to_rad(95.0f);
+			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.0f) * RE::deg_to_rad(degrees);
 			const float        c = std::cos(angle), s = std::sin(angle);
 			RE::NiTransform    turn;  // in the door's model space
 			turn.rotate = RE::NiMatrix3({ c, -s, 0.0f }, { s, c, 0.0f }, { 0.0f, 0.0f, 1.0f });
@@ -569,6 +571,7 @@ namespace Portal::Doors
 		std::mutex                            correctionsLock;
 		std::unordered_map<RE::FormID, float> corrections;  // under correctionsLock
 		std::unordered_map<RE::FormID, int>   styles;       // under correctionsLock
+		std::unordered_map<RE::FormID, float> swingDegrees;  // under correctionsLock
 		std::unordered_set<RE::FormID>        portalsOff;   // under correctionsLock, keyed by CorrectionDoor
 		std::unordered_set<RE::FormID>        opensInward;  // under correctionsLock, keyed by CorrectionDoor
 		std::unordered_set<RE::FormID>        alwaysOpen;   // under correctionsLock, keyed by CorrectionDoor
@@ -667,6 +670,7 @@ namespace Portal::Doors
 			// making up for the bounds' depth. Against the measured panel neither means the same, so
 			// they are left unread.
 			each(L"DoorHinge", [](RE::FormID a_door, const wchar_t* a_value) { styles[a_door] = std::wcstol(a_value, nullptr, 10); });
+			each(L"DoorSwing", [](RE::FormID a_door, const wchar_t* a_value) { swingDegrees[a_door] = std::wcstof(a_value, nullptr); });
 			// [DoorPortal] =0: the pair's portal switched off.
 			each(L"DoorPortal", [](RE::FormID a_door, const wchar_t* a_value) {
 				if (std::wcstol(a_value, nullptr, 10) == 0) {
@@ -755,6 +759,9 @@ namespace Portal::Doors
 		const auto         styleValue = std::format(L"{}", style);
 		::WritePrivateProfileStringW(L"DoorTurn", wkey.c_str(), degrees != 0.0f ? value.c_str() : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorHinge", wkey.c_str(), style != 0 ? styleValue.c_str() : nullptr, CorrectionsFile().c_str());
+		const float swing = SwingDegrees(a_door);
+		const auto  swingValue = std::format(L"{:.0f}", swing);
+		::WritePrivateProfileStringW(L"DoorSwing", wkey.c_str(), swing != kSwingDegrees ? swingValue.c_str() : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorOpen", wkey.c_str(), nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorShift", wkey.c_str(), nullptr, CorrectionsFile().c_str());
 		const auto shift = Shift(a_door);
@@ -767,7 +774,7 @@ namespace Portal::Doors
 		::WritePrivateProfileStringW(L"DoorPortal", wkey.c_str(), off ? L"0" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorOpensIn", wkey.c_str(), inward ? L"1" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorAlwaysOpen", wkey.c_str(), open ? L"1" : nullptr, CorrectionsFile().c_str());
-		logger::info("portal: door {} saved: turned {:.2f} degrees, opens with style {}{}{}{}", key, degrees, style,
+		logger::info("portal: door {} saved: turned {:.2f} degrees, opens with style {} by {:.0f} degrees{}{}{}", key, degrees, style, swing,
 			off ? ", portal off" : ", portal on", inward ? ", opens inward" : "", open ? ", always open" : "");
 	}
 
@@ -860,6 +867,21 @@ namespace Portal::Doors
 		std::scoped_lock lock(correctionsLock);
 		LoadCorrections();
 		styles[a_door] = static_cast<int>(a_style);
+	}
+
+	float SwingDegrees(RE::FormID a_door)
+	{
+		std::scoped_lock lock(correctionsLock);
+		LoadCorrections();
+		const auto it = swingDegrees.find(a_door);
+		return it != swingDegrees.end() ? it->second : kSwingDegrees;
+	}
+
+	void SetSwingDegrees(RE::FormID a_door, float a_degrees)
+	{
+		std::scoped_lock lock(correctionsLock);
+		LoadCorrections();
+		swingDegrees[a_door] = a_degrees;
 	}
 
 	Mapping Compute(const Manager::Active& a_portal)

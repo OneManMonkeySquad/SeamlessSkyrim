@@ -80,6 +80,11 @@ namespace Portal::Doors
 	};
 	[[nodiscard]] OpenStyle Style(RE::FormID a_door);
 	void                    SetStyle(RE::FormID a_door, OpenStyle a_style);
+	// How far its leaves turn, fully open (the menu, stored with the correction): less where the
+	// wall beside the doorway is closer than the leaf is wide, or the leaf ends up in it.
+	constexpr float     kSwingDegrees = 95.0f;
+	[[nodiscard]] float SwingDegrees(RE::FormID a_door);
+	void                SetSwingDegrees(RE::FormID a_door, float a_degrees);
 
 	// The pair's portal switched off (the menu, stored with the correction): an ordinary door
 	// again, with its loading screen. Either door of the pair may be passed.
@@ -121,8 +126,9 @@ namespace Portal::Doors
 
 	// Main thread: the door's leaves swung open around their hinges, a_amount from 0 (closed) to 1
 	// (open), towards a_room (a horizontal world direction: the side it opens into); its frame
-	// stays. Placement and everything derived from it keep using the closed door.
-	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, bool a_otherEnd = false);
+	// stays. Placement and everything derived from it keep using the closed door. a_settings: the
+	// pair's correction door, whose hinge and angle it takes.
+	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, RE::FormID a_settings);
 	// Main thread: the panel back where it was.
 	void Unswing(RE::FormID a_door);
 

@@ -637,7 +637,7 @@ namespace
 			remote.RestorePassage();
 			return;
 		}
-		const auto style = linked ? Portal::Doors::Style(Portal::Doors::CorrectionDoor(a_door, linked)->GetFormID()) : Portal::Doors::OpenStyle::kSwing;
+		const auto settings = linked ? Portal::Doors::CorrectionDoor(a_door, linked)->GetFormID() : a_door->GetFormID();
 		const bool hide = gate || farSwings;
 		if (openDoor.door == a_door->GetFormID() && openDoor.hidden != hide) {
 			Portal::Doors::Unswing(openDoor.door);
@@ -657,10 +657,10 @@ namespace
 		if (farSwings) {
 			// Into the space behind, in its own coordinates (the portal pass draws it where it is).
 			if (const auto mapping = Portal::Doors::TryCompute(*portal)) {
-				Portal::Doors::Swing(linked, mapping->toLinked.rotate * mapping->inward, SwingEase(openDoorSwing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
+				Portal::Doors::Swing(linked, mapping->toLinked.rotate * mapping->inward, SwingEase(openDoorSwing), settings);
 			}
 		} else if (!hide) {
-			Portal::Doors::Swing(a_door, RE::NiPoint3{ -a_inward.x, -a_inward.y, 0.0f }, SwingEase(openDoorSwing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
+			Portal::Doors::Swing(a_door, RE::NiPoint3{ -a_inward.x, -a_inward.y, 0.0f }, SwingEase(openDoorSwing), settings);
 		} else {
 			Portal::Doors::Unswing(a_door->GetFormID());
 		}
@@ -967,8 +967,8 @@ namespace
 				Portal::Doors::Unswing(id);
 			} else {
 				auto*      linked = Lookup(standIn.linked);
-				const auto style = Portal::Doors::Style(linked ? Portal::Doors::CorrectionDoor(door, linked)->GetFormID() : id);
-				Portal::Doors::Swing(door, Portal::Doors::ToShown(door).rotate * standIn.inwardInCell * -1.0f, SwingEase(standIn.swing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
+				const auto settings = linked ? Portal::Doors::CorrectionDoor(door, linked)->GetFormID() : id;
+				Portal::Doors::Swing(door, Portal::Doors::ToShown(door).rotate * standIn.inwardInCell * -1.0f, SwingEase(standIn.swing), settings);
 			}
 			++it;
 		}
@@ -3196,7 +3196,7 @@ namespace Portal::Manager
 			auto*      other = swung == source ? linked : source;
 			auto&      swungState = swung == source ? a_room.sourceDoor : a_room.linkedDoor;
 			auto&      otherState = swung == source ? a_room.linkedDoor : a_room.sourceDoor;
-			const auto style = Doors::Style(Doors::CorrectionDoor(source, linked)->GetFormID());
+			const auto settings = Doors::CorrectionDoor(source, linked)->GetFormID();
 			if (a_room.swungDoor && a_room.swungDoor != swung->GetFormID()) {
 				Doors::Unswing(a_room.swungDoor);  // turned round in the menu
 			}
@@ -3214,7 +3214,7 @@ namespace Portal::Manager
 			if (a_wanted && Doors::AlwaysOpen(Doors::CorrectionDoor(source, linked)->GetFormID())) {
 				a_room.swing = 1.0f;  // stands open: never seen opening
 			}
-			Doors::Swing(swung, swung == room ? intoRoom : intoRoom * -1.0f, SwingEase(a_room.swing), style == Doors::OpenStyle::kSwingOtherEnd);
+			Doors::Swing(swung, swung == room ? intoRoom : intoRoom * -1.0f, SwingEase(a_room.swing), settings);
 			if (!std::exchange(a_room.extraScanned, true)) {
 				HideDoorsInDoorway(a_room, source, mapping.sourceCenter);
 				if (street) {
