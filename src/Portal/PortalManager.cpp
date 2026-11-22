@@ -1385,9 +1385,13 @@ namespace
 
 	const RE::ImageSpaceBaseData* OutdoorImageSpace()
 	{
+		// The hour only counts indoors: outdoors it is taken every frame, except while our own blend
+		// is on (UpdateTone), and standing at a doorway for half an hour mustn't swap it for the
+		// weather's.
 		constexpr float kHoldsForHours = 0.5f;
+		const bool      indoors = RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell();
 		const bool      holds = toneOutdoorsWeather && toneOutdoorsWeather == RE::Sky::GetSingleton()->currentWeather &&
-		                        std::abs(RE::Calendar::GetSingleton()->GetHoursPassed() - toneOutdoorsHour) < kHoldsForHours;
+		                        (!indoors || std::abs(RE::Calendar::GetSingleton()->GetHoursPassed() - toneOutdoorsHour) < kHoldsForHours);
 		return holds ? &toneOutdoors : WeatherImageSpace();
 	}
 
