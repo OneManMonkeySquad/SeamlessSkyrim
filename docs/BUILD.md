@@ -150,6 +150,8 @@ Test suite (`run_suite`):
   accepted ones; kept in `tools/skyrim-mcp/suite-reference/`, not in git). Look at them: the check
   can't see a wrong colour or a missing person.
 - From a script: `getattr(server.run_suite, "fn", server.run_suite)()`, as for other MCP tools.
+  The MCP tool itself currently fails like `frames_sheet` ("Unable to serialize ... Image"), after
+  running every route: use the script.
 
 Every frame of a moment (a flash on crossing, a door drawn closed once, low detail over the real
 town falls between screenshots):
