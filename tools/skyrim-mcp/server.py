@@ -683,7 +683,9 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def store_json(path: Path, data: dict[str, Any]) -> None:
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", "utf-8")
+    # LF as git has them: written through Windows' text mode, every place_save and route_save
+    # turned the whole file's line ends over.
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", "utf-8", newline="\n")
 
 
 def brief(state: dict[str, Any]) -> str:
