@@ -164,7 +164,11 @@ namespace
 	// Passes drawn per portal pass, against the recent usual number: a pass drawing next to nothing
 	// is a doorway blinking black on screen.
 	std::uint32_t passesDrawnThisSubmit = 0;
+	// Of the doorway being drawn only (RenderPortal starts both anew for another): measured against
+	// a city gate's passes, every picture of the next small room counted as next to empty, and the
+	// doorway showed the old one for half a second.
 	float         usualPassesDrawn = 0.0f;
+	int           heldFrames = 0;  // pictures in a row left off screen for drawing next to nothing
 
 	// True for a pass that drew far less than usual.
 	bool CheckPassesDrawn(std::uint32_t a_frame)
@@ -1460,6 +1464,12 @@ namespace
 			portalAccumulator.reset(RE::BSShaderAccumulator::Create(0x63));  // engine-wide ctor argument
 			generation = a_portal.generation;
 		}
+		static RE::FormID drawnDoor = 0;
+		if (portalFrame == 0 || drawnDoor != a_portal.sourceDoor) {
+			drawnDoor = a_portal.sourceDoor;
+			usualPassesDrawn = 0.0f;
+			heldFrames = 0;
+		}
 
 		const auto mapping = Portal::Doors::Compute(a_portal);
 		const bool capturing = a_capture.has_value();
@@ -1676,7 +1686,6 @@ namespace
 		// stays, for a few frames at most (after that the view may really have changed). A capture
 		// isn't for the doorway: the last picture stays on screen this frame.
 		constexpr int kMaxHeldFrames = 15;
-		static int    heldFrames = 0;
 		if (!capturing) {
 			if (CheckPassesDrawn(portalFrame) && heldFrames < kMaxHeldFrames) {
 				++heldFrames;
