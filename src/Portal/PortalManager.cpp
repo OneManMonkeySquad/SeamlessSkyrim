@@ -337,7 +337,7 @@ namespace
 		return linked;
 	}
 
-	// The interiors behind portal doors within reach of the last scan, nearest door first, each once
+	// The interiors behind portal doors within reach of the last scan, best ranked first, each once
 	// (several doors can lead into one inn). Only collected outdoors, while spaces are kept warm.
 	struct WarmTarget
 	{
@@ -406,17 +406,27 @@ namespace
 		const Found* best = nullptr;
 		for (const auto& door : found) {
 			if (collectWarm && door.cell && door.cell->IsInteriorCell()) {
-				warmTargets.push_back({ door.cell->GetFormID(), door.distance, door.rank, door.door->GetFormID(), door.linked->GetFormID() });
+				// A room with two doors: which room is kept goes by the better rank of the two, but
+				// the door it is shown through is the nearer one. Taken by rank as well, the door
+				// changed as the player turned on the spot, to one out of reach, and the room's open
+				// doorway in front of them went shut.
+				const auto room = std::ranges::find(warmTargets, door.cell->GetFormID(), &WarmTarget::cell);
+				if (room == warmTargets.end()) {
+					warmTargets.push_back({ door.cell->GetFormID(), door.distance, door.rank, door.door->GetFormID(), door.linked->GetFormID() });
+				} else {
+					room->rank = std::min(room->rank, door.rank);
+					if (door.distance < room->distance) {
+						room->distance = door.distance;
+						room->door = door.door->GetFormID();
+						room->linked = door.linked->GetFormID();
+					}
+				}
 			}
 			if (door.distance <= ActivateRadius() && (!best || door.rank < best->rank)) {
 				best = &door;
 			}
 		}
 		std::ranges::sort(warmTargets, {}, &WarmTarget::rank);
-		{
-			std::unordered_set<RE::FormID> seen;
-			std::erase_if(warmTargets, [&](const WarmTarget& a_target) { return !seen.insert(a_target.cell).second; });
-		}
 		if (!best) {
 			return std::nullopt;
 		}
