@@ -42,6 +42,10 @@ namespace
 	};
 
 	std::unordered_map<RE::FormID, Seen> lastFrame;
+	// The door pair lastFrame's sides are told by. After the player's own crossing the pair is the
+	// other way round and everyone has "changed sides": only the two spaces' coordinates lying far
+	// apart kept them from being carried through the door.
+	std::uint64_t                        lastFramePortal = 0;
 	std::uint32_t                        carried = 0;
 	std::string                          lastCarried = "none";
 
@@ -191,7 +195,11 @@ namespace Portal::NpcTravel
 			return;
 		}
 		const auto& mapping = *found;
-		portalDoors.store(a_portal.sourceDoor | (static_cast<std::uint64_t>(a_portal.linkedDoor) << 32), std::memory_order_relaxed);
+		const auto doors = a_portal.sourceDoor | (static_cast<std::uint64_t>(a_portal.linkedDoor) << 32);
+		portalDoors.store(doors, std::memory_order_relaxed);
+		if (std::exchange(lastFramePortal, doors) != doors) {
+			lastFrame.clear();
+		}
 		const auto linkedCenter = mapping.toLinked * mapping.sourceCenter;
 		const auto toSource = mapping.toLinked.Invert();
 		UpdateWalks();
@@ -243,8 +251,9 @@ namespace Portal::NpcTravel
 					seen.heading = std::atan2(seen.position.x - start.x, seen.position.y - start.y);
 					if (start.GetDistance(seen.position) > 10.0f && std::ranges::none_of(walks, [&](const Walk& a_walk) { return a_walk.actor.get().get() == actor.get(); })) {
 						auto* controller = actor->GetCharController();
-						// How far in front of the plane it starts (depth is that of the unclamped point).
-						const float before = std::abs(depth);
+						// How far in front of the plane it starts (depth is that of the unclamped point);
+						// already past it, it is on the new side from the first step.
+						const float before = std::max(wentIn ? -depth : depth, 0.0f);
 						walks.push_back({ actor->GetHandle(), start, seen.position, seen.heading, controller ? controller->gravity : 1.0f, std::chrono::steady_clock::now(), wentIn,
 							before / (before + kPastDoor) });
 						actor->SetPosition(start, true);
