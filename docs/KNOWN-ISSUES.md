@@ -21,3 +21,22 @@
   save: a flat grey wall, like distant LOD, drawn over the pipe and the city behind the house's
   corner. In each of 22 full suite runs (22:05–23:03), then in none of 7 runs after; cause not
   looked into.
+- Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter
+  house's route): the game was gone once, with no crash log and the plugin log lost to the
+  relaunch. Not again in 4 runs of the same two routes. `run_suite` now keeps the log.
+- Loading the Smelter Overseer's House's save again 0.4 s after the street had been attached
+  (a launch with the save, then the route's own load): 41 of the merged street's shapes drawn at
+  the street's own place, not the room's. Once; not in 5 loads after. Cause not looked into.
+- `place_go` out of that house with the street merged into it: `coc Wilderness` left the player
+  in the house's cell, then moved to the street's coordinates and falling. Once.
+- The street merged into an interior stays merged until it is let go, also far from the door
+  (2400 units in an interior with few doors): the cost `closeBy` in `Manager::Update` is there
+  to avoid (2.6 ms a frame in Honningbrew Meadery's cellar) is only avoided coming from afar.
+  Nothing takes a merge back short of letting the space go.
+- Outdoors with few doors around, a fourth space coming within reach halves the reach
+  (`sparse`), and every kept room beyond the shorter one is let go in the same frame.
+- Seen from indoors without Sky Sync, the street's sun direction and colours are those of the
+  moment the player came in, for half a game hour; then they jump to the computed ones
+  (`PortalRender.cpp`, `RecentOutdoors`).
+- A door's 3D rebuilt while held open is noticed at the next `Doors::Open` on it; the door the
+  player came out of is opened once and waits for another opener.

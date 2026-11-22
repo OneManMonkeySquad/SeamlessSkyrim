@@ -82,6 +82,8 @@ Found porting the plugin; each was checked in the code of both.
   - Stepping a second world from the main thread, beside that job, corrupted memory: it is
     stepped in the same job, right after the engine's.
   - With Precision loaded, that froze the game; it is stepped at the end of the frame instead.
+  - A street's world (seen from indoors) is stepped at the end of the frame in either mode; in
+    the job it was never tried.
   - `bhkWorld+0xC701` is the active flag, read only by the step.
 - **Collision filter:** `bhkCollisionFilter`'s pair filter is at vtable offset 0x10, its ray
   filter at 0x28. Havok returns `hkBool` through a hidden pointer: a `bool` signature crashed.
