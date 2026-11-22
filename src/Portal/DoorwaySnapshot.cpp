@@ -7,9 +7,10 @@
 
 namespace
 {
-	// Small on purpose: shown blurred, a hundred texels across are all it needs, and a door costs
-	// 96 KB on disk. Larger in the menu ([Portals] iDoorwayPictureHeight) for a sharper picture, at
-	// the cost of disk and video memory (pictures are kept for the whole session).
+	// Small on purpose: shown blurred, a hundred texels across are all it needs. A room door's
+	// picture (the capture camera's) is 2.4 MB on disk at that size, 3.2 MB of video memory with its
+	// mipmaps. Larger in the menu ([Portals] iDoorwayPictureHeight) for a sharper picture, at the
+	// cost of both: sixteen times that at the largest size.
 	constexpr int kDefaultHeight = 128;
 	constexpr int kMinHeight = 32;
 	constexpr int kMaxHeight = 512;
@@ -68,6 +69,7 @@ namespace
 		ID3D11Texture2D*                      texture = nullptr;
 		ID3D11ShaderResourceView*             view = nullptr;
 		std::chrono::steady_clock::time_point taken{};
+		std::chrono::steady_clock::time_point used{};  // last drawn or taken (ForgetUnused)
 		bool                                  diskTried = false;
 		// Its own: one loaded from disk or taken before the size was changed keeps the old one.
 		UINT         width = 0;
@@ -284,15 +286,42 @@ namespace
 		return true;
 	}
 
+	// Pictures of doors not looked at for a while are let go; they are on disk for the next time.
+	// Kept for the whole session, every door ever passed held its texture: a walk through a city
+	// at the largest size took gigabytes of video memory.
+	void ForgetUnused()
+	{
+		constexpr auto kKeptUnused = std::chrono::seconds(60);
+		constexpr auto kLookedAtEvery = std::chrono::seconds(5);
+		static std::chrono::steady_clock::time_point lookedAt;
+		const auto                                   now = std::chrono::steady_clock::now();
+		if (now - lookedAt < kLookedAtEvery) {
+			return;
+		}
+		lookedAt = now;
+		std::erase_if(pictures, [&](auto& a_entry) {
+			auto& picture = a_entry.second;
+			// One just taken is still being read back for its file.
+			if (now - picture.used < kKeptUnused || std::ranges::contains(readbacks, a_entry.first, &Readback::key)) {
+				return false;
+			}
+			Release(picture.view);
+			Release(picture.texture);
+			return true;
+		});
+	}
+
 	// The door's picture for this part of the day, loaded from disk the first time it is asked
 	// for; another part's when this one was never taken (a door first passed at night).
 	Picture* Find(ID3D11Device* a_device, RE::FormID a_door, bool a_outdoors)
 	{
+		ForgetUnused();
 		const int part = PartOfDay();
 		std::array<int, 4> order{ part, (part + 1) % 4, (part + 3) % 4, (part + 2) % 4 };
 		for (int i = 0; i < (a_outdoors ? 4 : 1); ++i) {
 			const auto key = KeyOf(a_door, a_outdoors, order[i]);
 			auto&      picture = pictures[key];
+			picture.used = std::chrono::steady_clock::now();
 			if (!picture.view && !std::exchange(picture.diskTried, true)) {
 				// Whatever size it was taken at: after the size is changed a door shows its old picture
 				// until it is taken again, rather than the plain colour.
@@ -921,6 +950,7 @@ namespace Portal::Snapshot
 
 		const auto key = KeyOf(a_door, a_outdoors, PartOfDay());
 		auto&      picture = pictures[key];
+		picture.used = std::chrono::steady_clock::now();
 		// The player's view sees less than the capture camera did.
 		if (!withCamera && picture.view && picture.extent == kCameraExtent) {
 			return;
