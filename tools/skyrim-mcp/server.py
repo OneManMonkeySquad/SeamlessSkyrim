@@ -98,6 +98,22 @@ def game_process() -> psutil.Process | None:
     return None
 
 
+def agent_game() -> psutil.Process | None:
+    """The running game, for ending it: only one launched for an agent (game_launch's
+    SEAMLESS_AGENT, inherited from the loader) may be. A game without it is the user playing; a
+    quit that fell back to killing the process when the bridge didn't answer took theirs."""
+    proc = game_process()
+    if not proc:
+        return None
+    try:
+        ours = proc.environ().get("SEAMLESS_AGENT") == "1"
+    except psutil.Error:
+        ours = False  # started elevated or by another user: not by game_launch
+    if not ours:
+        raise BridgeError("the Skyrim that is running was not launched for an agent (the user is playing): left alone")
+    return proc
+
+
 class LogWatcher:
     """Collects plugin log lines written while a call runs, so probe output comes back inline."""
 
@@ -491,7 +507,7 @@ def game_launch(save: str | None = None, timeout_seconds: float = 300, backgroun
 @mcp.tool()
 def game_quit(force: bool = False, timeout_seconds: float = 30) -> dict[str, Any]:
     """Quit Skyrim. Tries the clean `qqq` console command first; `force` kills the process."""
-    proc = game_process()
+    proc = agent_game()
     if not proc:
         return {"quit": True, "note": "was not running"}
     if not force:
@@ -874,6 +890,7 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
     suite = load_json(SUITE_FILE)
     all_routes = load_json(ROUTES_FILE)
     names = routes or suite["routes"]
+    agent_game()  # raises for the user's own game, before a failed step is taken for a hang in it
     suite_run_dir = fresh_dir(SUITE_RUNS / time.strftime("%Y%m%d-%H%M%S"))
     results: list[dict[str, Any]] = []
     all_checks: list[dict[str, Any]] = []
