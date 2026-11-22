@@ -327,10 +327,11 @@ namespace
 				// until it is taken again, rather than the plain colour.
 				std::ifstream file(FileOf(key), std::ios::binary);
 				std::uint32_t header[4]{};
-				// The capture camera's pictures are the doorway's size times its extent and density.
-				constexpr auto limit = static_cast<std::uint32_t>(D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION);
+				// No larger than the largest ever written, the capture camera's at the largest size: a
+				// damaged file's header asked for gigabytes of texels before its read could fail.
+				const auto [widest, highest] = SizeFor(kCameraExtent, kMaxHeight);
 				if (file.read(reinterpret_cast<char*>(header), sizeof(header)) && header[0] == kMagic && header[1] >= 1 && header[1] <= kVersion && header[2] >= 1 &&
-					header[2] <= limit && header[3] >= 1 && header[3] <= limit) {
+					header[2] <= widest && header[3] >= 1 && header[3] <= highest) {
 					float      place[4]{};
 					Extent     extent = kDoorwayOnly;
 					const bool depth = header[1] >= 2;
