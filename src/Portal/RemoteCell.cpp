@@ -46,6 +46,49 @@ namespace
 			});
 		}
 	}
+
+	// Whether the engine animates a_cell's references itself: only for the interior the player is
+	// in, or else for the grid's cells (TES, ID 13325).
+	bool AnimatedByEngine(const RE::TESObjectCELL* a_cell)
+	{
+		auto* tes = RE::TES::GetSingleton();
+		if (tes->interiorCell) {
+			return a_cell == tes->interiorCell;
+		}
+		for (std::uint32_t x = 0; x < tes->gridCells->length; ++x) {
+			for (std::uint32_t y = 0; y < tes->gridCells->length; ++y) {
+				if (tes->gridCells->GetCell(x, y) == a_cell) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// What the engine does each frame for the cells the player is in, over the cell's animated
+	// references (LOADED_CELL_DATA +0x40): their animation graphs (ID 18900), and a selective update
+	// of their 3D by the frame's time, which runs their controllers and so their particle systems.
+	// Without it the fire in Understone Keep's braziers stood still behind the doorway (SE) or never
+	// started (AE). The engine's per-reference update (ID 18894) isn't called for that: it skipped
+	// these references (it also checks the 3D's room against the player's visible rooms).
+	void AnimateReferences(RE::TESObjectCELL* a_cell)
+	{
+		if (AnimatedByEngine(a_cell)) {
+			return;
+		}
+		static REL::Relocation<void (*)(RE::TESObjectCELL*)> animate{ REL::RelocationID(18469, 18900) };
+		static REL::Relocation<const float*>                 frameTime{ REL::RelocationID(514188, 400333) };
+		animate(a_cell);
+		for (const auto& handle : a_cell->GetRuntimeData().loadedData->unk040) {
+			const auto ref = handle.get();
+			if (auto* object = ref ? ref->Get3D2() : nullptr) {
+				// Anew for each, with ID 18894's flags: the update writes flags back into it.
+				RE::NiUpdateData data{ *frameTime, RE::NiUpdateData::Flag::kNone };
+				reinterpret_cast<std::uint32_t&>(data.flags) = 2;
+				object->UpdateSelectedDownwardPass(data, 0);
+			}
+		}
+	}
 }
 
 namespace Portal
@@ -752,6 +795,7 @@ namespace Portal
 					ShowLand(cell);
 				}
 			}
+			AnimateReferences(cell);
 			// A merged street's lights were adopted before the merge. In the world scene the engine
 			// registers one of them anew every frame; taking each into ours, the world scene's queued
 			// removal of the one before crashed (ID 106335 -> 106342).

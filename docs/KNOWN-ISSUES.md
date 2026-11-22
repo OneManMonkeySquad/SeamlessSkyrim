@@ -1,5 +1,3 @@
-- SE 1.5.97 without Community Shaders (native backend): particles behind a doorway don't move
-  (reported; where not known yet, not reproduced).
 - SE 1.5.97: `coc MarkarthUnderstoneKeep` from Markarth's street, with the keep merged into the
   street (walked in and out just before), hung the game during the load (once; log ends at the
   `coc`). Not tried on AE.

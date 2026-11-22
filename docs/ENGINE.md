@@ -211,6 +211,17 @@ Found porting the plugin; each was checked in the code of both.
   mode and culls or shows the nodes for it; the engine calls it on entering a cell. A mod can give
   an interior the sky (Understone Keep had it in the AE test load order).
 - **The street can stay attached** when the player goes in (the grid's nine cells).
+- **Animated references are run only in the player's cells.** TES (ID 13325) does it each frame
+  for the interior the player is in, or else for the grid's cells. A cell's animated references
+  are `LOADED_CELL_DATA` +0x40 (added on 3D load by ID 19419 for references whose 3D has the BSX
+  "animated" bit, removed by ID 19420), filled in any attached cell. Per frame the engine runs
+  their animation graphs (ID 18900, `UpdateAnimation`) and, through ID 18891 / 18875, ID 18894:
+  the fade check, a visible-room check, then `UpdateSelectedDownwardPass` of the 3D with the
+  frame's time (ID 400333) and flags 2, which runs the controllers and so the particle systems.
+  ID 18894 skips the references of a room merged into the street; the selective update on its
+  own runs them (`RemoteCell.cpp`, `AnimateReferences`).
+- **`ShadowSceneNode::particleNodes`** (+0x1C8) is only a queue: the light update (ID 106335)
+  pairs each new particle node with lights and empties it every frame. It doesn't animate.
 - **`BGSTerrainManager` layout:**
   - `updateNodes` are the level-32 nodes.
   - A node's `children` (+0x30) points to its 4 children inline, 0x50 apart, not to pointers.
