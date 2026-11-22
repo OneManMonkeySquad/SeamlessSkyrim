@@ -1324,8 +1324,10 @@ namespace
 					// A door held open can still stop the ray (Whiterun's doors have a body the layer
 					// change doesn't reach) though not the player: what blocks the way is behind
 					// it, and with the ray ending here it was never found (the Bannered Mare and the
-					// houses around it couldn't be entered). The search goes on past the hit.
-					from = from + (to - from) * fraction + a_mapping.inward * 2.0f;
+					// houses around it couldn't be entered). The search goes on just past the hit: the
+					// wall closing Sadri's Used Wares' doorway in Windhelm stands 2 units behind its
+					// door's back face, and a step of 2 started the next ray on it, which missed it.
+					from = from + (to - from) * fraction + a_mapping.inward * 0.1f;
 					if ((to - from).Dot(a_mapping.inward) < 5.0f) {
 						break;
 					}

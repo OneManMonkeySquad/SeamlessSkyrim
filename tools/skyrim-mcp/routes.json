@@ -448,5 +448,43 @@
         }
       }
     ]
+  },
+  "windhelm-sadris-walk-in": {
+    "note": "Windhelm: walk into Sadri's Used Wares (merged into the street) from the front. Was: stuck 20 units short of the door, the house's collision closing the doorway behind the door never opened.",
+    "steps": [
+      {
+        "load": "SeamlessTestWindhelmSadris"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "place": "windhelm-sadris-door"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            140760,
+            38640
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "name": "inside"
+        }
+      }
+    ]
   }
 }

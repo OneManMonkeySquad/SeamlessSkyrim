@@ -103,6 +103,10 @@ Found porting the plugin; each was checked in the code of both.
   - `bhkWorld+0xC701` is the active flag, read only by the step.
 - **Collision filter:** `bhkCollisionFilter`'s pair filter is at vtable offset 0x10, its ray
   filter at 0x28. Havok returns `hkBool` through a hidden pointer: a `bool` signature crashed.
+- **`bhkWorld::PickObject`** with a char-controller filter still hits bodies on the non-collidable
+  layer (15): a door made walkable stops the ray, not the player. A ray started on a surface
+  misses it. A house's own collision can close its doorway 2 units behind the door's back face
+  (Sadri's Used Wares, Windhelm).
 - **Line of sight:** ID 37761 (observer, target, mode), called by detection and combat (IDs 39639,
   39640, 41246, among twelve callers). ID 53829 (`HasLineOfSight`) only dispatches to it.
 - **Conditions:** `GetInWorldspace` is ID 21475 and compares exactly. Conditions run through the

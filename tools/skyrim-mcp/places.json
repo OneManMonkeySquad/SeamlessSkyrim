@@ -108,5 +108,16 @@
       3388.278076171875,
       -2182.92919921875
     ]
+  },
+  "windhelm-sadris-door": {
+    "cell": "Wilderness",
+    "headingDeg": 89.99897003173828,
+    "interior": false,
+    "note": "Windhelm, 180 units in front of Sadri's Used Wares' door (00016968), centred, looking in. Was: the player stopped 20 units short of the door, at the house's collision closing the doorway 2 units behind the door's back face.",
+    "pos": [
+      140380.0,
+      38639.99609375,
+      -12961.22265625
+    ]
   }
 }
