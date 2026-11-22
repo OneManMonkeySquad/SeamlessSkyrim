@@ -6,10 +6,28 @@
 #include "Portal/PortalRender.h"
 #include "Render/Backend.h"
 
+#include "Paths.h"
 #include "SKSEMenuFramework.h"
 
 namespace
 {
+	// What is set here is written to SeamlessSkyrim.ini, as the ini's comments say of these keys
+	// ("Also in the in-game menu"): kept for the session only, every setting was back at the next
+	// start of the game.
+	void Save(const wchar_t* a_key, int a_value)
+	{
+		const auto ini = Paths::PluginDirectory() / "SeamlessSkyrim.ini";
+		::WritePrivateProfileStringW(L"Portals", a_key, std::to_wstring(a_value).c_str(), ini.c_str());
+	}
+
+	// A slider is written once, when it is let go: dragged, it changes every frame.
+	void SaveWhenReleased(const wchar_t* a_key, int a_value)
+	{
+		if (ImGui::IsItemDeactivatedAfterEdit()) {
+			Save(a_key, a_value);
+		}
+	}
+
 	// The door pair of the doorway the player is at, for the correction controls.
 	struct Pair
 	{
@@ -59,6 +77,10 @@ namespace
 		ImGui::EndDisabled();
 		if (!available) {
 			ImGui::TextWrapped("Off for this session: set bEnabled=1 under [Portals] in SeamlessSkyrim.ini and restart the game.");
+		} else {
+			// Not written to the ini: off there, the game starts without the mod's hooks, and this
+			// box can't switch it on again.
+			ImGui::TextWrapped("For this session; to keep it off, set bEnabled=0 in SeamlessSkyrim.ini.");
 		}
 
 		ImGui::NewLine();
@@ -70,6 +92,7 @@ namespace
 		bool merge = Portal::Manager::MergeEnabled();
 		if (ImGui::Checkbox("Draw rooms into the world (seen from outside)", &merge)) {
 			Portal::Manager::SetMergeEnabled(merge);
+			Save(L"bMerge", merge);
 		}
 
 		ImGui::NewLine();
@@ -78,6 +101,7 @@ namespace
 		if (ImGui::SliderInt("Rooms active at once", &shown, 1, Portal::Manager::kMaxShownRooms)) {
 			Portal::Manager::SetShownRooms(shown);
 		}
+		SaveWhenReleased(L"iShownRooms", shown);
 		ImGui::TextWrapped("Outdoors, the rooms behind the nearest doors are loaded, so a doorway opens at once when you walk up, "
 						   "and each open door shows its own room. Counts the room you're at; 1 = only that one. Each costs "
 						   "memory, a short frame when it loads, frame time while its doorway is on screen, and its people "
@@ -93,11 +117,13 @@ namespace
 		if (ImGui::SliderFloat("Room light seen from outside (%)", &light, 5.0f, 100.0f, "%.0f")) {
 			Portal::Manager::SetMergedLightScale(light / 100.0f);
 		}
+		SaveWhenReleased(L"iMergedLightPercent", static_cast<int>(std::lround(light)));
 
 		float doorDistance = Portal::Manager::DoorOpenDistance();
 		if (ImGui::SliderFloat("Doors open within (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
 			Portal::Manager::SetDoorOpenDistance(doorDistance);
 		}
+		SaveWhenReleased(L"iDoorOpenDistance", static_cast<int>(std::lround(doorDistance)));
 		ImGui::TextWrapped("The space behind a door starts loading 300 units further out and is let go 700 units further out.");
 
 		ImGui::NewLine();
@@ -105,6 +131,7 @@ namespace
 		bool pause = Portal::Manager::PauseUnseenRooms();
 		if (ImGui::Checkbox("Pause rooms nobody can see", &pause)) {
 			Portal::Manager::SetPauseUnseenRooms(pause);
+			Save(L"bPauseUnseenRooms", pause);
 		}
 		ImGui::TextWrapped("A loaded room whose doorway is out of view isn't simulated or drawn until it comes into view; "
 						   "the room at the door you're at always runs.");
@@ -130,6 +157,7 @@ namespace
 			}
 			if (ImGui::Combo("Doorway picture size (texels)", &index, labels, static_cast<int>(std::size(labels)))) {
 				Portal::Snapshot::SetPictureHeight(heights[index]);
+				Save(L"iDoorwayPictureHeight", heights[index]);
 			}
 			ImGui::TextWrapped("The blurred picture a doorway shows while the space behind it loads, in texels across the doorway. "
 							   "Larger is sharper; each door is taken again at the new size when next seen open (doors to the outdoors "
@@ -141,6 +169,7 @@ namespace
 		bool step = Portal::Manager::StepExterior();
 		if (ImGui::Checkbox("Street physics while indoors (people outside walk)", &step)) {
 			Portal::Manager::SetStepExterior(step);
+			Save(L"bStepExteriorFromInside", step);
 		}
 	}
 
