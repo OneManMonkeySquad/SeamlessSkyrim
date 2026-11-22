@@ -10,8 +10,9 @@ namespace Sampler
 	void SetMainThread();
 
 	// Any thread: samples for a_seconds, then writes the file. Sample times are milliseconds since
-	// this call. Ignored while a run is in progress.
-	void Start(const std::filesystem::path& a_file, double a_seconds);
+	// this call. False, and nothing sampled, while a run is in progress or before the main thread
+	// is known (the first player update).
+	bool Start(const std::filesystem::path& a_file, double a_seconds);
 
 	[[nodiscard]] bool Running();
 }

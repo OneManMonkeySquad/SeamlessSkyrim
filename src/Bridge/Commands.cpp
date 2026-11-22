@@ -1441,7 +1441,10 @@ namespace Bridge
 			// Off the main thread: it samples the main thread from its own, also when that one hangs.
 			{ "profile", { [](const json& a) {
 				 const auto file = a.at("file").get<std::string>();
-				 Sampler::Start(std::filesystem::path(file), a.value("seconds", 3.0));
+				 // Said, not passed over: a hang reported "sampled into" a file that never appeared.
+				 if (!Sampler::Start(std::filesystem::path(file), a.value("seconds", 3.0))) {
+					 throw std::runtime_error("not sampling: a sample is already running, or the main thread isn't known yet (no player update so far)");
+				 }
 				 return json{ { "file", file } };
 			 }, false } },
 			{ "travel_profile", { [](const json& a) {

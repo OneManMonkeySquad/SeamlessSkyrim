@@ -74,10 +74,10 @@ namespace Sampler
 		return running;
 	}
 
-	void Start(const std::filesystem::path& a_file, double a_seconds)
+	bool Start(const std::filesystem::path& a_file, double a_seconds)
 	{
 		if (!mainThread || running.exchange(true)) {
-			return;
+			return false;
 		}
 		std::thread([a_file, a_seconds, start = std::chrono::steady_clock::now()] {
 			// Everything is allocated up front: the main thread may be suspended while holding the
@@ -120,5 +120,6 @@ namespace Sampler
 			logger::info("sampler: {} samples written to {}", taken, a_file.string());
 			running = false;
 		}).detach();
+		return true;
 	}
 }

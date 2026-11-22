@@ -923,8 +923,11 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
                             bridge.call("profile", file=str(profile), seconds=2.0)
                             time.sleep(3)
                             done.append(f"main thread sampled into {profile}")
-                        except BridgeError:
-                            outcome = "crashed"  # the bridge thread is gone too: a crash in progress
+                        except BridgeError as profile_error:
+                            if "not sampling" in str(profile_error):
+                                done.append(f"main thread {profile_error}")
+                            else:
+                                outcome = "crashed"  # the bridge thread is gone too: a crash in progress
                         game_quit(force=True)
                 if outcome == "ok" and not route_checks:
                     outcome = "error"
