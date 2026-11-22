@@ -1221,7 +1221,7 @@ def read_log(source: str = "plugin", lines: int = 120) -> dict[str, Any]:
     elif source == "skse":
         path = SKSE_LOG_DIR / "skse64.log"
     elif source == "crash":
-        crashes = sorted(SKSE_LOG_DIR.glob("crash-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        crashes = sorted(SKSE_LOG_DIR.glob("Crashlogs/*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
         if not crashes:
             return {"path": None, "lines": [], "note": "no crash logs"}
         path = crashes[0]
