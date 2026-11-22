@@ -36,6 +36,8 @@ namespace Portal::Doors
 			RE::NiTransform               closedLocal;
 		};
 		std::unordered_map<RE::FormID, std::vector<SwungLeaf>> swungClosed;
+		// The shapes of a swung door's leaves drawn from behind too (Leaf::oneSided), to be put back.
+		std::unordered_map<RE::FormID, std::vector<RE::NiPointer<RE::BSShaderProperty>>> swungTwoSided;
 
 		const RE::NiTransform* ClosedLocal(RE::FormID a_door, const RE::NiAVObject* a_node)
 		{
@@ -134,6 +136,10 @@ namespace Portal::Doors
 			RE::NiPointer<RE::NiAVObject> node;
 			Box                           box;    // its shapes, in the door's model space
 			RE::NiPoint3                  pivot;  // its origin there: what its animation turns it around
+			// Modelled from the front only: a load door's back faces the other cell and was never
+			// seen until a doorway showed it swung open (Markarth's Dwemer doors, empty but for their
+			// carvings' rims).
+			bool oneSided = false;
 		};
 
 		struct Geometry
@@ -174,6 +180,7 @@ namespace Portal::Doors
 			struct Triangle
 			{
 				RE::NiPoint3 a, b, c;
+				int          leaf;
 			};
 			std::vector<Triangle> panelTriangles;
 			bool                  complete = true;
@@ -186,7 +193,7 @@ namespace Portal::Doors
 					box.Add(b);
 					box.Add(c);
 					if (leaf >= 0) {
-						panelTriangles.push_back({ a, b, c });
+						panelTriangles.push_back({ a, b, c, leaf });
 					}
 				});
 				if (box.Empty()) {
@@ -243,15 +250,26 @@ namespace Portal::Doors
 					back = std::max(back, at);
 				}
 			}
+			// A leaf whose surface faces one way along the thin axis only (a tenth the other way at
+			// most: a carving's rim, a handle's back).
+			std::vector<std::array<float, 2>> sides(geometry.leaves.size());
+			for (const auto& t : panelTriangles) {
+				const auto  normal = (t.b - t.a).Cross(t.c - t.a);
+				const float along = geometry.thinX ? normal.x : normal.y;
+				sides[t.leaf][along >= 0.0f ? 0 : 1] += std::abs(along);
+			}
+			for (std::size_t i = 0; i < geometry.leaves.size(); ++i) {
+				geometry.leaves[i].oneSided = std::min(sides[i][0], sides[i][1]) < 0.1f * std::max(sides[i][0], sides[i][1]);
+			}
 			if (front <= back) {
 				auto& low = geometry.thinX ? geometry.panel.min.x : geometry.panel.min.y;
 				auto& high = geometry.thinX ? geometry.panel.max.x : geometry.panel.max.y;
 				low = std::max(low, static_cast<float>(front));
 				high = std::min(high, static_cast<float>(back + 1));
 			}
-			logger::info("portal: door {:08X}: panel ({:.1f},{:.1f},{:.1f})..({:.1f},{:.1f},{:.1f}), {} leaf/leaves, {} fixed shape(s)", id,
+			logger::info("portal: door {:08X}: panel ({:.1f},{:.1f},{:.1f})..({:.1f},{:.1f},{:.1f}), {} leaf/leaves ({} without a back), {} fixed shape(s)", id,
 				geometry.panel.min.x, geometry.panel.min.y, geometry.panel.min.z, geometry.panel.max.x, geometry.panel.max.y, geometry.panel.max.z,
-				geometry.leaves.size(), geometry.fixed.size());
+				geometry.leaves.size(), std::ranges::count_if(geometry.leaves, [](const Leaf& a_leaf) { return a_leaf.oneSided; }), geometry.fixed.size());
 			return geometry;
 		}
 
@@ -329,6 +347,23 @@ namespace Portal::Doors
 			for (const auto& leaf : geometry.leaves) {
 				swung.push_back({ leaf.node, leaf.node->local });
 			}
+			// Swung open, a leaf shows its back to whoever looks through the doorway, from either
+			// side. Without one, its front is drawn there too; the lighting shader turns the normals
+			// of faces seen from behind.
+			auto& twoSided = swungTwoSided[id];
+			for (const auto& leaf : geometry.leaves) {
+				if (!leaf.oneSided) {
+					continue;
+				}
+				RE::BSVisit::TraverseScenegraphGeometries(leaf.node.get(), [&](RE::BSGeometry* a_shape) {
+					auto* property = a_shape->GetGeometryRuntimeData().shaderProperty.get();
+					if (property->flags.none(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided)) {
+						property->flags.set(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided);
+						twoSided.emplace_back(property);
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				});
+			}
 		}
 		const auto closedWorld = ClosedWorld(a_door, door3D);
 		const auto room = closedWorld.rotate.Transpose() * a_room;
@@ -376,6 +411,10 @@ namespace Portal::Doors
 		for (auto& leaf : it->second) {
 			leaf.node->local = leaf.closedLocal;
 		}
+		for (auto& property : swungTwoSided[a_door]) {
+			property->flags.reset(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided);
+		}
+		swungTwoSided.erase(a_door);
 		auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_door);
 		auto* door3D = door ? door->Get3D() : nullptr;
 		swungClosed.erase(it);

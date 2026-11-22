@@ -114,6 +114,10 @@ Found porting the plugin; each was checked in the code of both.
   - It must be emptied after each submit, as `RenderPlayerView` does (ID 106597
     `ClearItemsList`, ID 106600 (acc, 6) and (acc, 5)), or stale passes crash the batch renderer.
   - ID 77386 (false) afterwards marks the engine's state cache dirty.
+- **Two-sided at runtime:** setting `kTwoSided` on a shape's `BSShaderProperty` takes effect at its
+  next draw. Community Shaders' lighting shader turns the normals of faces seen from behind (fading
+  out past ~10000 units), so they are lit as their own side. Load doors' leaves are often modelled
+  from the front only (Markarth's Dwemer doors), since their back faced the other cell.
 
 ## Light scenes
 
