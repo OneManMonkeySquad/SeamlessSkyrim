@@ -1163,11 +1163,11 @@ namespace Portal
 		}
 	}
 
-	void RemoteCell::Remap(const RE::NiTransform& a_toSource)
+	void RemoteCell::Remap(const Placement& a_placement)
 	{
-		if (!merged) {
-			return;
-		}
+		SEAMLESS_ASSERT(merged);
+		placed = a_placement;
+		const auto& a_toSource = a_placement.toSource;
 		RestoreBounds();
 		for (auto* cell : movedCells) {
 			if (auto* cell3D = Cell3D(cell)) {
@@ -1655,8 +1655,10 @@ namespace Portal
 		mergedWorld = nullptr;
 	}
 
-	json RemoteCell::Merge(const RE::NiTransform& a_toSource)
+	json RemoteCell::Merge(const Placement& a_placement)
 	{
+		placed = a_placement;
+		const auto& a_toSource = a_placement.toSource;
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		auto* here3D = Cell3D(here);
 		auto* worldParent = here3D ? here3D->parent : nullptr;

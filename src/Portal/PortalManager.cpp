@@ -221,10 +221,16 @@ namespace
 		RE::FormID                           swungDoor = 0;  // which of the pair that is (Doors::SwingingDoor)
 		std::vector<Portal::Doors::OpenState> extraDoors;
 		bool                                 extraScanned = false;
-		float                                correction = 0.0f;  // the door turn the room was placed with
-		RE::NiPoint3                         shift;              // ... and the shift
 	};
 	std::unique_ptr<MergedRoom> primaryRoom = std::make_unique<MergedRoom>();  // remote's, while merged
+
+	// Where a space merged through a_portal stands.
+	Portal::RemoteCell::Placement PlacementOf(const Portal::Manager::Active& a_portal, const Portal::Doors::Mapping& a_mapping)
+	{
+		using RE::TESForm;
+		const auto key = Portal::Doors::CorrectionDoor(TESForm::LookupByID<RE::TESObjectREFR>(a_portal.sourceDoor), TESForm::LookupByID<RE::TESObjectREFR>(a_portal.linkedDoor))->GetFormID();
+		return { a_mapping.toLinked.Invert(), a_portal.sourceDoor, Portal::Doors::Correction(key), Portal::Doors::Shift(key) };
+	}
 
 	// A kept room (in warm, by its cell) merged beside the shown one, through its nearest door.
 	struct BesideRoom
@@ -2385,14 +2391,11 @@ namespace Portal::Manager
 			if (mergeable && !waiting) {
 				CloseDoor();
 				try {
-					if (auto* source = Lookup(portal->sourceDoor), *linked = Lookup(portal->linkedDoor); source && linked) {
-						primaryRoom->correction = Doors::Correction(Doors::CorrectionDoor(source, linked)->GetFormID());
-						primaryRoom->shift = Doors::Shift(Doors::CorrectionDoor(source, linked)->GetFormID());
-					}
 					FrameHooks::CaptureEventFrames(L"merge", 40);
 					const auto mergeStarted = std::chrono::steady_clock::now();
-					const auto toSource = Doors::Compute(*portal).toLinked.Invert();
-					const auto result = remote.Merge(toSource);
+					const auto placement = PlacementOf(*portal, Doors::Compute(*portal));
+					const auto toSource = placement.toSource;
+					const auto result = remote.Merge(placement);
 					if (walkIntoRooms && !MergedOutdoors()) {
 						MergeRoomCollision(*portal, here->GetbhkWorld());
 					}
@@ -3158,17 +3161,14 @@ namespace Portal::Manager
 			auto*       source = Lookup(a_portal.sourceDoor);
 			auto*       linked = Lookup(a_portal.linkedDoor);
 			const bool primary = a_slot == 0;
-			// A door correction changed (the in-game menu): the room is placed anew, live.
-			{
-				const float correction = Doors::Correction(Doors::CorrectionDoor(source, linked)->GetFormID());
-				const auto shift = Doors::Shift(Doors::CorrectionDoor(source, linked)->GetFormID());
-				if (correction != a_room.correction || shift.x != a_room.shift.x || shift.y != a_room.shift.y || shift.z != a_room.shift.z) {
-					a_room.correction = correction;
-					a_room.shift = shift;
-					a_space.Remap(mapping.toLinked.Invert());
-					if (primary && a_space.CollisionMerged()) {
-						MergeRoomCollision(a_portal, RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetbhkWorld());
-					}
+			// The room is placed anew, live, when its place no longer follows from this door pair: a
+			// door correction changed (the in-game menu), or the room was merged through another of
+			// its doors (an inn's kitchen door, then shown through its front door). Left where the
+			// first door put it, it stood off the doorway by however much it misfits its house.
+			if (const auto placement = PlacementOf(a_portal, mapping); !a_space.Placed().SamePlace(placement)) {
+				a_space.Remap(placement);
+				if (primary && a_space.CollisionMerged()) {
+					MergeRoomCollision(a_portal, RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetbhkWorld());
 				}
 			}
 			// Both door panels out of the way: the doorway is open in the picture. Of the two doors
@@ -3590,10 +3590,6 @@ namespace Portal::Manager
 				const Active portal{ pick.door, pick.linked, cell, pick.space->Generation() };
 				auto         state = std::make_unique<MergedRoom>();
 				try {
-					auto* source = Lookup(pick.door);
-					auto* linked = Lookup(pick.linked);
-					state->correction = Doors::Correction(Doors::CorrectionDoor(source, linked)->GetFormID());
-					state->shift = Doors::Shift(Doors::CorrectionDoor(source, linked)->GetFormID());
 					// Paused as a room kept out of sight: the merge's update below takes its lights in.
 					pick.space->SetPaused(false);
 					if (!pick.space->merged) {
@@ -3602,7 +3598,7 @@ namespace Portal::Manager
 						}
 						mergedOne = true;
 						const auto started = std::chrono::steady_clock::now();
-						const auto result = pick.space->Merge(Doors::Compute(portal).toLinked.Invert());
+						const auto result = pick.space->Merge(PlacementOf(portal, Doors::Compute(portal)));
 						pick.space->Update(0.0f);
 						logger::info("portal: merged {} beside the nearest door ({}, {:.1f} ms)", Probe::DescribeCell(cell), result.dump(),
 							std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
@@ -3967,7 +3963,7 @@ namespace Portal::Manager
 			throw std::runtime_error("no active portal");
 		}
 		CloseDoor();
-		return remote.Merge(Doors::Compute(*portal).toLinked.Invert());
+		return remote.Merge(PlacementOf(*portal, Doors::Compute(*portal)));
 	}
 
 	json Status()

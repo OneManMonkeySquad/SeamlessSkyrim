@@ -134,9 +134,24 @@ namespace Portal
 
 		// Render-merge: hang the remote cells into the world scene, moved so that the far door
 		// coincides with the near one, to be drawn by the game's main pass.
-		json Merge(const RE::NiTransform& a_toSource);
-		// Merged: the cells placed anew (a door correction changed while looking at them).
-		void Remap(const RE::NiTransform& a_toSource);
+		// Where: a_placement.toSource, which follows from the door pair the space is seen through
+		// and that pair's hand corrections. The space remembers those with its place, so whoever
+		// shows it next (through another of its doors, as the shown room or beside it) can tell
+		// that it stands somewhere else.
+		struct Placement
+		{
+			RE::NiTransform toSource;
+			RE::FormID      sourceDoor = 0;
+			float           turn = 0.0f;
+			RE::NiPoint3    shift;
+
+			[[nodiscard]] bool SamePlace(const Placement& a_other) const { return sourceDoor == a_other.sourceDoor && turn == a_other.turn && shift == a_other.shift; }
+		};
+		json Merge(const Placement& a_placement);
+		// Merged: the cells placed anew (a door correction changed while looking at them, or the
+		// space is now seen through another of its doors).
+		void Remap(const Placement& a_placement);
+		[[nodiscard]] const Placement& Placed() const { return placed; }
 		// Merged, for walking into the room without leaving the world: copies of its fixed collision
 		// (walls, floors, furniture) put into a_world where its 3D is drawn (a_toSource). The originals
 		// stay in the room's own world, under its NPCs. a_skip: a reference left out (its door, open).
@@ -218,6 +233,7 @@ namespace Portal
 		// The cells Merge moved itself; the others (the engine's, walked in from the street) move
 		// with the LOD root (Manager's MergeLOD).
 		std::vector<RE::TESObjectCELL*> movedCells;
+		Placement                       placed;  // while merged
 		void                    MoveBounds(const RE::NiTransform& a_toSource);
 
 	public:
