@@ -922,9 +922,6 @@ namespace Bridge
 				 if (a.contains("enabled")) {
 					 Portal::Manager::SetMergeEnabled(a.at("enabled").get<bool>());
 				 }
-				 if (a.contains("lightScale")) {
-					 Portal::Manager::SetMergedLightScale(a.at("lightScale").get<float>());
-				 }
 				 if (a.contains("quietLeftCell")) {
 					 Portal::RemoteCell::kQuietSecondsLeftCell = a.at("quietLeftCell").get<float>();
 				 }
@@ -934,10 +931,13 @@ namespace Bridge
 				 if (a.contains("stepExterior")) {
 					 Portal::RemoteCell::stepExterior = a.at("stepExterior").get<bool>();
 				 }
+				 if (a.contains("streetEye")) {
+					 Portal::Manager::SetStreetEye(a.at("streetEye").get<bool>());
+				 }
 				 if (a.contains("ownLighting")) {
 					 Portal::Manager::SetMergedOwnLighting(a.at("ownLighting").get<bool>());
 				 }
-				 return json{ { "enabled", Portal::Manager::MergeEnabled() } };
+				 return json{ { "enabled", Portal::Manager::MergeEnabled() }, { "adaptation", Portal::Manager::DescribeAdaptation() } };
 			 } } },
 			// Diagnostics: the world scene's graph's occlusion shapes. "list"; "clear": its list emptied
 			// (kept aside); "restore": put back. The list: first, last, count at the graph's +0x10, each

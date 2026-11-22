@@ -120,6 +120,17 @@
       -2182.92919921875
     ]
   },
+  "whiterun-market-arcadia-mare": {
+    "cell": "WhiterunPLainsDistrict03",
+    "headingDeg": 94.99999237060547,
+    "interior": false,
+    "note": "Whiterun market by the well at 13:00, the Bannered Mare's door ahead-left and Arcadia's Cauldron's (0001A6F3) to the right, both open on their rooms. Was: the rooms bright, warm and unhazed against the street, standing out of the picture.",
+    "pos": [
+      24499.99609375,
+      -8149.99951171875,
+      -3393.09912109375
+    ]
+  },
   "windhelm-sadris-door": {
     "cell": "Wilderness",
     "headingDeg": 89.99897003173828,

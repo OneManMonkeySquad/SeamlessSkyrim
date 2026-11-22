@@ -2,6 +2,7 @@
 
 #include "Paths.h"
 
+#include <DirectXPackedVector.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
 
@@ -79,6 +80,7 @@ namespace
 		Extent        extent = kDoorwayOnly;
 		float         lightScale = 1.0f;  // Source::lightScale when taken
 		std::uint32_t version = kVersion;
+		float         brightness = 0.0f;  // RoomBrightness; 0 until its texels have been on the CPU
 	};
 	std::unordered_map<std::string, Picture> pictures;
 
@@ -92,6 +94,7 @@ namespace
 		Extent           extent{};
 		float            lightScale = 1.0f;
 		int              frames = 0;
+		std::chrono::steady_clock::time_point taken{};  // the picture's Picture::taken
 	};
 	std::vector<Readback> readbacks;
 
@@ -259,6 +262,31 @@ namespace
 		}
 	}
 
+	// Below the darkest a texel is counted as: black (an unlit corner) would pull the mean to 0.
+	constexpr float kDarkest = 1e-3f;
+
+	// RoomBrightness of a picture's texels (RGBA16F, alpha how far behind the doorway).
+	float Brightness(const void* a_texels, UINT a_width, UINT a_height, std::size_t a_rowPitch, float a_lightScale)
+	{
+		using DirectX::PackedVector::XMConvertHalfToFloat;
+		double sum = 0.0;
+		std::size_t count = 0;
+		for (UINT y = 0; y < a_height; ++y) {
+			const auto* row = reinterpret_cast<const std::uint16_t*>(static_cast<const char*>(a_texels) + y * a_rowPitch);
+			for (UINT x = 0; x < a_width; ++x) {
+				const auto* texel = row + x * 4;
+				// Nothing there (no wall of the room's beyond the capture camera's edge): not part of it.
+				if (XMConvertHalfToFloat(texel[3]) >= 20000.0f) {
+					continue;
+				}
+				const float luminance = 0.2126f * XMConvertHalfToFloat(texel[0]) + 0.7152f * XMConvertHalfToFloat(texel[1]) + 0.0722f * XMConvertHalfToFloat(texel[2]);
+				sum += std::log(std::max(luminance, kDarkest));
+				++count;
+			}
+		}
+		return count ? static_cast<float>(std::exp(sum / count)) / a_lightScale : 0.0f;
+	}
+
 	// With mipmaps: where the eye's ray stretches a row of texels across the screen (leaving the
 	// picture at its side, or sliding off a near thing's edge onto the room behind it) the draw
 	// blurs by how far, from a smaller mip. Sampled sharp there, the row showed as streaks.
@@ -344,6 +372,9 @@ namespace
 							// 0 in the pictures taken before it was written.
 							picture.lightScale = place[3] > 0.0f ? place[3] : 1.0f;
 							picture.version = header[1];
+							if (!a_outdoors) {
+								picture.brightness = Brightness(texels.data(), header[2], header[3], header[2] * 8, picture.lightScale);
+							}
 						}
 					}
 				}
@@ -858,6 +889,11 @@ namespace
 				for (UINT row = 0; row < it->height; ++row) {
 					file.write(static_cast<const char*>(mapped.pData) + row * mapped.RowPitch, it->width * 8);
 				}
+				// Taken again meanwhile: the newer one's texels decide.
+				const auto found = pictures.find(it->key);
+				if (found != pictures.end() && found->second.taken == it->taken && it->key.ends_with("#inside")) {
+					found->second.brightness = Brightness(mapped.pData, it->width, it->height, mapped.RowPitch, it->lightScale);
+				}
 				a_context->Unmap(it->staging, 0);
 				if (!file) {
 					logger::warn("doorway snapshot: could not write {}", Paths::Narrow(path.wstring()));
@@ -867,10 +903,185 @@ namespace
 			it = readbacks.erase(it);
 		}
 	}
+
+	// MeasureScene: one group of 16x16 threads, each taking 4x4 points of a 64x64 grid over the
+	// viewport; read back through a ring of staging copies so the GPU is never waited for.
+	struct Meter
+	{
+		ID3D11ComputeShader*                 shader = nullptr;
+		ID3D11Buffer*                        constants = nullptr;
+		ID3D11Texture2D*                     result = nullptr;
+		ID3D11UnorderedAccessView*           resultView = nullptr;
+		std::array<ID3D11Texture2D*, 4>      staging{};
+		std::array<bool, 4>                  pending{};
+		std::size_t                          next = 0;
+		bool                                 failed = false;
+		float                                adapted = 0.0f;  // 0: no reading yet
+		std::chrono::steady_clock::time_point read{};
+	} meter;
+
+	// An eye takes about this long to adapt to a brighter or darker view (the low end of real
+	// eyes' light adaptation; a doorway shouldn't brighten and dim as the head turns).
+	constexpr float kAdaptSeconds = 1.5f;
+
+	bool EnsureMeter(ID3D11Device* a_device)
+	{
+		if (meter.shader || meter.failed) {
+			return !meter.failed;
+		}
+		static const char source[] = R"(
+			Texture2D<float4>   Scene : register(t0);
+			RWTexture2D<float>  Out : register(u0);
+			cbuffer Meter : register(b0) { float4 Size; };  // xy: the viewport in pixels
+			groupshared float sums[256];
+			[numthreads(16, 16, 1)]
+			void CS(uint3 thread : SV_GroupThreadID, uint index : SV_GroupIndex)
+			{
+				float sum = 0;
+				for (uint y = 0; y < 4; ++y) {
+					for (uint x = 0; x < 4; ++x) {
+						float2 at = (float2(thread.xy * 4 + uint2(x, y)) + 0.5) / 64;
+						float3 color = Scene.Load(int3(at * Size.xy, 0)).rgb;
+						sum += log(max(dot(color, float3(0.2126, 0.7152, 0.0722)), 1e-3));
+					}
+				}
+				sums[index] = sum;
+				GroupMemoryBarrierWithGroupSync();
+				for (uint half = 128; half > 0; half >>= 1) {
+					if (index < half)
+						sums[index] += sums[index + half];
+					GroupMemoryBarrierWithGroupSync();
+				}
+				if (index == 0)
+					Out[uint2(0, 0)] = exp(sums[0] / 4096);
+			}
+		)";
+		ID3DBlob* blob = nullptr;
+		ID3DBlob* errors = nullptr;
+		meter.failed = FAILED(::D3DCompile(source, sizeof(source) - 1, "SeamlessMeter", nullptr, nullptr, "CS", "cs_5_0", 0, 0, &blob, &errors));
+		if (errors) {
+			logger::error("scene brightness: shader failed: {}", static_cast<const char*>(errors->GetBufferPointer()));
+			errors->Release();
+		}
+		if (!meter.failed) {
+			D3D11_BUFFER_DESC    constants{ sizeof(float) * 4, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
+			D3D11_TEXTURE2D_DESC result{ 1, 1, 1, 1, DXGI_FORMAT_R32_FLOAT, { 1, 0 }, D3D11_USAGE_DEFAULT, D3D11_BIND_UNORDERED_ACCESS, 0, 0 };
+			D3D11_TEXTURE2D_DESC staging{ 1, 1, 1, 1, DXGI_FORMAT_R32_FLOAT, { 1, 0 }, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0 };
+			meter.failed = FAILED(a_device->CreateComputeShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &meter.shader)) ||
+			               FAILED(a_device->CreateBuffer(&constants, nullptr, &meter.constants)) || FAILED(a_device->CreateTexture2D(&result, nullptr, &meter.result)) ||
+			               FAILED(a_device->CreateUnorderedAccessView(meter.result, nullptr, &meter.resultView));
+			for (auto*& copy : meter.staging) {
+				meter.failed = meter.failed || FAILED(a_device->CreateTexture2D(&staging, nullptr, &copy));
+			}
+			if (meter.failed) {
+				logger::error("scene brightness: could not create the meter");
+			}
+		}
+		if (blob) {
+			blob->Release();
+		}
+		return !meter.failed;
+	}
+
+	void Adapt(float a_reading)
+	{
+		const auto now = std::chrono::steady_clock::now();
+		if (meter.adapted <= 0.0f) {
+			meter.adapted = a_reading;
+		} else {
+			// In log space, as the eye adapts: halving and doubling take as long.
+			const float seconds = std::chrono::duration<float>(now - meter.read).count();
+			const float toward = 1.0f - std::exp(-seconds / kAdaptSeconds);
+			meter.adapted = std::exp(std::log(meter.adapted) + (std::log(a_reading) - std::log(meter.adapted)) * toward);
+		}
+		meter.read = now;
+	}
 }
 
 namespace Portal::Snapshot
 {
+	void MeasureScene(void* a_scene, float a_width, float a_height)
+	{
+		auto* context = Context();
+		auto* device = Device();
+		if (!context || !device || !a_scene || !EnsureMeter(device)) {
+			return;
+		}
+		auto* copy = meter.staging[meter.next];
+		if (meter.pending[meter.next]) {
+			D3D11_MAPPED_SUBRESOURCE mapped{};
+			const HRESULT            result = context->Map(copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+			if (result == DXGI_ERROR_WAS_STILL_DRAWING) {
+				return;  // the GPU is behind: the next frame
+			}
+			if (SUCCEEDED(result)) {
+				const float reading = *static_cast<const float*>(mapped.pData);
+				context->Unmap(copy, 0);
+				if (std::isfinite(reading) && reading > 0.0f) {
+					Adapt(reading);
+				}
+			}
+			meter.pending[meter.next] = false;
+		}
+		const float size[4]{ a_width, a_height, 0.0f, 0.0f };
+		Upload(context, meter.constants, size, sizeof(size));
+		// The scene may still be bound as a target, and a view of it then reads as nothing.
+		const SavedState        saved(context);
+		ID3D11RenderTargetView* noTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+		context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, noTargets, nullptr);
+		ID3D11ComputeShader*       savedShader = nullptr;
+		ID3D11ShaderResourceView*  savedView = nullptr;
+		ID3D11UnorderedAccessView* savedOut = nullptr;
+		ID3D11Buffer*              savedConstants = nullptr;
+		context->CSGetShader(&savedShader, nullptr, nullptr);
+		context->CSGetShaderResources(0, 1, &savedView);
+		context->CSGetUnorderedAccessViews(0, 1, &savedOut);
+		context->CSGetConstantBuffers(0, 1, &savedConstants);
+		auto* scene = static_cast<ID3D11ShaderResourceView*>(a_scene);
+		context->CSSetShader(meter.shader, nullptr, 0);
+		context->CSSetShaderResources(0, 1, &scene);
+		context->CSSetUnorderedAccessViews(0, 1, &meter.resultView, nullptr);
+		context->CSSetConstantBuffers(0, 1, &meter.constants);
+		context->Dispatch(1, 1, 1);
+		context->CSSetShader(savedShader, nullptr, 0);
+		context->CSSetShaderResources(0, 1, &savedView);
+		context->CSSetUnorderedAccessViews(0, 1, &savedOut, nullptr);
+		context->CSSetConstantBuffers(0, 1, &savedConstants);
+		for (IUnknown* object : std::initializer_list<IUnknown*>{ savedShader, savedView, savedOut, savedConstants }) {
+			if (object) {
+				object->Release();
+			}
+		}
+		context->CopyResource(copy, meter.result);
+		meter.pending[meter.next] = true;
+		meter.next = (meter.next + 1) % meter.staging.size();
+	}
+
+	std::optional<float> SceneBrightness()
+	{
+		return meter.adapted > 0.0f ? std::optional(meter.adapted) : std::nullopt;
+	}
+
+	std::optional<float> RoomBrightness(RE::FormID a_door)
+	{
+		auto*       device = Device();
+		const auto* picture = device ? Find(device, a_door, false) : nullptr;
+		if (picture && picture->brightness > 0.0f) {
+			return picture->brightness;
+		}
+		// A room merged beside the shown one may never have had its picture taken: as bright as
+		// the rooms that have, rather than as from inside.
+		double sum = 0.0;
+		int    count = 0;
+		for (const auto& [key, other] : pictures) {
+			if (other.brightness > 0.0f) {
+				sum += std::log(other.brightness);
+				++count;
+			}
+		}
+		return count ? std::optional(static_cast<float>(std::exp(sum / count))) : std::nullopt;
+	}
+
 	void Flush()
 	{
 		if (!readbacks.empty()) {
@@ -1055,7 +1266,7 @@ namespace Portal::Snapshot
 		ID3D11Texture2D*     copy = nullptr;
 		if (SUCCEEDED(device->CreateTexture2D(&staging, nullptr, &copy))) {
 			context->CopyResource(copy, pipeline.target);
-			readbacks.push_back({ key, copy, width, height, picture.takenFrom, extent, picture.lightScale, 0 });
+			readbacks.push_back({ key, copy, width, height, picture.takenFrom, extent, picture.lightScale, 0, picture.taken });
 		}
 		logger::info("doorway snapshot: {} taken ({}x{}, {})", key, width, height, withCamera ? "capture camera" : "the player's view");
 	}

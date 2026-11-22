@@ -68,7 +68,8 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   shadow-casting ones dimmed by `LightOcclusion`), as the fork's strict-light path does. The
   engine had paired almost none with the portal's shapes.
 - Merged room: the room's lights (they stay in the portal light scene), and the sun colour and
-  direction and ambient from `SetMergedLighting`, scaled by `iMergedLightPercent`.
+  direction and ambient from `SetMergedLighting`, scaled by `RoomLightScale` (the room's
+  brightness against the view's, measured; 1 within a few steps of the doorway).
 - Street merged into an interior: the street's fog. Fog is uploaded with the technique (ID 107320
   from SetupTechnique), so the scene's fog property is given the street's values, the technique is
   set up again, and afterwards the property is put back and the batch renderer's cached technique
@@ -79,7 +80,9 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   pixel alike and keeps the street's (it takes the merged fog only with the player indoors).
 
 Not done natively: Interior Sun (the street's sun shadows inside), skylighting settle, Sky Sync's
-sun direction (the computed one is used). These are Community Shaders features.
+sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
+seen from across the street, the street's light through its doorway and the street's fog in front
+of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders.
 
 ## ENB
 

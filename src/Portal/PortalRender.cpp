@@ -2187,6 +2187,9 @@ namespace
 	void DoorwayPictures(bool a_realShown)
 	{
 		Portal::Snapshot::Flush();
+		const auto view = SnapshotView();
+		// Before any stand-in picture is drawn into it: the eye adapts to the real view.
+		Portal::Snapshot::MeasureScene(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN].SRV, view.width, view.height);
 		const auto chance = Portal::Manager::SnapshotChance();
 		const auto standIns = Portal::Manager::StandIns();
 		if (!chance && standIns.empty() && !captureDrawn) {
@@ -2194,7 +2197,6 @@ namespace
 		}
 		auto*      camera = RE::Main::WorldRootCamera();
 		const auto viewer = camera ? camera->world.translate : RE::NiPoint3{};
-		const auto view = SnapshotView();
 		// One door at a time: a door that throws (unloaded meanwhile) leaves the others drawn.
 		const auto guarded = [](auto&& a_draw) {
 			try {
@@ -2845,6 +2847,17 @@ namespace Portal::Render
 		const auto computed = OutdoorSunDirection();
 		result["computedDirection"] = { computed.x, computed.y, computed.z };
 		return result;
+	}
+
+	std::optional<RE::NiColor> OutdoorAmbient(const RE::NiPoint3& a_normal)
+	{
+		const auto weather = WeatherLighting();
+		if (!weather) {
+			return std::nullopt;
+		}
+		const RE::NiTransform ambient = AmbientTransform(weather->ambient);
+		const RE::NiPoint3    color = ambient.rotate * a_normal + ambient.translate;
+		return RE::NiColor{ std::max(color.x, 0.0f), std::max(color.y, 0.0f), std::max(color.z, 0.0f) };
 	}
 
 	std::optional<std::array<float, 10>> MergedFog()

@@ -113,12 +113,6 @@ namespace
 
 		ImGui::NewLine();
 
-		float light = Portal::Manager::MergedLightScale() * 100.0f;
-		if (ImGui::SliderFloat("Room light seen from outside (%)", &light, 5.0f, 100.0f, "%.0f")) {
-			Portal::Manager::SetMergedLightScale(light / 100.0f);
-		}
-		SaveWhenReleased(L"iMergedLightPercent", static_cast<int>(std::lround(light)));
-
 		float doorDistance = Portal::Manager::DoorOpenDistance();
 		if (ImGui::SliderFloat("Doors open within (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
 			Portal::Manager::SetDoorOpenDistance(doorDistance);

@@ -5,7 +5,6 @@
   isn't installed in the 1.5.97 test game).
 - The skylight (the indoor stand-in for the sun) in The Drunken Huntsman turns off when seen from outside (jarring).
 - Physics objects and arrows are not carried through a doorway.
-- Doorways are drawn in front of transparent things.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
 - Understone Keep seen from Markarth's street: frame ~13.7 ms, ~9.6 ms with it hidden. Left: the game drawing it, the fork's light setup per shape with `LightOcclusion::Visibility` (~1.5 ms), our cull (~0.5 ms).
@@ -56,3 +55,13 @@
   until a second `coc`. Once.
 - Walking out of Belethor's (`belethors-walk-out`): one frame just after the crossing drawn almost
   white, as if overexposed. Once in two runs. Cause not looked into.
+- A room seen from across a sunlit street gets the street's sky light through its doorway but no
+  patch of sunlight on its floor (the sun's shadow at the doorway isn't known to the room's shapes).
+  With the native backend (no Community Shaders) it gets neither that light nor the street's fog in
+  front of the doorway; only its dimming.
+- A room seen from the street is dimmed by its doorway picture's brightness against the view's; a
+  room merged beside the shown one without a picture of its own takes the other pictures' mean.
+- Whiterun, after walking into Arcadia's Cauldron and out, then saving at night ~600 units away:
+  Arcadia's and Belethor's doors stood open on the house's backing panel, with no portal activated
+  again, even at the door; seven other doors stuck as open stand-ins since the walk out. Not
+  reproduced with a console save after the same walk; how the user saved isn't known yet.

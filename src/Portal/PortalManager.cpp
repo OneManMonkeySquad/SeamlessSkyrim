@@ -143,9 +143,6 @@ namespace
 	// Prototype (docs/APPROACHES.md, 9): the street merged into the interior the player is in, so the
 	// view out is drawn by the game's main pass instead of the portal pass. [Portals] bMergeOutdoors.
 	bool                                   mergeOutdoors = true;
-	// How bright a merged room's own lights and ambient are while the camera is outdoors
-	// ([Portals] iMergedLightPercent).
-	float                                  mergedLightScale = 0.75f;
 	Portal::RemoteCell                     remote;  // the space shown behind the portal's door
 	// Interiors behind other doors near the player, attached out of sight, so that their doorway
 	// opens at once when it becomes the nearest instead of waiting for the space to load. Outdoors
@@ -214,6 +211,8 @@ namespace
 		std::vector<RE::NiPointer<RE::BSShaderProperty>> unshadowed;
 		float                                lightingTimer = 0.0f;
 		std::optional<std::array<float, 19>> lighting;
+		RE::FormID                           door = 0;         // the door in the player's space it is merged behind
+		float                                daylight = 0.0f;  // as sent (Render::Backend::SetMergedDaylight)
 		// Actor 3D moved out of its cell's actor node while merged, with the node to put it back in.
 		std::vector<std::pair<RE::NiPointer<RE::NiAVObject>, RE::NiPointer<RE::NiNode>>> actors;
 		float                                seconds = 0.0f;  // since the merge began
@@ -1942,7 +1941,6 @@ namespace Portal::Manager
 		enabled = ::GetPrivateProfileIntW(L"Portals", L"bEnabled", 1, ini.c_str()) != 0;
 		mergeEnabled = ::GetPrivateProfileIntW(L"Portals", L"bMerge", 1, ini.c_str()) != 0;
 		worldDoors = ::GetPrivateProfileIntW(L"Portals", L"bWorldDoors", 1, ini.c_str()) != 0;
-		mergedLightScale = std::clamp(static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iMergedLightPercent", 75, ini.c_str())), 5, 100) / 100.0f;
 		SetDoorOpenDistance(static_cast<float>(::GetPrivateProfileIntW(L"Portals", L"iDoorOpenDistance", 450, ini.c_str())));
 		Portal::Snapshot::SetPictureHeight(static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iDoorwayPictureHeight", 128, ini.c_str())));
 		walkIntoRooms = ::GetPrivateProfileIntW(L"Portals", L"bWalkIntoRooms", 0, ini.c_str()) != 0;
@@ -2646,11 +2644,6 @@ namespace Portal::Manager
 		return remote.RenderPasses(a_drop);
 	}
 
-	float MergedLightScale()
-	{
-		return mergedLightScale;
-	}
-
 	void SetStepExterior(bool a_step)
 	{
 		RemoteCell::stepExterior = a_step;
@@ -2724,20 +2717,74 @@ namespace Portal::Manager
 		return remote.merged;
 	}
 
+	namespace
+	{
+		bool streetEye = true;  // diagnostics: false = rooms seen from the street drawn as from inside
+
+		// Seen from the street, how far a room is drawn as an eye used to the street sees it rather
+		// than as from inside: 0 within a few steps of its doorway, where walking in has to find the
+		// room just as it is inside, 1 from across the street. a_inward: into the room.
+		float FarWeight(const RE::NiPoint3& a_center, const RE::NiPoint3& a_inward)
+		{
+			constexpr float kNear = 250.0f;
+			constexpr float kFar = 700.0f;
+			const auto      offset = CameraPosition() - a_center;
+			if (!streetEye || offset.x * a_inward.x + offset.y * a_inward.y >= 0.0f) {
+				return 0.0f;
+			}
+			const float t = std::clamp((offset.Length() - kNear) / (kFar - kNear), 0.0f, 1.0f);
+			return t * t * (3.0f - 2.0f * t);
+		}
+
+		// How bright an eye used to the view sees a_door's room, against the room as drawn from
+		// inside. Each space is drawn as an eye adapted to it sees it; for an eye that adapts a third
+		// of the way (exposure as luminance^-1/3), what is drawn goes as luminance^2/3, and the
+		// exposures adapted to the two differ by the square root of their drawn brightnesses' ratio.
+		// Adapting half way (the ratio itself) left a dim inn's doorway across the market black.
+		// No brighter than from inside: at night, when the street is the darker, the room is left
+		// as it is.
+		float StreetEyeScale(RE::FormID a_door)
+		{
+			const auto scene = Portal::Snapshot::SceneBrightness();
+			const auto room = Portal::Snapshot::RoomBrightness(a_door);
+			return scene && room ? std::min(1.0f, std::sqrt(*room / *scene)) : 1.0f;
+		}
+	}
+
 	float RoomLightScale(RE::FormID a_door)
 	{
 		auto* door = Lookup(a_door);
 		if (!door || !door->Get3D()) {
 			return 1.0f;
 		}
-		// As UpdateMerged turns the merged room's lights down, by the camera's depth into the doorway.
-		const auto  camera = CameraPosition();
-		const auto  inward = AwayFrom(door, camera);
-		const auto  offset = camera - Portal::Doors::ShownCenter(door);
-		const float depth = offset.x * inward.x + offset.y * inward.y;
-		float       t = std::clamp((depth + 150.0f) / 270.0f, 0.0f, 1.0f);
-		t = t * t * (3.0f - 2.0f * t);
-		return mergedLightScale + (1.0f - mergedLightScale) * t;
+		const auto  inward = AwayFrom(door, CameraPosition());
+		const float away = FarWeight(Portal::Doors::ShownCenter(door), inward);
+		return 1.0f + (StreetEyeScale(a_door) - 1.0f) * away;
+	}
+
+	json DescribeAdaptation()
+	{
+		json rooms = json::array();
+		const auto describe = [&](const MergedRoom& a_room) {
+			if (a_room.door) {
+				const auto brightness = Portal::Snapshot::RoomBrightness(a_room.door);
+				rooms.push_back({ { "door", std::format("{:08X}", a_room.door) }, { "brightness", brightness ? json(*brightness) : json() },
+					{ "lightScale", 1.0f + (StreetEyeScale(a_room.door) - 1.0f) * a_room.daylight }, { "daylight", a_room.daylight } });
+			}
+		};
+		if (remote.merged) {
+			describe(*primaryRoom);
+		}
+		for (const auto& beside : besideRooms) {
+			describe(*beside.state);
+		}
+		const auto scene = Portal::Snapshot::SceneBrightness();
+		return { { "sceneBrightness", scene ? json(*scene) : json() }, { "rooms", rooms }, { "streetEye", streetEye } };
+	}
+
+	void SetStreetEye(bool a_on)
+	{
+		streetEye = a_on;
 	}
 
 	RE::FormID PictureWanted()
@@ -2760,11 +2807,6 @@ namespace Portal::Manager
 	std::optional<Active> ActivePortal()
 	{
 		return remote.merged || (RemoteCell::debugSkip & 32) ? std::nullopt : ReadyPortal();
-	}
-
-	void SetMergedLightScale(float a_scale)
-	{
-		mergedLightScale = std::clamp(a_scale, 0.05f, 1.0f);
 	}
 
 	void SetMergeEnabled(bool a_enabled)
@@ -3328,17 +3370,28 @@ namespace Portal::Manager
 				a_room.lighting = mergedOwnLighting ? Render::MergedLighting(a_portal.cell, mapping.toLinked.Invert().rotate) : std::nullopt;
 			}
 			{
-				// Seen from outdoors the room is drawn with the outdoor image space, under which its
-				// own lights and ambient glow; they are turned down, and back up as the camera goes
-				// in (the same blend as the image space's, see UpdateTone).
+				// Seen from across the street, the room is drawn as an eye used to the street sees
+				// it, with the street's light falling in through its doorway; from a few steps away
+				// as from inside (FarWeight). The street merged into a room is drawn as it is.
+				a_room.door = a_portal.sourceDoor;
+				const float away = street || cameraInside ? 0.0f : FarWeight(mapping.sourceCenter, mapping.inward);
+				a_room.daylight = away;
+				{
+					// What comes in is the street as seen through the doorway: as bright as the eye
+					// finds the view, tinted as the outdoors' light on a surface facing out of it.
+					std::array<float, 3> daylight{};
+					const auto           tint = away > 0.0f ? Render::OutdoorAmbient(mapping.inward * -1.0f) : std::nullopt;
+					const auto           view = Portal::Snapshot::SceneBrightness();
+					const float          luminance = tint ? 0.2126f * tint->red + 0.7152f * tint->green + 0.0722f * tint->blue : 0.0f;
+					if (view && luminance > 0.0f) {
+						const float scale = *view * away / luminance;
+						daylight = { tint->red * scale, tint->green * scale, tint->blue * scale };
+					}
+					::Render::Backend::SetMergedDaylight(a_slot, daylight.data());
+				}
 				auto lighting = a_room.lighting;
 				if (lighting) {
-					const auto  offset = CameraPosition() - mapping.sourceCenter;
-					const float depth = offset.x * mapping.inward.x + offset.y * mapping.inward.y;
-					float       t = std::clamp((depth + 150.0f) / 270.0f, 0.0f, 1.0f);
-					t = t * t * (3.0f - 2.0f * t);
-					// The turning down is for a room under the outdoors' image space; the street isn't dimmed.
-					(*lighting)[18] = street ? 1.0f : mergedLightScale + (1.0f - mergedLightScale) * t;
+					(*lighting)[18] = 1.0f + (StreetEyeScale(a_portal.sourceDoor) - 1.0f) * away;
 					// Outdoors the engine multiplies the sun by the image space's sunlight scale (1.7 on a
 					// clear day in Whiterun) before the shaders get it; the weather's colour alone left
 					// the street a dull grey with barely visible shadows, next to the bright street
@@ -3365,6 +3418,9 @@ namespace Portal::Manager
 					// for all merged rooms (the shaders take one): the shown room's.
 					const auto fog = street ? Render::MergedFog() : Render::CellFog(a_portal.cell);
 					SendMergedFog(fog ? fog->data() : nullptr);
+					// Up to the doorway it is the street's air.
+					const auto front = street || !streetEye ? std::nullopt : Render::MergedFog();
+					::Render::Backend::SetFrontFog(front ? front->data() : nullptr);
 				}
 			}
 		}
@@ -3385,12 +3441,16 @@ namespace Portal::Manager
 				UnmergeLOD();
 				SendInteriorSun(false);
 				SendMergedFog(nullptr);
+				::Render::Backend::SetFrontFog(nullptr);
 				AimSunShadow(nullptr);
 			}
 			// Set again by the next update for the rooms still merged.
 			MergedCull::Set({});
 			SendMergedDoor(a_slot, nullptr);
 			SendMergedLighting(a_slot, nullptr);
+			::Render::Backend::SetMergedDaylight(a_slot, nullptr);
+			a_room.door = 0;
+			a_room.daylight = 0.0f;
 			a_room.lightingTimer = 0.0f;
 			a_room.seconds = 0.0f;
 			MarkMergedShapes(a_room, nullptr, a_slot == 0, false, false);

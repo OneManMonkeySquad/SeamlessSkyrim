@@ -165,8 +165,8 @@ town falls between screenshots):
 - `capture_frames(frames, crop)` takes a burst now and returns it as one contact sheet. `crop`
   cuts to the doorway and makes the odd-frame scores more sensitive. The single frames stay in
   the burst's folder at full size.
-- `frames_sheet` currently fails ("Unable to serialize ... Image"): read the burst's frames
-  directly, or paste them into a sheet with PIL.
+- `capture_frames` can fail with "Unable to serialize ... Image" after the frames are saved;
+  `frames_sheet` on the burst's name then shows them (it works now).
 - The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
   a row (a weapon drawn black for four) has to be seen.
 - Not while measuring stutter: writing a burst out stalls the game for a moment.

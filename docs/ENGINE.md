@@ -166,6 +166,10 @@ Found porting the plugin; each was checked in the code of both.
   (ID 105643). Its raw inputs are at ID 414646 (0x48 bytes), the tint at IDs 390997-390999, the
   fresnel at ID 391000.
 - **Sun light and fog:** every `ShadowSceneNode` has its own sun light and fog property.
+- **No lasting eye adaptation.** The tone map multiplies by `avg.y / avg.x` (ISHDR blend), two
+  copies of the frame's average luminance adapted at different speeds: once settled the exposure
+  is 1. Interiors and the street are each authored to look right as drawn, so a room seen from a
+  sunlit street is as bright as from inside it unless something dims it (`RoomLightScale`).
 - **A street in the world scene** while the player is indoors registers one of its lights anew
   every frame. Adopting each into our scene crashed in the world scene's queued removal
   (ID 106335 → 106342).

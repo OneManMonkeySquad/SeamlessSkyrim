@@ -20,6 +20,8 @@ namespace
 		void (*setMergedRoomDoor)(int, const float*) = nullptr;
 		void (*setMergedRoomLighting)(int, const float*) = nullptr;
 		void (*setMergedFog)(const float*) = nullptr;
+		void (*setFrontFog)(const float*) = nullptr;
+		void (*setMergedRoomDaylight)(int, const float*) = nullptr;
 		void (*setGatePassage)(float) = nullptr;
 		void (*setInteriorSun)(bool) = nullptr;
 		void (*settleSkylighting)() = nullptr;
@@ -42,6 +44,8 @@ namespace
 		Find(a_module, "SeamlessPortal_SetMergedRoomDoor", fork.setMergedRoomDoor);
 		Find(a_module, "SeamlessPortal_SetMergedRoomLighting", fork.setMergedRoomLighting);
 		Find(a_module, "SeamlessPortal_SetMergedFog", fork.setMergedFog);
+		Find(a_module, "SeamlessPortal_SetFrontFog", fork.setFrontFog);
+		Find(a_module, "SeamlessPortal_SetMergedRoomDaylight", fork.setMergedRoomDaylight);
 		Find(a_module, "SeamlessPortal_SetGatePassage", fork.setGatePassage);
 		Find(a_module, "SeamlessPortal_SetInteriorSun", fork.setInteriorSun);
 		Find(a_module, "SeamlessPortal_SettleSkylighting", fork.settleSkylighting);
@@ -181,6 +185,21 @@ namespace Render::Backend
 			}
 		} else if (kind == Kind::kNative) {
 			Render::Native::SetMergedFog(a_fog);
+		}
+	}
+
+	// Not done by the native backend: both need the pixel shader.
+	void SetFrontFog(const float* a_fog)
+	{
+		if (kind == Kind::kCommunityShaders && fork.setFrontFog) {
+			fork.setFrontFog(a_fog);
+		}
+	}
+
+	void SetMergedDaylight(int a_room, const float* a_daylight)
+	{
+		if (kind == Kind::kCommunityShaders && fork.setMergedRoomDaylight && a_room >= 0 && a_room < MergedRooms()) {
+			fork.setMergedRoomDaylight(a_room, a_daylight);
 		}
 	}
 

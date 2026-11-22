@@ -85,8 +85,13 @@ namespace Portal::Manager
 	// The remote cells are merged into the world scene right now.
 	[[nodiscard]] bool Merged();
 	// Render: how bright a room's own lights and ambient are drawn right now, merged behind a_door
-	// and seen from the street ([Portals] iMergedLightPercent, back up to 1 as the camera goes in).
+	// and seen from the street: as an eye used to the street sees it (its brightness against the
+	// street's, Portal::Snapshot), as from inside within a few steps of the doorway.
 	[[nodiscard]] float RoomLightScale(RE::FormID a_door);
+	// Diagnostics (portal_merge): the brightness of the view and of the rooms merged, and their scales.
+	[[nodiscard]] json DescribeAdaptation();
+	// Diagnostics: false draws rooms seen from the street as from inside, to compare.
+	void SetStreetEye(bool a_on);
 	// Render: the door whose room waits to be merged until the portal pass has drawn its doorway
 	// picture with the capture camera (Portal::Snapshot::CameraPictureWanted), or 0.
 	[[nodiscard]] RE::FormID PictureWanted();
@@ -105,7 +110,6 @@ namespace Portal::Manager
 	[[nodiscard]] std::optional<DoorwayFill> SnapshotChance();
 
 	// For the in-game menu (main thread).
-	[[nodiscard]] float MergedLightScale();
 	void                SetStepExterior(bool a_step);
 	[[nodiscard]] bool  StepExterior();
 	// How close (game units) the player comes before a portal's door swings open; it swings shut
@@ -147,8 +151,6 @@ namespace Portal::Manager
 	// [Portals] bMerge (on by default): from outside, draw the interior merged into the world.
 	void SetMergeEnabled(bool a_enabled);
 	[[nodiscard]] bool MergeEnabled();
-	// Diagnostics / tuning: see [Portals] iMergedLightPercent.
-	void SetMergedLightScale(float a_scale);
 	// Diagnostics: false lights the merged space like the world (no own directional / ambient).
 	void SetMergedOwnLighting(bool a_own);
 
