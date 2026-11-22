@@ -131,7 +131,6 @@ Tests:
 - Walking through a door: `walk_to` a position a little past the door along its inward direction.
   Aimed at a door reference in the other space, the player crosses at an angle beside the
   doorway, and the engine moved them out of the frame's collision, under Belethor's porch.
-- `place_save` and `route_save` write their JSON with CRLF: `sed -i 's/\r$//'` before committing.
 
 Scripts beside the MCP server (for loops, and commands with no MCP tool such as `shown_rooms`,
 `merged_cull`):
