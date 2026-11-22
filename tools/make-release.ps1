@@ -52,10 +52,11 @@ function Invoke-Git {
 	$output
 }
 
-# A stale DLL is the easiest way to ship the wrong thing.
-function Assert-Newer([string]$Binary, [string]$SourceDir) {
+# A stale DLL is the easiest way to ship the wrong thing. $Sources: everything it is built from,
+# folders and single files.
+function Assert-Newer([string]$Binary, [string[]]$Sources) {
 	if (-not (Test-Path -LiteralPath $Binary)) { throw "$Binary is missing; run with -Build." }
-	$newest = Get-ChildItem -LiteralPath $SourceDir -Recurse -File | Sort-Object LastWriteTime | Select-Object -Last 1
+	$newest = Get-ChildItem -LiteralPath $Sources -Recurse -File | Sort-Object LastWriteTime | Select-Object -Last 1
 	if ($newest.LastWriteTime -gt (Get-Item -LiteralPath $Binary).LastWriteTime) {
 		throw "$Binary is older than $($newest.FullName); run with -Build."
 	}
@@ -98,7 +99,9 @@ elseif (-not $KeepPackageDoors) {
 $files = [ordered]@{}
 
 $dll = Join-Path $repo 'build\Release\SeamlessSkyrim.dll'
-Assert-Newer $dll (Join-Path $repo 'src')
+# Not src alone: the version the DLL reports comes from CMakeLists.txt, and after a bump without
+# a build the archive was named for the new version with the old one's DLL in it.
+Assert-Newer $dll ('src', 'extern\SKSEMenuFramework', 'CMakeLists.txt' | ForEach-Object { Join-Path $repo $_ })
 $files["Core\$plugins\SeamlessSkyrim.dll"] = $dll
 $ini = Join-Path $repo "package\$plugins\SeamlessSkyrim.ini"
 if ((Get-Content -Raw -LiteralPath $ini) -match '(?m)^bEnabled=0') {
