@@ -15,18 +15,32 @@ namespace
 
 	json RunOnMainThread(const Bridge::Command& a_command, const json& a_args)
 	{
-		auto promise = std::make_shared<std::promise<json>>();
-		auto future = promise->get_future();
-		SKSE::GetTaskInterface()->AddTask([promise, handler = a_command.handler, a_args] {
+		// A command given up on is not carried out later: reported as failed, it still ran when the
+		// loading screen ended, and a `load_game` or `move_to` from the step before landed in the
+		// middle of the next one. Whoever takes it first, the main thread or the timeout, has it.
+		enum class Taken { kNo, kByMainThread, kByTimeout };
+		struct Call
+		{
+			std::promise<json> result;
+			std::atomic<Taken> taken{ Taken::kNo };
+		};
+		auto call = std::make_shared<Call>();
+		auto future = call->result.get_future();
+		SKSE::GetTaskInterface()->AddTask([call, handler = a_command.handler, a_args] {
+			if (auto expected = Taken::kNo; !call->taken.compare_exchange_strong(expected, Taken::kByMainThread)) {
+				return;
+			}
 			try {
-				promise->set_value(handler(a_args));
+				call->result.set_value(handler(a_args));
 			} catch (...) {
-				promise->set_exception(std::current_exception());
+				call->result.set_exception(std::current_exception());
 			}
 		});
 		if (future.wait_for(kMainThreadTimeout) != std::future_status::ready) {
-			// The task stays queued and will still run later; the promise outlives us via shared_ptr.
-			throw std::runtime_error("timed out waiting for the game's main thread (loading screen?)");
+			if (auto expected = Taken::kNo; call->taken.compare_exchange_strong(expected, Taken::kByTimeout)) {
+				throw std::runtime_error("timed out waiting for the game's main thread (loading screen?); the command was not carried out");
+			}
+			// Begun just now: its answer is waited for.
 		}
 		return future.get();
 	}
