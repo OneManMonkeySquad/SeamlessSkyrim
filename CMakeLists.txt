@@ -58,9 +58,12 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE extern/SKSEMenuFramewo
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 if(MSVC)
-	target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zi)
+	# The DLL that ships names no folder of the machine it was built on: source files (asserts,
+	# log lines) relative to the repository, the PDB by its file name.
+	file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/" SOURCE_ROOT_NATIVE)
+	target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zi "/d1trimfile:${SOURCE_ROOT_NATIVE}")
 	# A PDB next to the DLL turns Crash Logger stack traces into function names and line numbers.
-	target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF)
+	target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF /PDBALTPATH:%_PDB%)
 endif()
 
 if(SKYRIM_PLUGINS_DIR)
