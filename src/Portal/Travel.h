@@ -35,6 +35,9 @@ namespace Portal::Travel
 	// carries activation-blocking flags, which would be written into the save with the door.
 	void CloseArrivalDoor();
 
+	// Before a load: nothing of the last crossing carries over into the loaded game.
+	void ForgetTrip();
+
 	// True once after a seamless crossing: the frame about to be drawn is the first in the new space.
 	[[nodiscard]] bool ConsumeArrivalFrame();
 	// The next frame drawn is the first in a new space (not consumed).

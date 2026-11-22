@@ -52,7 +52,7 @@ namespace
 		case SKSE::MessagingInterface::kPreLoadGame:
 			Portal::Manager::ReleaseAll("loading a save", 3.0f);
 			Portal::Manager::ForgetDoors();
-			Portal::Travel::CloseArrivalDoor();
+			Portal::Travel::ForgetTrip();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			Probe::DumpWorldState("game loaded");

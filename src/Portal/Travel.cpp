@@ -668,6 +668,30 @@ namespace
 	// the space the player is in (sky and ambient, image space, cloth physics, the camera) then
 	// runs for the new space before its first frame is drawn. Done at the start of a frame, that
 	// first frame was drawn with the old space's lighting.
+	// The doorway come out of means nothing in a world the game has since replaced (a save loaded,
+	// fast travel, a door taken with its loading screen): measured against it there, the camera was
+	// held at the player's head, their body hidden, wherever they stood on the far side of its plane.
+	void ForgetArrival()
+	{
+		std::scoped_lock guard(lock);
+		SetArrivalDoorOpen(false);
+		arrival.reset();
+		pending.reset();
+		exactArrival.reset();
+	}
+
+	// Every trip of the game's own shows its loading screen; a seamless one never does (skipLoadScreen).
+	struct LoadingScreenSink : RE::BSTEventSink<RE::MenuOpenCloseEvent>
+	{
+		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+		{
+			if (a_event->opening && a_event->menuName == RE::LoadingMenu::MENU_NAME) {
+				ForgetArrival();
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
+	};
+
 	struct EndOfFrameHook
 	{
 		static void Thunk()
@@ -711,6 +735,8 @@ namespace Portal::Travel
 			return;
 		}
 		ProcessTeleportHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), ProcessTeleportHook::Thunk);
+		static LoadingScreenSink loadingScreen;
+		RE::UI::GetSingleton()->AddEventSink<RE::MenuOpenCloseEvent>(&loadingScreen);
 		REL::Relocation<std::uintptr_t> autosave{ REL::RelocationID(39366, 40438), REL::Relocate(0x897, 0x927) };
 		if (Hooks::CallsTo(autosave.address(), REL::RelocationID(34859, 35769), "travel: autosave")) {
 			TravelAutosaveHook::func = SKSE::GetTrampoline().write_call<5>(autosave.address(), TravelAutosaveHook::Thunk);
@@ -894,6 +920,15 @@ namespace Portal::Travel
 		std::scoped_lock guard(lock);
 		// `arrival` itself stays: the camera is still let out as before; only the door is shut.
 		SetArrivalDoorOpen(false);
+	}
+
+	void ForgetTrip()
+	{
+		std::scoped_lock guard(lock);
+		ForgetArrival();
+		// The cells it was to purge are gone with the game they were loaded in; left to run, it
+		// ended the holdoff that keeps the loaded game's first frames free of attaches.
+		purgeDeadline.reset();
 	}
 
 	void ProfileNext(const std::filesystem::path& a_file)
