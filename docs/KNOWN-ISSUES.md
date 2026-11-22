@@ -1,6 +1,8 @@
-- SE 1.5.97 without Community Shaders (native backend): particles behind a doorway don't move,
-  and looking out of Understone Keep the sky through the doorway is a flat grey-violet. Not yet
-  compared with AE's native backend at the same places.
+- SE 1.5.97 without Community Shaders (native backend): particles behind a doorway don't move
+  (reported; where not known yet, not reproduced).
+- SE 1.5.97: `coc MarkarthUnderstoneKeep` from Markarth's street, with the keep merged into the
+  street (walked in and out just before), hung the game during the load (once; log ends at the
+  `coc`). Not tried on AE.
 - SE 1.5.97 with the Community Shaders fork: not tried (the fork builds for SE; Community Shaders
   isn't installed in the 1.5.97 test game).
 - The skylight (the indoor stand-in for the sun) in The Drunken Huntsman turns off when seen from outside (jarring).

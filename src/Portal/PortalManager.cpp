@@ -978,10 +978,51 @@ namespace
 		}
 	}
 
+	// Indoors the engine draws the sky's dome only in an interior that shows the sky (Sky::mode
+	// kSkyDomeOnly: the Bannered Mare). Elsewhere (Understone Keep) the sky is in interior mode and
+	// culled, and the street merged in had none behind it, only the clear colour. Such an interior
+	// is given the dome the way the engine gives it to one that shows the sky (Sky::SetMode), for
+	// as long as the street is merged.
+	struct SkyModeChange
+	{
+		RE::TESObjectCELL* interior;
+		RE::Sky::Mode      before;
+	};
+	std::optional<SkyModeChange> skyModeChange;
+
+	void SetSkyMode(RE::Sky::Mode a_mode)
+	{
+		static REL::Relocation<void (*)(RE::Sky*, std::uint32_t)> setMode{ REL::RelocationID(25679, 26222) };
+		setMode(RE::Sky::GetSingleton(), static_cast<std::uint32_t>(a_mode));
+	}
+
+	void ShowSkyDome()
+	{
+		auto* sky = RE::Sky::GetSingleton();
+		if (skyModeChange || sky->mode.get() != RE::Sky::Mode::kInterior) {
+			return;
+		}
+		skyModeChange = SkyModeChange{ RE::PlayerCharacter::GetSingleton()->GetParentCell(), sky->mode.get() };
+		SetSkyMode(RE::Sky::Mode::kSkyDomeOnly);
+	}
+
+	void RestoreSkyMode()
+	{
+		if (!skyModeChange) {
+			return;
+		}
+		// Only in the interior it was changed for: walked out, the engine has set the outdoors' mode.
+		if (RE::PlayerCharacter::GetSingleton()->GetParentCell() == skyModeChange->interior && RE::Sky::GetSingleton()->mode.get() == RE::Sky::Mode::kSkyDomeOnly) {
+			SetSkyMode(skyModeChange->before);
+		}
+		skyModeChange.reset();
+	}
+
 	// a_door: the interior's door the street is seen through.
 	void MergeLOD(const RE::NiTransform& a_toSource, RE::TESObjectREFR* a_door)
 	{
 		Portal::StreetLOD::Show(remote.Cell(), a_toSource.Invert(), true);
+		ShowSkyDome();
 		auto* land = RE::BGSTerrainManager::GetLODRoot().get();
 		auto* root = land ? land->parent : nullptr;
 		if (!root || !root->parent) {
@@ -1064,6 +1105,7 @@ namespace
 	void UnmergeLOD()
 	{
 		Portal::StreetLOD::Hide();
+		RestoreSkyMode();
 		if (!mergedLOD) {
 			return;
 		}

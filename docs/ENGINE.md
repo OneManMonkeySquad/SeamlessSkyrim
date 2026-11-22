@@ -205,7 +205,11 @@ Found porting the plugin; each was checked in the code of both.
 
 - **Distant LOD survives indoors:** Tamriel's terrain manager stays active with its LOD loaded.
   Its land, object and tree nodes are only culled (`SetAppCulled`).
-- **The sky stays in the world scene** in dome-only mode (`Sky::mode` 2).
+- **The sky stays in the world scene**, but drawn only in an interior that shows the sky: there
+  `Sky::mode` is 2 (dome only; the Bannered Mare), elsewhere 1 (interior, the sky's nodes culled;
+  Understone Keep in the base game). `Sky::SetMode` (ID 26222, SE 25679; `(Sky*, mode)`) sets the
+  mode and culls or shows the nodes for it; the engine calls it on entering a cell. A mod can give
+  an interior the sky (Understone Keep had it in the AE test load order).
 - **The street can stay attached** when the player goes in (the grid's nine cells).
 - **`BGSTerrainManager` layout:**
   - `updateNodes` are the level-32 nodes.
