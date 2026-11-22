@@ -929,6 +929,12 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
                             else:
                                 outcome = "crashed"  # the bridge thread is gone too: a crash in progress
                         game_quit(force=True)
+                    if outcome in ("crashed", "hung"):
+                        # The relaunch below starts the plugin's log anew: without a crash log (an
+                        # exit without one happens) nothing was left to say what the game did last.
+                        kept = suite_run_dir / f"{name}__{outcome}.log"
+                        kept.write_bytes(PLUGIN_LOG.read_bytes())
+                        done.append(f"plugin log kept in {kept}")
                 if outcome == "ok" and not route_checks:
                     outcome = "error"
                     done.append("the route has no check step")

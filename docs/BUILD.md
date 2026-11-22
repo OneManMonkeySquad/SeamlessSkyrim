@@ -143,7 +143,8 @@ Scripts beside the MCP server (for loops, and commands with no MCP tool such as 
 
 Test suite (`run_suite`):
 - Runs the routes listed in `tools/skyrim-mcp/suite.json`: only paths that broke more than once,
-  not every stored route. Launches the game if needed; a route the game crashed in runs once more.
+  not every stored route. Launches the game if needed; a route the game crashed in runs once more,
+  the plugin's log of the crashed game kept beside the run's pictures (the relaunch starts it anew).
 - A route step `{"check": {"name": ..., "merged": true}}` calls bridge `scene_check`: still things
   (statics, trees, furniture, containers) around the player and around the door in the merged
   space must hang in the scene where their reference puts them, and a merged street's land and
