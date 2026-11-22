@@ -841,7 +841,7 @@ namespace Portal
 		}
 		// Diagnostics (16384): a space kept out of sight isn't simulated.
 		const bool simulate = stepEnabled && (Shown() || !(debugSkip & 16384));
-		StepWorld(simulate && (primary->IsInteriorCell() || (stepExterior && !stepInJob && groundFound)) ? primary->GetbhkWorld() : nullptr);
+		StepWorld(simulate && (primary->IsInteriorCell() || (stepExterior && groundFound)) ? primary->GetbhkWorld() : nullptr);
 	}
 
 	void RemoteCell::Show()
@@ -881,10 +881,17 @@ namespace Portal
 
 		// Under stepLock: each remote world once, one after the other (Havok isn't built for two
 		// worlds stepping at once), never the one the engine just stepped (a_stepped).
-		int StepAll(RE::bhkWorld* a_stepped)
+		// A street's world (a whole worldspace's) is stepped at the end of the frame whatever the
+		// mode, a room's where the mode says: a_inJob tells which of the two places this is. Left
+		// to the mode, the street was stepped only with Precision loaded (the mode it sets), and
+		// without it the people seen out there from indoors hung in a falling pose.
+		int StepAll(RE::bhkWorld* a_stepped, bool a_inJob)
 		{
 			std::vector<RE::bhkWorld*> done;
 			for (const auto& [cell, world] : RemoteCell::stepWorlds) {
+				if ((cell->IsInteriorCell() && RemoteCell::stepInJob) != a_inJob) {
+					continue;
+				}
 				if (world && world != a_stepped && std::ranges::find(done, world) == done.end()) {
 					Step(world, 0);
 					done.push_back(world);
@@ -912,7 +919,7 @@ namespace Portal
 				return;
 			}
 			std::scoped_lock lock(RemoteCell::stepLock);
-			StepAll(a_world);
+			StepAll(a_world, true);
 		}
 	};
 
@@ -1134,12 +1141,12 @@ namespace Portal
 
 	void RemoteCell::StepAtEndOfFrame()
 	{
-		if (stepInJob) {
-			return;
-		}
 		std::scoped_lock lock(stepLock);
 		const auto       started = std::chrono::steady_clock::now();
-		const int        worlds = StepAll(nullptr);
+		// Through a city gate both worldspaces' cells are in one world, the player's: the engine
+		// has stepped it this frame.
+		auto*            here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		const int        worlds = StepAll(here ? here->GetbhkWorld() : nullptr, false);
 		const float      ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
 		if (ms > 4.0f) {
 			logger::info("portal: stepping {} remote world(s) took {:.1f} ms", worlds, ms);

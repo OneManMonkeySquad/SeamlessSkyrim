@@ -88,8 +88,9 @@ namespace Portal
 		// Main thread: a_cell is attached by one of the spaces behind a door.
 		[[nodiscard]] static bool Holds(const RE::TESObjectCELL* a_cell);
 		static inline bool stepEnabled = true;
-		// false: the remote world is stepped on the main thread at the end of the frame instead
-		// (StepAtEndOfFrame), for setups where a second world in the step job deadlocks.
+		// false: a room's world is stepped on the main thread at the end of the frame instead
+		// (StepAtEndOfFrame), for setups where a second world in the step job deadlocks. A street's
+		// is stepped there either way.
 		static inline bool stepInJob = true;
 		// Wait before a just-left exterior is drawn behind the door (settable from the bridge).
 		static inline float kQuietSecondsLeftCell = 0.3f;
