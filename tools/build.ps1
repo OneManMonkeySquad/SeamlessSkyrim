@@ -57,7 +57,9 @@ if ($NoDeploy) { $pluginArgs += $noCopy }
 & $cmake --build (Join-Path $repo 'build') --config $Config -- @pluginArgs
 if ($LASTEXITCODE) { throw 'SeamlessSkyrim build failed.' }
 $dll = Join-Path $repo "build\$Config\SeamlessSkyrim.dll"
-$where = if ($NoDeploy) { 'not copied into the game' } else { "copied into $GamePlugins" }
+# Where the project's post-build step copies it is CMake's SKYRIM_PLUGINS_DIR, not -GamePlugins
+# (that one is the Community Shaders copy's): named here, the message pointed at the wrong folder.
+$where = if ($NoDeploy) { 'not copied into the game' } else { 'copied into the game (SKYRIM_PLUGINS_DIR)' }
 Write-Output "SeamlessSkyrim ($Config) built: $dll, $where."
 
 if ($CommunityShaders) {

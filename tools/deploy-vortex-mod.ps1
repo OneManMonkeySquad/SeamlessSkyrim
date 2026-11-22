@@ -63,13 +63,14 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $copyInPlace = Join-Path $PSScriptRoot 'copy-in-place.ps1'
 $modDir = Join-Path $StagingRoot $ModName
-$scratch = Join-Path ([IO.Path]::GetTempPath()) "SeamlessSkyrim-vortex-$PID"
-New-Item -ItemType Directory -Force $scratch | Out-Null
-
 # Files of a running game are locked, and a half-written mod is worse than none.
 if (Get-Process SkyrimSE -ErrorAction SilentlyContinue) {
 	throw 'Skyrim is running; quit it first.'
 }
+$scratch = Join-Path ([IO.Path]::GetTempPath()) "SeamlessSkyrim-vortex-$PID"
+New-Item -ItemType Directory -Force $scratch | Out-Null
+# Gone again when a step below throws, too.
+trap { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue; break }
 
 function Invoke-Git {
 	$output = & git -C $CsFork @args
