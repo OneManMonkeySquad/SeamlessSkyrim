@@ -486,5 +486,43 @@
         }
       }
     ]
+  },
+  "winterhold-arcanaeum-walk-in": {
+    "note": "College of Winterhold: walk from the Hall of the Elements through the door up to the Arcanaeum (interior to interior, nothing merged). Was: stuck 21 units short of the door, at the hall's collision closing the doorway behind it.",
+    "steps": [
+      {
+        "load": "SeamlessTestWinterholdArcanaeum"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "place": "winterhold-elements-arcanaeum-door"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            600,
+            -3616
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "name": "inside"
+        }
+      }
+    ]
   }
 }

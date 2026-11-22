@@ -1639,11 +1639,16 @@ namespace
 		const bool  pullIn = !merged && !Mergeable(a_portal.cell, a_player->GetParentCell());
 		// Only right at the threshold: the building's collision is also the porch and the steps in
 		// front of the door, and with it gone earlier the player sank into the ground on the way up.
-		// Also with the street merged into the interior: a room's door can stand against a wall
-		// that closes the void behind it (Riften's jail), and the player stopped short of the
-		// crossing, the street in view.
-		const bool throughWall = merged || MergedOutdoors();
-		if (throughWall && depth > -25.0f && side <= mapping.halfWidth + 20.0f) {
+		// Whatever the mode: a door can stand against a wall that closes the void behind it
+		// (Riften's jail; the Hall of the Elements' door up to the Arcanaeum, 4 units behind the
+		// door's face, with nothing merged), and the player stopped short of the crossing.
+		// Only on the way in: arrived through the door at its marker 9 units in front of it, the
+		// player was held 10 units above the floor they were set down over (HoldPassageHeight).
+		// Facing in and moving, not getting nearer: someone already stopped by the wall gets
+		// no nearer.
+		const float yaw = a_player->GetAngleZ();
+		const bool  walkingIn = a_player->IsMoving() && std::sin(yaw) * mapping.inward.x + std::cos(yaw) * mapping.inward.y > 0.5f;
+		if (depth > -25.0f && side <= mapping.halfWidth + 20.0f && (walkingIn || !passage.empty())) {
 			// Seconds, not frames: counted per frame it looked again twice as often at 120 fps.
 			if (passage.empty() || (passageCheck -= a_delta) <= 0.0f) {
 				passageCheck = 1.0f / 6.0f;  // what the per-frame count came to at 60 fps
@@ -1653,7 +1658,7 @@ namespace
 			ClosePassage();
 		}
 		// With the room's collision copied in, its floor carries the player through the doorway.
-		if (throughWall && !passage.empty() && !remote.CollisionMerged()) {
+		if (!passage.empty() && !remote.CollisionMerged()) {
 			HoldPassageHeight(a_player, true);
 		}
 		if (merged && remote.CollisionMerged()) {

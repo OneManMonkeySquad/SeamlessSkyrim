@@ -119,5 +119,16 @@
       38639.99609375,
       -12961.22265625
     ]
+  },
+  "winterhold-elements-arcanaeum-door": {
+    "cell": "WinterholdCollegeHallofTheElements",
+    "headingDeg": 90.0,
+    "interior": true,
+    "note": "College of Winterhold, Hall of the Elements, 180 units in front of the door up to the Arcanaeum (000175DD), centred. Was: the player stopped 21 units short of the door, at the hall's own collision (000784D3) 4 units behind the door's face; nothing merged (interior to interior).",
+    "pos": [
+      170.0,
+      -3615.999755859375,
+      0.07609369605779648
+    ]
   }
 }
