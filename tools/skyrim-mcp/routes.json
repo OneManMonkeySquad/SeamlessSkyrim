@@ -245,6 +245,46 @@
       }
     ]
   },
+  "solitude-gate-walk-out": {
+    "note": "Solitude, inside the city gate (Battle for Solitude save: pair 00101D9D -> Tamriel 00101D9E, whose city-side marker is 48 degrees off the gate), look out, walk out, turn and look back in. Was: the outside turned ~50 degrees in the gateway.",
+    "steps": [
+      {
+        "load": "SeamlessTestSolitudeGate"
+      },
+      {
+        "place": "solitude-gate-inside"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "check": {
+          "name": "looking-out"
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -66025,
+            104241
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "heading": 65
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "name": "looking-in"
+        }
+      }
+    ]
+  },
   "understone-keep-walk-in-out": {
     "note": "Markarth: in front of Understone Keep (roomed interior, merged through the doorway), walk in, look round inside, walk back out into the street.",
     "steps": [

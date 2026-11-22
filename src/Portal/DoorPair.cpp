@@ -865,16 +865,31 @@ namespace Portal::Doors
 
 	Mapping Compute(const Manager::Active& a_portal)
 	{
-		// Orientations come from the doors' teleport markers, not from the door meshes: meshes are
-		// not placed consistently, the markers say how the game itself turns you. The source door's
-		// marker is where you appear inside and which way you face; the linked door's marker is
-		// where you appear outside, facing away from the door.
+		// The source door's teleport marker is where you appear inside and which way you face; the
+		// linked door's marker is where you appear outside, facing away from the door.
 		const auto yawOf = [](RE::TESObjectREFR* a_door) {
 			auto* teleport = a_door->extraList.GetByType<RE::ExtraTeleport>();
 			if (!teleport || !teleport->teleportData) {
 				throw std::runtime_error(std::format("door {:08X} has no teleport marker", a_door->GetFormID()));
 			}
 			return teleport->teleportData->rotation.z;
+		};
+		// A doorway is mapped square onto the other: each door's facing is its panel's normal, the
+		// marker only picks which of its two sides. Markers aren't always square to their door: the one
+		// inside Solitude's gate faces 48 degrees up the street, and the outside was shown that much
+		// turned; the Smelter Overseer's House's street door 17, Whiterun's shops 4 to 11, turned back
+		// by hand before. (The door meshes' own rotations can't be used for this: the meshes aren't
+		// placed consistently.)
+		const auto facing = [](RE::TESObjectREFR* a_door, float a_markerYaw) {
+			const auto corners = Corners(a_door);
+			bool       thinX;
+			{
+				std::scoped_lock lock(geometryLock);
+				thinX = GeometryOf(a_door).thinX;
+			}
+			const auto  normal = corners[thinX ? 1 : 2] - corners[0];
+			const float yaw = std::atan2(normal.x, normal.y);
+			return std::cos(yaw - a_markerYaw) >= 0.0f ? yaw : yaw + RE::NI_PI;
 		};
 		// A frame whose local +y is the heading `a_yaw` (Skyrim: forward = (sin, cos)), +z up.
 		const auto frame = [](float a_yaw, const RE::NiPoint3& a_origin) {
@@ -887,8 +902,8 @@ namespace Portal::Doors
 		auto*       source = Door(a_portal.sourceDoor);
 		auto*       linked = Door(a_portal.linkedDoor);
 		// Outside: walking into the source door = facing opposite to how you come out of it.
-		const float inYaw = yawOf(linked) + RE::NI_PI;
-		const float outYaw = yawOf(source);
+		const float inYaw = facing(source, yawOf(linked) + RE::NI_PI);
+		const float outYaw = facing(linked, yawOf(source));
 		const auto  outside = frame(inYaw, Center(source));
 		const auto  inside = frame(outYaw, Center(linked));
 
@@ -910,7 +925,7 @@ namespace Portal::Doors
 		// The shift moves the inside's picture in the key door's space (from there, toLinked reads
 		// a point d further back; the way back adds d again).
 		if (const auto shift = Shift(key->GetFormID()); shift.x != 0.0f || shift.y != 0.0f || shift.z != 0.0f) {
-			const float  yaw = yawOf(key == source ? linked : source) + RE::NI_PI;  // a door's marker stands at the other door; walking in faces against it
+			const float  yaw = key == source ? inYaw : outYaw + RE::NI_PI;  // walking into the key door
 			const RE::NiPoint3 in{ std::sin(yaw), std::cos(yaw), 0.0f };
 			const RE::NiPoint3 right{ in.y, -in.x, 0.0f };
 			RE::NiTransform move;

@@ -65,6 +65,17 @@
       11496.474609375
     ]
   },
+  "solitude-gate-inside": {
+    "cell": "SolitudeOrigin",
+    "headingDeg": 247.75177001953125,
+    "interior": false,
+    "note": "Solitude, inside the city gate (00101D9D -> Tamriel 00101D9E), looking out through it. Was: the outside turned ~50 degrees (the city-side arrival marker isn't square to the gate).",
+    "pos": [
+      -65365.55859375,
+      104570.90625,
+      -8416.486328125
+    ]
+  },
   "understone-keep-front": {
     "cell": "Wilderness",
     "headingDeg": 253.3440704345703,

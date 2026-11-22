@@ -70,6 +70,11 @@ Found porting the plugin; each was checked in the code of both.
   - Walking out once, Markarth's ground statics (`MrkDocksideLand01`, temporary references of
     MarkarthMines) became persistent references of a runtime cell `FF000A96 'Wilderness'`, whose 3D
     hangs under `TES::objRoot` outdoors. Why isn't known.
+- **A door's teleport marker isn't always square to the door.** Solitude's gate, city side:
+  48° off for one of the two load-door pairs standing there (00101D9D/00101D9E), 1.4° for the
+  other (00037F1B/0001C386). Markarth's Smelter Overseer's House, street side: 17°. Whiterun's
+  shops: 4-11°. Most doors: under 1°. The doorway mapping takes each door's facing from its panel
+  and only the side from the marker (`Doors::Compute`).
 - **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
   13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
 

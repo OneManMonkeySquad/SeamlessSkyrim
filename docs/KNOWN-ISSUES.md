@@ -40,3 +40,13 @@
   (`PortalRender.cpp`, `RecentOutdoors`).
 - A door's 3D rebuilt while held open is noticed at the next `Doors::Open` on it; the door the
   player came out of is opened once and waits for another opener.
+- Solitude's gate seen from the city: where the portal pass draws sky, the city's own walls
+  behind the gate show (a dark brick wall over the upper half of the gateway). The gates of the
+  two worldspaces stand 290 units apart, so the discard that shows the player's own sky through a
+  city gate (`PortalRender.cpp`, `ViewSize.z`) finds the gatehouse there instead.
+- Sven and Hilde's house door in Riverwood (01CBB0): its hand turn (-1.6°) was made against the
+  door's teleport marker and not converted when the doorway took the door's panel instead (the
+  door was locked in every save at hand). The others were.
+- Standing at Solitude's gate in the city (the Battle for Solitude save), both gates lost their 3D
+  once, 25 s after walking up, and the portal stopped drawing ("a door has no 3D"); the city behind
+  the gate showed. Once; not after a reload. Cause not looked into.
