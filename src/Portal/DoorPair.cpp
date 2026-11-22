@@ -859,7 +859,6 @@ namespace Portal::Doors
 		mapping.toLinked = inside * outside.Invert();
 		mapping.sourceCenter = Center(source);
 		mapping.inward = { std::sin(inYaw), std::cos(inYaw), 0.0f };
-		mapping.yawDelta = outYaw - inYaw;
 		// The hand correction turns the inside around its own door: seen from the door that holds
 		// it, the other side's picture turns; from the other side, the way back turns the opposite way.
 		auto* key = CorrectionDoor(source, linked);
@@ -867,10 +866,8 @@ namespace Portal::Doors
 			const float turn = RE::deg_to_rad(degrees);
 			if (key == source) {
 				mapping.toLinked = TurnAround(turn, Center(linked)) * mapping.toLinked;
-				mapping.yawDelta += turn;
 			} else {
 				mapping.toLinked = mapping.toLinked * TurnAround(-turn, Center(source));
-				mapping.yawDelta -= turn;
 			}
 		}
 		// The shift moves the inside's picture in the key door's space (from there, toLinked reads
@@ -887,6 +884,11 @@ namespace Portal::Doors
 				mapping.toLinked = move * mapping.toLinked;
 			}
 		}
+		// Read off the mapping itself (where heading 0 ends up), so a walker arrives facing the way
+		// the doorway showed: kept as a sum next to it, a hand correction turned the two apart by
+		// twice its angle.
+		const auto ahead = mapping.toLinked.rotate * RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+		mapping.yawDelta = std::atan2(ahead.x, ahead.y);
 		const auto size = Size(source);
 		mapping.halfWidth = size.halfWidth;
 		mapping.halfDepth = size.halfDepth;
