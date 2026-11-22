@@ -227,8 +227,21 @@ copied from the AE game's plugins folder, trainwreck, no Community Shaders). It 
   doesn't reach it in background mode: `game_window_mode("show")`, `right`, `enter`, then back.
 - Doors start locked in a new game (the Smelter Overseer's House): a locked door gets no portal.
 
+### AE 1.6.1170
+
+A third game at `E:\Oldrim-1.6.1170` (SKSE 2.2.6, `versionlib-1-6-1170-0.bin` from the AE game's
+plugins folder, trainwreck). Same shared Documents folder.
+
+- It closes at startup: it can't parse the `ContentCatalog.txt` that 1.7.104 writes into the
+  shared `%LOCALAPPDATA%\Skyrim Special Edition` (keys `CSV2_<guid>`). Move that file aside until
+  the main menu is up, then put it back.
+- Its exe on disk is encrypted too: `dump.py` as for 1.5.97. `addrlib.py` reads its
+  `versionlib` (format 2).
+- Deploy by hand like 1.5.97, into `E:\Oldrim-1.6.1170\Data\SKSE\Plugins`.
+
 Porting an address (every engine address is a `REL::RelocationID(se, ae)`; call sites inside a
-function take `REL::Relocate(seOffset, aeOffset)`):
+function take `REL::Relocate(seOffset, aeOffset)`, or `Hooks::Offset(se, ae, ae1799)` where AE
+before 1.7.99 differs):
 
 - The 1.5.97 exe on disk is encrypted (Steam's DRM); its code is read from the running game:
   `python tools/se-port/dump.py <pid> build/se-port/SkyrimSE-1.5.97-mem.exe` once at the main

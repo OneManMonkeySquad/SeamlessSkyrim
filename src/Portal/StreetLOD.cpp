@@ -267,8 +267,8 @@ namespace Portal::StreetLOD
 	{
 		// All or none: the job let through indoors without the update's cell taken over crashed.
 		const REL::RelocationID kJob(38145, 39102), kUpdate(31017, 31802), kPlaceAround(31041, 31828), kPlaceAroundAll(31048, 31835);
-		REL::Relocation<std::uintptr_t> worldSite{ kJob, REL::Relocate(0x1E, 0x2F) };
-		REL::Relocation<std::uintptr_t> updateSite{ kJob, REL::Relocate(0x5D, 0x6E) };
+		REL::Relocation<std::uintptr_t> worldSite{ kJob, Hooks::Offset(0x1E, 0x1E, 0x2F) };
+		REL::Relocation<std::uintptr_t> updateSite{ kJob, Hooks::Offset(0x5D, 0x5D, 0x6E) };
 		// SE inlines two of the update's three calls to kPlaceAround, leaving calls to kPlaceAroundAll
 		// in their place: those are hooked as the update's cell (all) instead.
 		std::vector<REL::Relocation<std::uintptr_t>> allSites, placeSites;

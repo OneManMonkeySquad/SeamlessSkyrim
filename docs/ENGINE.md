@@ -24,6 +24,13 @@ Found porting the plugin; each was checked in the code of both.
 - ID 19384 (SE 18972), the reference fade update, takes the reference's 3D
   (`TESObjectREFR::Get3D2`, vfunc 0x70, at every call site), not the reference.
 
+## AE 1.6.1170 against AE 1.7.104
+
+- Same IDs (all of the plugin's exist in 1.6.1170's table); 5 of 33 hook sites at other offsets
+  (`Hooks::Offset`), the rest identical, and so are the byte patterns the plugin checks.
+- From 1.7.99 the player's runtime data sits 8 bytes later (CommonLib's
+  `RUNTIME_SSE_1_7_99`): the teleport's queue at +0x648 and valid flag at +0x68A on 1.6.1170.
+
 ## Cells and spaces
 
 - **One current space.** The engine runs either one interior (`TES::interiorCell`) or one exterior

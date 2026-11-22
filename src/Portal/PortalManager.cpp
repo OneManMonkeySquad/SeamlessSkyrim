@@ -1998,7 +1998,7 @@ namespace Portal::Manager
 			DoorActivateHook::func = vtable.write_vfunc(0x37, DoorActivateHook::Thunk);
 		}
 		{
-			REL::Relocation<std::uintptr_t> pickSite{ REL::RelocationID(39534, 40620), REL::Relocate(0x214, 0x1E7) };
+			REL::Relocation<std::uintptr_t> pickSite{ REL::RelocationID(39534, 40620), Hooks::Offset(0x214, 0x1D5, 0x1E7) };
 			if (Hooks::CallsTo(pickSite.address(), REL::RelocationID(25591, 26127), "portal: crosshair pick")) {
 				CrosshairPickHook::func = SKSE::GetTrampoline().write_call<5>(pickSite.address(), CrosshairPickHook::Thunk);
 			}

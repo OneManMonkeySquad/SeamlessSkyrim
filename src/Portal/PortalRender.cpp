@@ -2610,7 +2610,7 @@ namespace Portal::Render
 	void Install()
 	{
 		auto& trampoline = SKSE::GetTrampoline();
-		REL::Relocation<std::uintptr_t> renderWorld{ REL::RelocationID(35560, 36559), REL::Relocate(0x831, 0x85E) };
+		REL::Relocation<std::uintptr_t> renderWorld{ REL::RelocationID(35560, 36559), Hooks::Offset(0x831, 0x841, 0x85E) };
 		REL::Relocation<std::uintptr_t> drawPass{ REL::RelocationID(100852, 107642), REL::Relocate(0x29E, 0x28F) };
 		REL::Relocation<std::uintptr_t> refraction{ REL::RelocationID(99938, 106583), REL::Relocate(0x3C5, 0x3B4) };
 		REL::Relocation<std::uintptr_t> worldDepth{ REL::RelocationID(100741, 107522), REL::Relocate(0x6A, 0x6A) };
