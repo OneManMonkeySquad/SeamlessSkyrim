@@ -104,12 +104,18 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
-	bool InThirdPerson()
-	{
-		auto* camera = RE::PlayerCamera::GetSingleton();
-		const auto* state = camera ? camera->currentState.get() : nullptr;
-		return state && (state->id == RE::CameraState::kThirdPerson || state->id == RE::CameraState::kMount || state->id == RE::CameraState::kDragon);
-	}
+}
+
+bool Portal::CameraLimit::InThirdPerson()
+{
+	// No state yet at the main menu, where the teleport hook already runs.
+	const auto* state = RE::PlayerCamera::GetSingleton()->currentState.get();
+	return state && (state->id == RE::CameraState::kThirdPerson || state->id == RE::CameraState::kMount || state->id == RE::CameraState::kDragon);
+}
+
+namespace
+{
+	using Portal::CameraLimit::InThirdPerson;
 
 	void Limit(RE::ThirdPersonState* a_state)
 	{

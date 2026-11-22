@@ -525,14 +525,13 @@ namespace
 			};
 			std::optional<CameraPose> cameraPose;
 			auto*                     camera = RE::PlayerCamera::GetSingleton();
-			auto*                     thirdPerson = camera && camera->currentState && camera->currentState->id == RE::CameraState::kThirdPerson ?
-			                                            static_cast<RE::ThirdPersonState*>(camera->currentState.get()) :
-			                                            nullptr;
+			// On a horse or a dragon too: their camera states are third-person states.
+			auto*                     thirdPerson = Portal::CameraLimit::InThirdPerson() ? static_cast<RE::ThirdPersonState*>(camera->currentState.get()) : nullptr;
 			if (seamlessTeleport && thirdPerson) {
 				cameraPose = CameraPose{ thirdPerson->posOffsetExpected, thirdPerson->posOffsetActual, thirdPerson->targetZoomOffset, thirdPerson->currentZoomOffset,
 					thirdPerson->pitchZoomOffset, thirdPerson->targetYaw, thirdPerson->currentYaw };
 			}
-			const auto  cameraOffset = camera && camera->cameraRoot ? camera->cameraRoot->world.translate - a_player->GetPosition() : RE::NiPoint3{};
+			const auto  cameraOffset = camera->cameraRoot->world.translate - a_player->GetPosition();
 			const float yawBefore = a_player->GetAngleZ();
 			func(a_player);
 			if (std::exchange(seamlessTeleport, false)) {

@@ -27,6 +27,9 @@ namespace Portal::CameraLimit
 	void SetFirstPersonStop(const RE::NiPoint3& a_center, const RE::NiPoint3& a_inward, float a_halfWidth, float a_maxDepth);
 	void ClearPlane();
 
+	// The camera's state is a RE::ThirdPersonState: on foot, on a horse or on a dragon.
+	[[nodiscard]] bool InThirdPerson();
+
 	// The camera is at the player's head: the player's body is not drawn this frame.
 	[[nodiscard]] bool HidePlayer();
 }
