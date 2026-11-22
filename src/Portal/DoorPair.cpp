@@ -553,105 +553,102 @@ namespace Portal::Doors
 			return std::format("{}|{:06X}", file->GetFilename(), local);
 		}
 
+		// The file's lines by section, read by hand: the system's own reader (GetPrivateProfileSection)
+		// gives up to 32767 characters of a section and drops the rest without a word, the last
+		// entry cut in the middle. A patcher's list for a whole load order is longer than that.
+		using Sections = std::vector<std::pair<std::wstring, std::vector<std::wstring>>>;
+		Sections ReadSections(const std::filesystem::path& a_file)
+		{
+			std::ifstream     stream(a_file, std::ios::binary);
+			const std::string bytes{ std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() };
+			std::wstring      text;
+			if (bytes.starts_with("\xFF\xFE")) {
+				text.assign(reinterpret_cast<const wchar_t*>(bytes.data() + 2), (bytes.size() - 2) / sizeof(wchar_t));
+			} else {
+				// As the system's writer (WritePrivateProfileString, SaveCorrection) leaves it.
+				text.resize(bytes.size());
+				text.resize(::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), static_cast<int>(text.size())));
+			}
+			const auto trimmed = [](std::wstring_view a_text) {
+				const auto first = a_text.find_first_not_of(L" \t\r");
+				const auto last = a_text.find_last_not_of(L" \t\r");
+				return first == std::wstring_view::npos ? std::wstring_view{} : a_text.substr(first, last - first + 1);
+			};
+			Sections sections;
+			for (std::size_t at = 0; at < text.size();) {
+				const auto end = std::min(text.find(L'\n', at), text.size());
+				const auto line = trimmed(std::wstring_view(text).substr(at, end - at));
+				at = end + 1;
+				if (line.empty() || line.front() == L';') {
+					continue;
+				}
+				if (line.front() == L'[' && line.back() == L']') {
+					sections.emplace_back(line.substr(1, line.size() - 2), std::vector<std::wstring>{});
+				} else if (!sections.empty()) {
+					sections.back().second.emplace_back(line);
+				}
+			}
+			return sections;
+		}
+
 		void LoadCorrections()
 		{
 			if (std::exchange(correctionsLoaded, true)) {
 				return;
 			}
-			std::wstring buffer(32768, L'\0');
-			const auto   length = ::GetPrivateProfileSectionW(L"DoorTurn", buffer.data(), static_cast<DWORD>(buffer.size()), CorrectionsFile().c_str());
-			auto*        handler = RE::TESDataHandler::GetSingleton();
-			for (std::size_t at = 0; at < length && buffer[at];) {
-				const std::wstring entry(buffer.data() + at);
-				at += entry.size() + 1;
-				const auto equals = entry.find(L'=');
-				const auto bar = entry.find(L'|');
-				if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals || !handler) {
-					continue;
-				}
-				const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-				const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-				const float       degrees = std::wcstof(entry.c_str() + equals + 1, nullptr);
-				if (const auto id = handler->LookupFormID(local, file); id && degrees != 0.0f) {
-					corrections[id] = degrees;
-				}
-			}
-			// [DoorHinge] Plugin.esp|localID=style (OpenStyle). The older [DoorOpen] and [DoorShift]
-			// were made against doors measured by their bounds: the hinge guessed from them, the
-			// shift mostly making up for the bounds' depth. Against the measured panel neither
-			// means the same, so they are left unread.
-			std::fill(buffer.begin(), buffer.end(), L'\0');
-			const auto styleLength = ::GetPrivateProfileSectionW(L"DoorHinge", buffer.data(), static_cast<DWORD>(buffer.size()), CorrectionsFile().c_str());
-			for (std::size_t at = 0; at < styleLength && buffer[at];) {
-				const std::wstring entry(buffer.data() + at);
-				at += entry.size() + 1;
-				const auto equals = entry.find(L'=');
-				const auto bar = entry.find(L'|');
-				if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals || !handler) {
-					continue;
-				}
-				const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-				const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-				if (const auto id = handler->LookupFormID(local, file)) {
-					styles[id] = std::wcstol(entry.c_str() + equals + 1, nullptr, 10);
-				}
-			}
-			// [DoorPortal] Plugin.esp|localID=0: the pair's portal switched off.
-			std::fill(buffer.begin(), buffer.end(), L'\0');
-			const auto portalLength = ::GetPrivateProfileSectionW(L"DoorPortal", buffer.data(), static_cast<DWORD>(buffer.size()), CorrectionsFile().c_str());
-			for (std::size_t at = 0; at < portalLength && buffer[at];) {
-				const std::wstring entry(buffer.data() + at);
-				at += entry.size() + 1;
-				const auto equals = entry.find(L'=');
-				const auto bar = entry.find(L'|');
-				if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals || !handler) {
-					continue;
-				}
-				const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-				const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-				if (const auto id = handler->LookupFormID(local, file); id && std::wcstol(entry.c_str() + equals + 1, nullptr, 10) == 0) {
-					portalsOff.insert(id);
-				}
-			}
-			// [DoorOpensIn] and [DoorAlwaysOpen] Plugin.esp|localID=1.
-			for (const auto& [section, set] : { std::pair{ L"DoorOpensIn", &opensInward }, std::pair{ L"DoorAlwaysOpen", &alwaysOpen } }) {
-				std::fill(buffer.begin(), buffer.end(), L'\0');
-				const auto length = ::GetPrivateProfileSectionW(section, buffer.data(), static_cast<DWORD>(buffer.size()), CorrectionsFile().c_str());
-				for (std::size_t at = 0; at < length && buffer[at];) {
-					const std::wstring entry(buffer.data() + at);
-					at += entry.size() + 1;
-					const auto equals = entry.find(L'=');
-					const auto bar = entry.find(L'|');
-					if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals || !handler) {
+			const auto sections = ReadSections(CorrectionsFile());
+			auto*      handler = RE::TESDataHandler::GetSingleton();
+			// Every section's entries are Plugin.esp|localID=value; a_use gets the door and the value.
+			const auto each = [&](std::wstring_view a_section, const std::function<void(RE::FormID, const wchar_t*)>& a_use) {
+				for (const auto& [name, entries] : sections) {
+					if (::_wcsnicmp(name.c_str(), a_section.data(), std::max(name.size(), a_section.size())) != 0) {
 						continue;
 					}
-					const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-					const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-					if (const auto id = handler->LookupFormID(local, file); id && std::wcstol(entry.c_str() + equals + 1, nullptr, 10) != 0) {
-						set->insert(id);
+					for (const auto& entry : entries) {
+						const auto equals = entry.find(L'=');
+						const auto bar = entry.find(L'|');
+						if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals) {
+							continue;
+						}
+						const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
+						const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
+						if (const auto id = handler->LookupFormID(local, file)) {
+							a_use(id, entry.c_str() + equals + 1);
+						}
 					}
 				}
-			}
-			// [DoorOffset] Plugin.esp|localID=x,y,z
-			std::fill(buffer.begin(), buffer.end(), L'\0');
-			const auto shiftLength = ::GetPrivateProfileSectionW(L"DoorOffset", buffer.data(), static_cast<DWORD>(buffer.size()), CorrectionsFile().c_str());
-			for (std::size_t at = 0; at < shiftLength && buffer[at];) {
-				const std::wstring entry(buffer.data() + at);
-				at += entry.size() + 1;
-				const auto equals = entry.find(L'=');
-				const auto bar = entry.find(L'|');
-				if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals || !handler) {
-					continue;
+			};
+			each(L"DoorTurn", [](RE::FormID a_door, const wchar_t* a_value) {
+				if (const float degrees = std::wcstof(a_value, nullptr); degrees != 0.0f) {
+					corrections[a_door] = degrees;
 				}
-				const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-				const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-				RE::NiPoint3      shift;
-				if (std::swscanf(entry.c_str() + equals + 1, L"%f,%f,%f", &shift.x, &shift.y, &shift.z) == 3) {
-					if (const auto id = handler->LookupFormID(local, file)) {
-						shifts[id] = shift;
+			});
+			// [DoorHinge]: the value is an OpenStyle. The older [DoorOpen] and [DoorShift] were made
+			// against doors measured by their bounds: the hinge guessed from them, the shift mostly
+			// making up for the bounds' depth. Against the measured panel neither means the same, so
+			// they are left unread.
+			each(L"DoorHinge", [](RE::FormID a_door, const wchar_t* a_value) { styles[a_door] = std::wcstol(a_value, nullptr, 10); });
+			// [DoorPortal] =0: the pair's portal switched off.
+			each(L"DoorPortal", [](RE::FormID a_door, const wchar_t* a_value) {
+				if (std::wcstol(a_value, nullptr, 10) == 0) {
+					portalsOff.insert(a_door);
+				}
+			});
+			// [DoorOpensIn] and [DoorAlwaysOpen] =1.
+			for (const auto& [section, set] : { std::pair{ L"DoorOpensIn", &opensInward }, std::pair{ L"DoorAlwaysOpen", &alwaysOpen } }) {
+				each(section, [set](RE::FormID a_door, const wchar_t* a_value) {
+					if (std::wcstol(a_value, nullptr, 10) != 0) {
+						set->insert(a_door);
 					}
-				}
+				});
 			}
+			// [DoorOffset] =x,y,z
+			each(L"DoorOffset", [](RE::FormID a_door, const wchar_t* a_value) {
+				RE::NiPoint3 shift;
+				if (std::swscanf(a_value, L"%f,%f,%f", &shift.x, &shift.y, &shift.z) == 3) {
+					shifts[a_door] = shift;
+				}
+			});
 			logger::info("portal: {} door turn(s), {} door shift(s), {} door style(s), {} portal(s) off, {} opening inward, {} always open loaded", corrections.size(), shifts.size(),
 				styles.size(), portalsOff.size(), opensInward.size(), alwaysOpen.size());
 		}
