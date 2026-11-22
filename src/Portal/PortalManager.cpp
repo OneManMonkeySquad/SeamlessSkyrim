@@ -169,7 +169,7 @@ namespace
 	// doorway beside it, as many as the render backend can mask (Render::Backend::MergedRooms).
 	// Kept loaded and drawn were two settings; a room kept loaded but drawn as a picture was only
 	// ever a wait cut short.
-	int                             shownRoomsSetting = 3;
+	int                             shownRoomsSetting = 2;
 	// [Portals] bPauseUnseenRooms: a kept room nobody can see (kept out of sight, or merged beside
 	// the shown one with its doorway off screen) is paused: not stepped, lights not updated, not
 	// drawn, its people not on screen. Facing away, each kept room cost about 1 ms a frame.
@@ -1948,7 +1948,7 @@ namespace Portal::Manager
 		MergedCull::SetStreetMode(static_cast<MergedCull::Mode>(std::clamp(static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iMergedCullStreet", 0, ini.c_str())), 0, 2)));
 		// iWarmPortals (rooms kept loaded) was replaced by iShownRooms; an ini that still has only the
 		// old key keeps its count.
-		const int keptBefore = static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iWarmPortals", 3, ini.c_str()));
+		const int keptBefore = static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iWarmPortals", 2, ini.c_str()));
 		SetShownRooms(static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iShownRooms", keptBefore, ini.c_str())));
 		pauseUnseen = ::GetPrivateProfileIntW(L"Portals", L"bPauseUnseenRooms", 1, ini.c_str()) != 0;
 		// Precision patches the engine's world step loop (ID 77851 + 0x407) with a pre-step hook
