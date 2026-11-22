@@ -926,6 +926,8 @@ namespace Portal::Doors
 			// belong to: put back only into that.
 			std::vector<RE::NiPointer<RE::bhkWorldObject>>                       removedBodies;
 			RE::NiPointer<RE::NiAVObject>                                        bodiesOf;
+			// The 3D all of the above was done to (see Rebuilt).
+			RE::NiPointer<RE::NiAVObject>                                        root;
 		};
 
 		// The layer change alone didn't stop a city gate: Whiterun's gate kept the player 25 units
@@ -961,6 +963,73 @@ namespace Portal::Doors
 			a_shared.bodiesOf.reset();
 		}
 		std::unordered_map<RE::FormID, Shared> openDoors;
+
+		// What stands behind the panel only to hide the void there would now block the view through
+		// the doorway; it went round with the panel when that was swung as a whole.
+		void CullBehindPanel(RE::TESObjectREFR* a_door, Shared& a_shared)
+		{
+			for (auto& shape : BehindPanel(a_door)) {
+				if (!shape->GetAppCulled()) {
+					shape->SetAppCulled(true);
+					a_shared.behindShapes.push_back(shape);
+				}
+			}
+		}
+
+		void MakeWalkable(RE::TESObjectREFR* a_door, RE::NiAVObject* a_door3D, Shared& a_shared)
+		{
+			RE::BSVisit::TraverseScenegraphObjects(a_door3D, [&](RE::NiAVObject* a_object) {
+				if (a_object->collisionObject) {
+					const auto layer = a_object->GetCollisionLayer();
+					if (layer != RE::COL_LAYER::kUnidentified && layer != RE::COL_LAYER::kNonCollidable) {
+						a_shared.layers.emplace_back(RE::NiPointer<RE::NiAVObject>(a_object), layer);
+						a_object->SetCollisionLayer(RE::COL_LAYER::kNonCollidable);
+					} else {
+						logger::info("portal: door {:08X}: collision on '{}' left as it is (layer {})", a_door->GetFormID(), a_object->name.c_str(), static_cast<int>(layer));
+					}
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+
+		// Culling the root alone left the panel on screen while merged; the shapes are culled one by
+		// one, as for the player's body (CameraLimit).
+		void HideShapes(RE::NiAVObject* a_door3D, Shared& a_shared)
+		{
+			a_door3D->SetAppCulled(true);
+			RE::BSVisit::TraverseScenegraphGeometries(a_door3D, [&](RE::BSGeometry* a_shape) {
+				if (!a_shape->GetAppCulled()) {
+					a_shape->SetAppCulled(true);
+					a_shared.hiddenShapes.emplace_back(a_shape);
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+
+		// The engine built the door's 3D anew while it was held open (disabled and enabled by a
+		// script, its cell's 3D reloaded): the new panel stood in the doorway, drawn and solid, while
+		// every opener took the door for open. What they asked for is done to the new 3D; the
+		// recorded shapes and bodies were the old one's and went with it.
+		void Rebuilt(RE::TESObjectREFR* a_door, RE::NiAVObject* a_door3D, Shared& a_shared)
+		{
+			a_shared.behindShapes.clear();
+			a_shared.layers.clear();
+			a_shared.hiddenShapes.clear();
+			a_shared.removedBodies.clear();
+			a_shared.bodiesOf.reset();
+			a_shared.root.reset(a_door3D);
+			CullBehindPanel(a_door, a_shared);
+			if (a_shared.walkables > 0) {
+				MakeWalkable(a_door, a_door3D, a_shared);
+			}
+			if (a_shared.hides > 0) {
+				HideShapes(a_door3D, a_shared);
+			}
+			if (a_shared.passables > 0) {
+				HideBodies(a_door3D, a_shared);
+			}
+			logger::info("portal: door {:08X}'s 3D was rebuilt while open: opened again", a_door->GetFormID());
+		}
 
 		constexpr auto kOpenDoorFlags = static_cast<RE::ExtraFlags::Flag>(
 			static_cast<std::uint32_t>(RE::ExtraFlags::Flag::kBlockPlayerActivate) | static_cast<std::uint32_t>(RE::ExtraFlags::Flag::kBlockActivateText));
@@ -1034,7 +1103,13 @@ namespace Portal::Doors
 	void Open(RE::TESObjectREFR* a_door, OpenState& a_state, bool a_hide, bool a_passable, bool a_solid)
 	{
 		auto* door3D = a_door ? a_door->Get3D() : nullptr;
-		if (!door3D || (a_state.door == a_door->GetFormID() && a_state.hidden == a_hide && a_state.passable == a_passable && a_state.solid == a_solid)) {
+		if (!door3D) {
+			return;
+		}
+		if (const auto open = openDoors.find(a_door->GetFormID()); open != openDoors.end() && open->second.root.get() != door3D) {
+			Rebuilt(a_door, door3D, open->second);
+		}
+		if (a_state.door == a_door->GetFormID() && a_state.hidden == a_hide && a_state.passable == a_passable && a_state.solid == a_solid) {
 			return;
 		}
 		Close(a_state);
@@ -1042,14 +1117,8 @@ namespace Portal::Doors
 		a_state.solid = a_solid;
 		auto& shared = openDoors[a_state.door];
 		if (shared.opens++ == 0) {
-			// What stands behind the panel only to hide the void there would now block the view
-			// through the doorway; it went round with the panel when that was swung as a whole.
-			for (auto& shape : BehindPanel(a_door)) {
-				if (!shape->GetAppCulled()) {
-					shape->SetAppCulled(true);
-					shared.behindShapes.push_back(shape);
-				}
-			}
+			shared.root.reset(door3D);
+			CullBehindPanel(a_door, shared);
 		}
 		if (!a_solid && shared.walkables++ == 0) {
 			// The doorway can be walked through: no "E) Open ..." prompt on the panel that isn't
@@ -1057,31 +1126,11 @@ namespace Portal::Doors
 			// screen). A door only shown open (a stand-in's, solid) keeps both: its space isn't
 			// there to walk into, and blocked it was a door that couldn't be used at all.
 			a_door->extraList.SetExtraFlags(kOpenDoorFlags, true);
-			RE::BSVisit::TraverseScenegraphObjects(door3D, [&](RE::NiAVObject* a_object) {
-				if (a_object->collisionObject) {
-					const auto layer = a_object->GetCollisionLayer();
-					if (layer != RE::COL_LAYER::kUnidentified && layer != RE::COL_LAYER::kNonCollidable) {
-						shared.layers.emplace_back(RE::NiPointer<RE::NiAVObject>(a_object), layer);
-						a_object->SetCollisionLayer(RE::COL_LAYER::kNonCollidable);
-					} else {
-						logger::info("portal: door {:08X}: collision on '{}' left as it is (layer {})", a_door->GetFormID(), a_object->name.c_str(), static_cast<int>(layer));
-					}
-				}
-				return RE::BSVisit::BSVisitControl::kContinue;
-			});
+			MakeWalkable(a_door, door3D, shared);
 		}
 		if (a_hide) {
 			if (shared.hides++ == 0) {
-				// Culling the root alone left the panel on screen while merged; the shapes are
-				// culled one by one, as for the player's body (CameraLimit).
-				door3D->SetAppCulled(true);
-				RE::BSVisit::TraverseScenegraphGeometries(door3D, [&](RE::BSGeometry* a_shape) {
-					if (!a_shape->GetAppCulled()) {
-						a_shape->SetAppCulled(true);
-						shared.hiddenShapes.emplace_back(a_shape);
-					}
-					return RE::BSVisit::BSVisitControl::kContinue;
-				});
+				HideShapes(door3D, shared);
 			}
 			a_state.hidden = true;
 		}
