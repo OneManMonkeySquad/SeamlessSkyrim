@@ -54,6 +54,17 @@
       11499.9677734375
     ]
   },
+  "riften-bee-and-barb-door": {
+    "cell": "RiftenOrigin",
+    "headingDeg": 224.99998474121094,
+    "interior": false,
+    "note": "Riften, 180 units in front of the Bee and Barb's door (000430A6), looking in. Walked in after Riften's jail route: the game crashed in TESWaterSystem::AddWater attaching a space behind a door right after the crossing.",
+    "pos": [
+      173462.984375,
+      -95080.9921875,
+      11136.470703125
+    ]
+  },
   "riften-prison-marker": {
     "cell": "RiftenCitySouth",
     "headingDeg": 160.71243286132812,

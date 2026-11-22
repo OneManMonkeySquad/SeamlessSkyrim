@@ -1426,6 +1426,46 @@ namespace Bridge
 										: json(nullptr) },
 				 };
 			 } } },
+			// The water system's lists: each water object with the reference its shape belongs to, and
+			// each reflection with the material it holds and whether a listed water object still has it.
+			// TESWaterObject: +0x20 shape, +0x40 reflection; TESWaterReflections: +0x14 plane, +0x40
+			// material (from TESWaterSystem::AddWater / RemoveWater, IDs 32179 / 32182).
+			{ "water", { [](const json&) {
+				 auto*       system = RE::TESWaterSystem::GetSingleton();
+				 const auto  at = [](const void* a_object, std::size_t a_offset) { return *reinterpret_cast<void* const*>(reinterpret_cast<const std::byte*>(a_object) + a_offset); };
+				 const auto  refCount = [](const void* a_object) { return *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::byte*>(a_object) + 8); };
+				 std::vector<const void*> materials;
+				 json                     objects = json::array();
+				 for (auto& object : system->waterObjects) {
+					 auto* shape = static_cast<RE::NiAVObject*>(at(object.get(), 0x20));
+					 auto* geometry = shape ? shape->AsGeometry() : nullptr;
+					 auto* property = geometry ? geometry->GetGeometryRuntimeData().shaderProperty.get() : nullptr;
+					 if (property) {
+						 materials.push_back(property->material);
+					 }
+					 RE::TESObjectREFR* ref = nullptr;
+					 for (auto* node = shape; node && !ref; node = node->parent) {
+						 ref = node->GetUserData();
+					 }
+					 auto*       cell = ref ? ref->GetParentCell() : nullptr;
+					 std::string above;
+					 for (auto* node = shape ? shape->parent : nullptr; node && !ref; node = node->parent) {
+						 above += std::format(" < {} '{}'", node->GetRTTI() ? node->GetRTTI()->name : "?", node->name.c_str());
+					 }
+					 objects.push_back(std::format("{:X} shape {:X} '{}' refs {} in scene {}{} | ref {:08X} {} | reflection {:X} material {:X}", reinterpret_cast<std::uintptr_t>(object.get()),
+						 reinterpret_cast<std::uintptr_t>(shape), shape ? shape->name.c_str() : "", shape ? refCount(shape) : 0, shape && shape->parent != nullptr, above, ref ? ref->GetFormID() : 0,
+						 cell ? Probe::DescribeCell(cell) : "", reinterpret_cast<std::uintptr_t>(at(object.get(), 0x40)), reinterpret_cast<std::uintptr_t>(property ? property->material : nullptr)));
+				 }
+				 json reflections = json::array();
+				 for (auto& reflection : system->waterReflections) {
+					 const auto* plane = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(reflection.get()) + 0x14);
+					 const void* material = at(reflection.get(), 0x40);
+					 reflections.push_back(std::format("{:X} refs {} plane ({:.2f} {:.2f} {:.2f} {:.1f}) material {:X}{}", reinterpret_cast<std::uintptr_t>(reflection.get()), refCount(reflection.get()),
+						 plane[0], plane[1], plane[2], plane[3], reinterpret_cast<std::uintptr_t>(material), std::ranges::find(materials, material) != materials.end() ? "" : " (no water object has it)"));
+				 }
+				 return json{ { "enabled", system->enabled }, { "worldSpace", system->worldSpace ? system->worldSpace->GetFormEditorID() : "" }, { "objects", objects },
+					 { "reflections", reflections } };
+			 } } },
 			// Read-only and independent of game state, so they work even during loading screens.
 			{ "re_export_ids", { ReverseEngineering::ExportIDs, false } },
 			{ "re_read", { ReverseEngineering::ReadMemory, false } },

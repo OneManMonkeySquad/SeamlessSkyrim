@@ -114,6 +114,14 @@ Found porting the plugin; each was checked in the code of both.
   condition.
 - **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
 
+- **Water:** `TESWaterSystem` (ID 400450) lists water objects (+0x20, each: +0x20 shape, +0x40
+  reflection) and reflections (+0x38, each: +0x14 plane, +0x40 the material of the water it was
+  made for, a plain pointer). A water joining a reflection reads that material (`AddWater`, ID
+  32179 +0x697). Water added while the player is indoors (the street's LOD water, the street's
+  own) joins the room's reflection and keeps it after the room's water is gone and its material
+  freed (`pcb` frees it at once). `RemoveWater` (ID 32182) does nothing while the system is
+  disabled (+0xB0). Bridge `water` lists both.
+
 ## Rendering a second view
 
 - **Frame:** `Main::RenderPlayerView` (ID 36559) → shadow maps → `RenderDepth` (107139) →

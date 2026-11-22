@@ -63,7 +63,9 @@ if(MSVC)
 	file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/" SOURCE_ROOT_NATIVE)
 	target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zi "/d1trimfile:${SOURCE_ROOT_NATIVE}")
 	# A PDB next to the DLL turns Crash Logger stack traces into function names and line numbers.
-	target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF /PDBALTPATH:%_PDB%)
+	# Named outright: the Visual Studio generator escaped "%_PDB%" and the DLL asked for a PDB called
+	# "%%%SeamlessSkyrim.pdb%%%", so neither trainwreck nor llvm-symbolizer found it.
+	target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF /PDBALTPATH:${PROJECT_NAME}.pdb)
 endif()
 
 if(SKYRIM_PLUGINS_DIR)

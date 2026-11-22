@@ -17,6 +17,7 @@
 #include "Portal/RemoteCell.h"
 #include "Portal/ShapeSet.h"
 #include "Portal/StreetLOD.h"
+#include "Portal/WaterReflections.h"
 #include "Probe.h"
 #include "Render/Backend.h"
 #include "Render/DoorwayPlanes.h"
@@ -2252,6 +2253,7 @@ namespace Portal::Manager
 
 	void Update(float a_delta)
 	{
+		Portal::WaterReflections::Update();
 		approachLimit.reset();
 		Portal::Doors::HidePrompt();
 		ExpireLetGo(a_delta);
