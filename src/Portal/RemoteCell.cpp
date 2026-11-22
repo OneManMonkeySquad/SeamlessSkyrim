@@ -445,13 +445,20 @@ namespace Portal
 
 	void RemoteCell::ClearPassage(const RE::NiPoint3& a_center, const RE::NiPoint3& a_inward, float a_halfWidth, float a_halfHeight)
 	{
-		if (!passageCleared.empty() || cells.empty()) {
+		// Looked for twice a second for as long as the passage is held: what loads later is taken
+		// out too. Looked for every frame until something was found and never again after, a gate
+		// with nothing in its passage walked every reference of the street each frame, and one
+		// whose buildings came in after the first was left with them in the way.
+		const auto now = std::chrono::steady_clock::now();
+		if (cells.empty() || now - passageLooked < std::chrono::milliseconds(500)) {
 			return;
 		}
+		passageLooked = now;
 		passageWorld = cells.front()->GetbhkWorld();
 		if (!passageWorld) {
 			return;
 		}
+		const auto clearedBefore = passageCleared.size();
 		// The passage: from well in front of the doorway (the player's side) to a little past it,
 		// as wide and high as the doorway with some room.
 		constexpr float kFront = 200.0f, kBehind = 30.0f, kMargin = 60.0f;
@@ -490,7 +497,9 @@ namespace Portal
 				clear(top.get());
 			}
 		}
-		logger::info("portal: {} body(ies) of {} kept out of the gate's passage", passageCleared.size(), Probe::DescribeCell(cells.front()));
+		if (passageCleared.size() != clearedBefore) {
+			logger::info("portal: {} body(ies) of {} kept out of the gate's passage", passageCleared.size(), Probe::DescribeCell(cells.front()));
+		}
 	}
 
 	void RemoteCell::RestorePassage()
@@ -502,6 +511,7 @@ namespace Portal
 		}
 		passageCleared.clear();
 		passageWorld = nullptr;
+		passageLooked = {};
 	}
 
 	void RemoteCell::SetParked(bool a_parked)

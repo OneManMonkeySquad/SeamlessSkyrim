@@ -266,6 +266,7 @@ namespace Portal
 		// Bodies ClearPassage took out of the world, and that world.
 		std::vector<RE::NiPointer<RE::bhkWorldObject>> passageCleared;
 		RE::bhkWorld*                                  passageWorld = nullptr;
+		std::chrono::steady_clock::time_point          passageLooked{};  // ClearPassage's last look
 		int                adoptedLights = 0;
 		float              quietSeconds = 0.0f;  // how long the load queues have stayed empty
 		int                lastQueued = 0;       // queued references last frame, all cells
