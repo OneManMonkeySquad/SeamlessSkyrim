@@ -39,23 +39,21 @@ namespace Portal::Render
 	[[nodiscard]] bool TintDoorway();
 	void               SetTintDoorway(bool a_tint);
 
-	// Diagnostics (in-game menu): parts of the portal's work left out, to find which one causes a
-	// whole-screen flash.
+	// Diagnostics (bridge: portal_switches): parts of the portal's work left out, to find which one
+	// causes a whole-screen flash.
 	struct DebugSwitches
 	{
 		bool skipPortalPass = false;        // no portal pass at all
 		bool skipComposite = false;         // the pass drawn, the picture not put into the doorway
 		bool skipMotion = false;            // no motion vectors for the doorway
 		bool skipCommunityShaders = false;  // no hand-over of lighting, clip and IBL to Community Shaders
-		bool skipDepthWrite = false;        // the picture put in without writing the doorway's depth
-		bool lateComposite = false;         // the picture put in last before post-processing, over everything
 	};
 	[[nodiscard]] DebugSwitches GetDebugSwitches();
 	void                        SetDebugSwitches(const DebugSwitches& a_switches);
 
 	// Render-merge: an interior's directional light and directional ambient as the patched Community
 	// Shaders takes them (SeamlessPortal_SetMergedLighting), rotated by a_rotation (the interior's
-	// placement in the world). Main thread; briefly loads the cell's ambient into the shader state.
+	// placement in the world). Main thread.
 	[[nodiscard]] std::optional<std::array<float, 19>> MergedLighting(RE::TESObjectCELL* a_cell, const RE::NiMatrix3& a_rotation);
 
 	// The outdoors' distance fog for the street merged into an interior (the interior's fog,

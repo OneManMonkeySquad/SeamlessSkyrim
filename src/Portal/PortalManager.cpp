@@ -631,21 +631,17 @@ namespace
 		// once the view out was there, and wasn't carried through.
 		if (gate && linked) {
 			Portal::Doors::Open(linked, openFarGate, true, true);
-			try {
-				const auto mapping = Portal::Doors::Compute(*portal);
-				remote.ClearPassage(mapping.sourceCenter, mapping.inward, mapping.halfWidth, mapping.halfHeight);
-			} catch (const std::exception&) {
+			if (const auto mapping = Portal::Doors::TryCompute(*portal)) {
+				remote.ClearPassage(mapping->sourceCenter, mapping->inward, mapping->halfWidth, mapping->halfHeight);
 			}
 		} else {
 			Portal::Doors::Close(openFarGate);
 			remote.RestorePassage();
 		}
 		if (farSwings) {
-			try {
-				// Into the space behind, in its own coordinates (the portal pass draws it where it is).
-				const auto mapping = Portal::Doors::Compute(*portal);
-				Portal::Doors::Swing(linked, mapping.toLinked.rotate * mapping.inward, SwingEase(openDoorSwing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
-			} catch (const std::exception&) {
+			// Into the space behind, in its own coordinates (the portal pass draws it where it is).
+			if (const auto mapping = Portal::Doors::TryCompute(*portal)) {
+				Portal::Doors::Swing(linked, mapping->toLinked.rotate * mapping->inward, SwingEase(openDoorSwing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
 			}
 		} else if (!hide) {
 			Portal::Doors::Swing(a_door, RE::NiPoint3{ -a_inward.x, -a_inward.y, 0.0f }, SwingEase(openDoorSwing), style == Portal::Doors::OpenStyle::kSwingOtherEnd);
@@ -1340,7 +1336,6 @@ namespace
 	bool                   toneOutdoorsKnown = false;
 	RE::ImageSpaceBaseData toneIndoors;            // the interior the player is in, as the engine had it
 	RE::TESObjectCELL*     toneIndoorsCell = nullptr;
-	std::string            toneWhy;  // TEMP diagnostics
 
 	void ClearTone()
 	{
@@ -1420,8 +1415,6 @@ namespace
 		float           t = std::clamp((a_interiorDepth - kFrom) / (kTo - kFrom), 0.0f, 1.0f);
 		t = t * t * (3.0f - 2.0f * t);
 		t = inside ? 1.0f - (1.0f - t) * a_inDoorway : t * a_inDoorway;
-		toneWhy = std::format("indoors {} outdoorsKnown {} t {:.2f} depth {:.0f} inDoorway {:.2f} override {}", indoors != nullptr, toneOutdoorsKnown, t, a_interiorDepth, a_inDoorway,
-			runtime.overrideBaseData != nullptr);
 		// The eye adaptation walked out with was the room's: the street came in far too bright and
 		// took seconds to settle. A load door starts it afresh behind its loading screen; here it is
 		// let catch up with the street at once in the first frames outdoors.
@@ -1511,13 +1504,12 @@ namespace
 		if (!merged && !MergedOutdoors() && openDoor.door != a_portal.sourceDoor) {
 			return std::nullopt;
 		}
-		Portal::Doors::Mapping mapping;
-		try {
-			mapping = Portal::Doors::Compute(a_portal);
-		} catch (const std::exception&) {
+		const auto found = Portal::Doors::TryCompute(a_portal);
+		if (!found) {
 			return std::nullopt;
 		}
-		const auto DepthOf = [&](const RE::NiPoint3& a_point) {
+		const auto& mapping = *found;
+		const auto  DepthOf = [&](const RE::NiPoint3& a_point) {
 			const auto offset = a_point - mapping.sourceCenter;
 			return offset.x * mapping.inward.x + offset.y * mapping.inward.y;  // < 0: in front
 		};
@@ -1741,12 +1733,11 @@ namespace
 		if (!portal || !remote.merged || !remote.CollisionMerged() || !roomWorld) {
 			return;
 		}
-		Portal::Doors::Mapping mapping;
-		try {
-			mapping = Portal::Doors::Compute(*portal);
-		} catch (const std::exception&) {
+		const auto found = Portal::Doors::TryCompute(*portal);
+		if (!found) {
 			return;
 		}
+		const auto&        mapping = *found;
 		auto*              player = RE::PlayerCharacter::GetSingleton();
 		const float        reach = kUseReach + a_origin.GetDistance(player->GetPosition() + RE::NiPoint3{ 0.0f, 0.0f, 120.0f });
 		RE::NiPoint3       direction = mapping.toLinked.rotate * a_direction;
@@ -2263,26 +2254,6 @@ namespace Portal::Manager
 		if (!here) {
 			return;
 		}
-		{
-			// Diagnostics: falling through the floor after walking through a door was reported but
-			// not seen here; a drop of more than a storey within a second near a portal is logged
-			// with what was in place under the player.
-			static float      fallFrom = 0.0f, fallTime = 0.0f;
-			static RE::FormID fallCell = 0;
-			const float       z = player->GetPositionZ();
-			if (fallCell != here->GetFormID() || z > fallFrom || (fallTime += a_delta) > 1.0f) {
-				fallCell = here->GetFormID();
-				fallFrom = z;
-				fallTime = 0.0f;
-			} else if (fallFrom - z > 250.0f && GetActive()) {
-				const auto pos = player->GetPosition();
-				logger::warn("portal: player fell {:.0f} in {:.2f} s at ({:.0f},{:.0f},{:.0f}) in {}: merged {}, in room {}, room collision {}, passage pieces {}, held {}",
-					fallFrom - z, fallTime, pos.x, pos.y, pos.z, Probe::DescribeCell(here), remote.merged, playerInRoom, remote.CollisionMerged(), passage.size(),
-					passageHeldThisFrame);
-				fallFrom = z;
-				fallTime = 0.0f;
-			}
-		}
 		if (remote.Attached() && !remote.Healthy()) {
 			ReleaseShown("remote cell no longer attached under the portal");
 		}
@@ -2329,11 +2300,8 @@ namespace Portal::Manager
 					SetActive(Active{ candidate->door->GetFormID(), candidate->linkedDoor, portal->cell, portal->generation });
 					// The street's distant land is placed by the door pair, as at the attach: kept, it
 					// stood where the first door's pair put it, off the street seen through this one.
-					if (here->IsInteriorCell() && !portal->cell->IsInteriorCell()) {
-						try {
-							Portal::StreetLOD::Show(portal->cell, Doors::Compute(*GetActive()).toLinked, false);
-						} catch (const std::exception&) {
-						}
+					if (const auto mapping = Doors::TryCompute(*GetActive()); mapping && here->IsInteriorCell() && !portal->cell->IsInteriorCell()) {
+						Portal::StreetLOD::Show(portal->cell, mapping->toLinked, false);
 					}
 					lastEvent = std::format("switched to door {:08X} into the same space", candidate->door->GetFormID());
 					logger::info("portal: {}", lastEvent);
@@ -2374,11 +2342,8 @@ namespace Portal::Manager
 				// the engine's own update at the crossing, centred on the interior, showed the low LOD
 				// town and land in the street's houses for the half second the portal's picture was
 				// drawn before the merge.
-				if (here && here->IsInteriorCell() && !candidate->cell->IsInteriorCell()) {
-					try {
-						Portal::StreetLOD::Show(candidate->cell, Doors::Compute(*GetActive()).toLinked, false);
-					} catch (const std::exception&) {
-					}
+				if (const auto mapping = Doors::TryCompute(*GetActive()); mapping && here->IsInteriorCell() && !candidate->cell->IsInteriorCell()) {
+					Portal::StreetLOD::Show(candidate->cell, mapping->toLinked, false);
 				}
 			} else {
 				failedCell = candidate->cell->GetFormID();
@@ -2392,11 +2357,8 @@ namespace Portal::Manager
 		if (const auto portal = GetActive()) {
 			remote.Update(a_delta);
 			// Also while the door is still swinging shut after the portal stopped being ready.
-			if (ActivePortal() || (openDoor.door == portal->sourceDoor && openDoorSwing > 0.0f)) {
-				try {
-					OpenDoor(Lookup(portal->sourceDoor), Doors::Compute(*portal).inward, a_delta);
-				} catch (const std::exception&) {
-				}
+			if (const auto mapping = Doors::TryCompute(*portal); mapping && (ActivePortal() || (openDoor.door == portal->sourceDoor && openDoorSwing > 0.0f))) {
+				OpenDoor(Lookup(portal->sourceDoor), mapping->inward, a_delta);
 			}
 			// Loaded from further out than usual (farActivate), the space is only merged where it would
 			// have been loaded: the street merged into an interior is drawn whole, seen or not (it
@@ -2437,11 +2399,8 @@ namespace Portal::Manager
 				UpdateMerged(*primaryRoom, remote, *portal, 0, doorWanted, a_delta, culls);
 				if (remote.CollisionMerged() && (Portal::RemoteCell::debugSkip & 8192)) {
 					remote.ClearStandIns();  // diagnostics: without stand-ins
-				} else if (remote.CollisionMerged()) {
-					try {
-						remote.UpdateStandIns(Doors::Compute(*portal).toLinked.Invert(), here->GetbhkWorld());
-					} catch (const std::exception&) {
-					}
+				} else if (const auto mapping = Doors::TryCompute(*portal); mapping && remote.CollisionMerged()) {
+					remote.UpdateStandIns(mapping->toLinked.Invert(), here->GetbhkWorld());
 				}
 			}
 			approachLimit = Approach(player, *portal, a_delta);
@@ -2461,14 +2420,10 @@ namespace Portal::Manager
 			const auto      portal = ReadyPortal();
 			RE::NiTransform toPhysics;
 			std::optional<LightOcclusion::RoomDoor> roomDoor;
-			if (portal) {
-				try {
-					const auto mapping = Doors::Compute(*portal);
-					roomDoor = LightOcclusion::RoomDoor{ mapping.toLinked * mapping.sourceCenter, mapping.toLinked.rotate * mapping.inward, mapping.halfWidth, mapping.halfHeight };
-					if (remote.merged) {
-						toPhysics = mapping.toLinked;
-					}
-				} catch (const std::exception&) {
+			if (const auto mapping = portal ? Doors::TryCompute(*portal) : std::nullopt) {
+				roomDoor = LightOcclusion::RoomDoor{ mapping->toLinked * mapping->sourceCenter, mapping->toLinked.rotate * mapping->inward, mapping->halfWidth, mapping->halfHeight };
+				if (remote.merged) {
+					toPhysics = mapping->toLinked;
 				}
 			}
 			if (portal && remote.merged) {
@@ -2483,17 +2438,13 @@ namespace Portal::Manager
 			for (int slot = 1; slot < ::Render::Backend::kMaxMergedRooms; ++slot) {
 				const auto beside = std::ranges::find(besideRooms, slot, &BesideRoom::slot);
 				auto*      space = beside != besideRooms.end() ? KeptSpace(beside->cell) : nullptr;
-				if (!space) {
+				const auto mapping = space ? Doors::TryCompute(Active{ beside->sourceDoor, beside->linkedDoor, beside->cell, space->Generation() }) : std::nullopt;
+				if (!mapping) {
 					LightOcclusion::SetWorld(slot, nullptr);
 					continue;
 				}
-				try {
-					const auto mapping = Doors::Compute(Active{ beside->sourceDoor, beside->linkedDoor, beside->cell, space->Generation() });
-					LightOcclusion::SetWorld(slot, beside->cell->GetbhkWorld(), mapping.toLinked,
-						LightOcclusion::RoomDoor{ mapping.toLinked * mapping.sourceCenter, mapping.toLinked.rotate * mapping.inward, mapping.halfWidth, mapping.halfHeight }, true);
-				} catch (const std::exception&) {
-					LightOcclusion::SetWorld(slot, nullptr);
-				}
+				LightOcclusion::SetWorld(slot, beside->cell->GetbhkWorld(), mapping->toLinked,
+					LightOcclusion::RoomDoor{ mapping->toLinked * mapping->sourceCenter, mapping->toLinked.rotate * mapping->inward, mapping->halfWidth, mapping->halfHeight }, true);
 			}
 		}
 		SetShownCells(remote.merged || ActivePortal().has_value());
@@ -2505,20 +2456,16 @@ namespace Portal::Manager
 		UpdateImageSpace();
 		bool planeSet = false;
 		if (const auto portal = ReadyPortal()) {
-			try {
-				const auto mapping = Doors::Compute(*portal);
-				if (!remote.merged || MergedOutdoors()) {
-					Portal::CameraLimit::SetPlane(mapping.sourceCenter - mapping.inward * mapping.halfDepth, mapping.inward, mapping.halfWidth);
-					// Short of the doorway's picture by the camera's near distance (and a unit beyond
-					// where walking in carries the player through, Approach, so that still happens).
-					const auto* worldCamera = RE::Main::WorldRootCamera();
-					const float nearPlane = worldCamera ? worldCamera->GetRuntimeData2().viewFrustum.fNear : 15.0f;
-					const bool  gate = !here->IsInteriorCell() && !portal->cell->IsInteriorCell();
-					const float pictureDepth = gate ? -(mapping.halfDepth + 2.0f) : mapping.halfDepth + 2.0f;
-					Portal::CameraLimit::SetFirstPersonStop(mapping.sourceCenter, mapping.inward, mapping.halfWidth, pictureDepth - nearPlane - 1.0f);
-					planeSet = true;
-				}
-			} catch (const std::exception&) {
+			if (const auto mapping = Doors::TryCompute(*portal); mapping && (!remote.merged || MergedOutdoors())) {
+				Portal::CameraLimit::SetPlane(mapping->sourceCenter - mapping->inward * mapping->halfDepth, mapping->inward, mapping->halfWidth);
+				// Short of the doorway's picture by the camera's near distance (and a unit beyond
+				// where walking in carries the player through, Approach, so that still happens).
+				const auto* worldCamera = RE::Main::WorldRootCamera();
+				const float nearPlane = worldCamera ? worldCamera->GetRuntimeData2().viewFrustum.fNear : 15.0f;
+				const bool  gate = !here->IsInteriorCell() && !portal->cell->IsInteriorCell();
+				const float pictureDepth = gate ? -(mapping->halfDepth + 2.0f) : mapping->halfDepth + 2.0f;
+				Portal::CameraLimit::SetFirstPersonStop(mapping->sourceCenter, mapping->inward, mapping->halfWidth, pictureDepth - nearPlane - 1.0f);
+				planeSet = true;
 			}
 		}
 		if (!planeSet) {
@@ -2531,27 +2478,24 @@ namespace Portal::Manager
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		auto* here = player ? player->GetParentCell() : nullptr;
 		bool  toned = false;
-		if (const auto portal = ReadyPortal(); portal && here) {
-			try {
-				const auto mapping = Doors::Compute(*portal);
-				const auto offset = CameraPosition() - mapping.sourceCenter;
-				const float depth = offset.x * mapping.inward.x + offset.y * mapping.inward.y;
-				// Only in front of the doorway: by depth alone, anyone level with the door's plane
-				// (walking along the street past an open door, or teleported along it) had the whole
-				// outdoors drawn with the interior's image space: a white flash.
-				const float side = std::abs(offset.x * mapping.inward.y - offset.y * mapping.inward.x);
-				const float above = std::abs(offset.z) - mapping.halfHeight;
-				const auto  fade = [](float a_beyond) { return 1.0f - std::clamp(a_beyond / 100.0f, 0.0f, 1.0f); };
-				// Past the doorway's plane, though, the camera is in the space behind it (a merged room
-				// walked into), however far to the side or upstairs: there the outdoor image space came
-				// back, and the room brightened as soon as one walked along its wall.
-				const float inDoorway = std::max(fade(side - mapping.halfWidth) * fade(above), std::clamp(depth / 50.0f, 0.0f, 1.0f));
-				// The source door's "inward" points away from the player's space: into the interior
-				// from outside, out of it from inside.
-				UpdateTone(here, portal->cell, here->IsInteriorCell() ? -depth : depth, inDoorway);
-				toned = true;
-			} catch (const std::exception&) {
-			}
+		const auto portal = ReadyPortal();
+		if (const auto mapping = portal && here ? Doors::TryCompute(*portal) : std::nullopt) {
+			const auto offset = CameraPosition() - mapping->sourceCenter;
+			const float depth = offset.x * mapping->inward.x + offset.y * mapping->inward.y;
+			// Only in front of the doorway: by depth alone, anyone level with the door's plane
+			// (walking along the street past an open door, or teleported along it) had the whole
+			// outdoors drawn with the interior's image space: a white flash.
+			const float side = std::abs(offset.x * mapping->inward.y - offset.y * mapping->inward.x);
+			const float above = std::abs(offset.z) - mapping->halfHeight;
+			const auto  fade = [](float a_beyond) { return 1.0f - std::clamp(a_beyond / 100.0f, 0.0f, 1.0f); };
+			// Past the doorway's plane, though, the camera is in the space behind it (a merged room
+			// walked into), however far to the side or upstairs: there the outdoor image space came
+			// back, and the room brightened as soon as one walked along its wall.
+			const float inDoorway = std::max(fade(side - mapping->halfWidth) * fade(above), std::clamp(depth / 50.0f, 0.0f, 1.0f));
+			// The source door's "inward" points away from the player's space: into the interior
+			// from outside, out of it from inside.
+			UpdateTone(here, portal->cell, here->IsInteriorCell() ? -depth : depth, inDoorway);
+			toned = true;
 		}
 		if (!toned) {
 			ClearTone();
@@ -2565,14 +2509,13 @@ namespace Portal::Manager
 			roomToSave.reset();
 			return false;
 		}
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		try {
-			const auto mapping = Doors::Compute(*portal);
-			roomToSave = RoomSave{ portal->sourceDoor, mapping.toLinked * player->GetPosition() + RE::NiPoint3{ 0.0f, 0.0f, 4.0f }, player->GetAngleZ() + mapping.yawDelta };
-		} catch (const std::exception&) {
+		auto*      player = RE::PlayerCharacter::GetSingleton();
+		const auto mapping = Doors::TryCompute(*portal);
+		if (!mapping) {
 			roomToSave.reset();
 			return false;
 		}
+		roomToSave = RoomSave{ portal->sourceDoor, mapping->toLinked * player->GetPosition() + RE::NiPoint3{ 0.0f, 0.0f, 4.0f }, player->GetAngleZ() + mapping->yawDelta };
 		// Kept as they are, the room and the passage through its house stay under the player while
 		// the save is written; only the open doors' flags must not go into it (back in 3 s). The
 		// spaces kept out of sight behind other doors must not go into it either.
@@ -2763,8 +2706,6 @@ namespace Portal::Manager
 	{
 		return openDoorSwing > 0.0f;
 	}
-
-	std::string ToneWhy() { return toneWhy; }
 
 	bool ToneBlendOn()
 	{
@@ -3194,15 +3135,13 @@ namespace Portal::Manager
 		void UpdateMerged(MergedRoom& a_room, Portal::RemoteCell& a_space, const Active& a_portal, int a_slot, bool a_wanted, float a_delta,
 			std::vector<MergedCull::Room>& a_culls)
 		{
-			Doors::Mapping mapping;
-			try {
-				mapping = Doors::Compute(a_portal);
-			} catch (const std::exception&) {
+			const auto found = Doors::TryCompute(a_portal);
+			if (!found) {
 				return;
 			}
-			auto* source = Lookup(a_portal.sourceDoor);
-			auto* linked = Lookup(a_portal.linkedDoor);
-			SEAMLESS_ASSERT(source && linked);  // Compute above throws for a door without 3D
+			const auto& mapping = *found;
+			auto*       source = Lookup(a_portal.sourceDoor);
+			auto*       linked = Lookup(a_portal.linkedDoor);
 			const bool primary = a_slot == 0;
 			// A door correction changed (the in-game menu): the room is placed anew, live.
 			{
@@ -3482,14 +3421,13 @@ namespace Portal::Manager
 			if (!camera) {
 				return true;
 			}
-			try {
-				const auto mapping = Doors::Compute(Active{ a_room.sourceDoor, a_room.linkedDoor, a_room.cell, a_space.Generation() });
-				const auto offset = camera->world.translate - mapping.sourceCenter;
-				constexpr float kBehindSlack = 10.0f;
-				return offset.x * mapping.inward.x + offset.y * mapping.inward.y < kBehindSlack && DoorwayInView(mapping, kSeenMargin);
-			} catch (const std::exception&) {
+			const auto mapping = Doors::TryCompute(Active{ a_room.sourceDoor, a_room.linkedDoor, a_room.cell, a_space.Generation() });
+			if (!mapping) {
 				return true;
 			}
+			const auto      offset = camera->world.translate - mapping->sourceCenter;
+			constexpr float kBehindSlack = 10.0f;
+			return offset.x * mapping->inward.x + offset.y * mapping->inward.y < kBehindSlack && DoorwayInView(*mapping, kSeenMargin);
 		}
 
 		// Paused, the room keeps everything it is drawn with (doors swung, shapes listed, its

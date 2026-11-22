@@ -241,11 +241,12 @@ namespace Portal
 		REL::Relocation<bool (*)(RE::TESObjectCELL*)>               loadTempData{ REL::RelocationID(18637, 19111) };
 		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::NiNode*)> attachCell{ REL::RelocationID(18518, 18976) };
 		REL::Relocation<std::uint8_t (*)(RE::TESObjectCELL*, bool)> finishAttach{ REL::RelocationID(18594, 19063) };
-		// The attach installs the cell's room/portal occlusion graph in the *world* light scene
-		// (ShadowSceneNode::SetPortalGraph on State slot 0). Left there, the main view culled with
-		// the remote cell's rooms: actors outside them (the player, every NPC) vanished, and the
+		// The engine's attach installs the cell's room/portal occlusion graph in the *world* light
+		// scene (ShadowSceneNode::SetPortalGraph on State slot 0). Left there, the main view culled
+		// with the remote cell's rooms: actors outside them (the player, every NPC) vanished, and the
 		// main view accumulated the remote cell's geometry too, colliding with the portal pass's
-		// render passes and crashing. Put the world's graph back. Deliberately no graph on the
+		// render passes and crashing. AttachGraphHook keeps the engine from installing it; only where
+		// its call site isn't found is the world's graph put back here. Deliberately no graph on the
 		// portal scene: a light scene with a graph expects the culling process to carry a
 		// portal-graph entry (ID 106322), which our cull context doesn't, and it crashed; without
 		// one the remote cell's rooms render fine.
@@ -314,9 +315,10 @@ namespace Portal
 		// A cell still loaded from the player's visit (they just came through the door) has nothing
 		// left to build; the long wait is for cells whose 3D is being loaded now.
 		bool preloaded = Cell3D(a_cell) != nullptr;
-		// Attaching a cell, and fetching an exterior's neighbours, empties the world scene of its
+		// Attaching a cell, and fetching an exterior's neighbours, emptied the world scene of its
 		// lights (25 -> 0 in a lit room: seen from inside, every candle and fire went dark for
-		// good, since nothing makes them again while the cell stays loaded). They are put back.
+		// good, since nothing makes them again while the cell stays loaded), through the change of
+		// its room graph that AttachGraphHook now prevents. Whatever still goes is put back.
 		const auto worldLights = LightScene::WorldLights();
 		// The door's cell can be in memory without having been read from the plugin files: a game
 		// loaded indoors holds the exterior cells of persistent references (the door) as shells, with

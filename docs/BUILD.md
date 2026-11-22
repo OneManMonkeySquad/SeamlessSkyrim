@@ -119,6 +119,9 @@ Launching and the bridge:
   never the Windows volume mixer: Windows keeps a mixer mute across runs, so a crash while muted
   left the user's own games silent.
 - Changes to `server.py` only apply after the MCP server is reconnected (`/mcp` in Claude Code).
+- A tool returning text and an `Image` in a list needs `@mcp.tool(structured_output=False)`: with
+  the `list[Any]` annotation, mcp 1.30 tries to serialize the `Image` and the call fails after
+  the work is done ("Unable to serialize unknown type").
 - `tools\build.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
 
 Tests:
@@ -213,7 +216,7 @@ copied from the AE game's plugins folder, trainwreck, no Community Shaders). It 
 `Documents\My Games\Skyrim Special Edition` with AE: logs, crash logs, ini files and saves.
 
 - Deploy by hand: copy `build/RelWithDebInfo/SeamlessSkyrim.dll` and `.pdb` (and the two ini
-  files) into `E:\Oldrim-1.5.97\Data\SKSE\Plugins`. `toolsuild.ps1` deploys to AE only.
+  files) into `E:\Oldrim-1.5.97\Data\SKSE\Plugins`. `tools\build.ps1` deploys to AE only.
 - The MCP server drives it with `SKYRIM_GAME_DIR=E:\Oldrim-1.5.97` (set when the server starts;
   from a script: `SKYRIM_GAME_DIR=... PYTHONPATH=. uv run python script.py` in `tools/skyrim-mcp`).
 - The saves are AE saves and don't load in 1.5.97 (a crash after loading). Start from the main

@@ -186,12 +186,11 @@ namespace Portal::NpcTravel
 
 	void Update(const Manager::Active& a_portal, const std::vector<RE::TESObjectCELL*>& a_remoteCells)
 	{
-		Doors::Mapping mapping;
-		try {
-			mapping = Doors::Compute(a_portal);
-		} catch (const std::exception&) {
+		const auto found = Doors::TryCompute(a_portal);
+		if (!found) {
 			return;
 		}
+		const auto& mapping = *found;
 		portalDoors.store(a_portal.sourceDoor | (static_cast<std::uint64_t>(a_portal.linkedDoor) << 32), std::memory_order_relaxed);
 		const auto linkedCenter = mapping.toLinked * mapping.sourceCenter;
 		const auto toSource = mapping.toLinked.Invert();

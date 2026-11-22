@@ -843,7 +843,6 @@ namespace Bridge
 				 activatePickRef(player);
 				 return json{ { "target", target ? std::format("{:08X}", target->GetFormID()) : "" } };
 			 } } },
-			// Tests: what the player's Havok world has under a point (the player's by default).
 			// Tests: what the player's Havok world has between two points (from, to; "room" as in ray_down).
 			{ "ray", { [](const json& a) {
 				 auto* player = RequirePlayer();
@@ -871,6 +870,7 @@ namespace Bridge
 					 { "layer", collidable ? static_cast<int>(collidable->GetCollisionLayer()) : -1 },
 					 { "ref", ref ? std::format("{:08X} cell {:08X}", ref->GetFormID(), ref->GetParentCell() ? ref->GetParentCell()->GetFormID() : 0) : "" } };
 			 } } },
+			// Tests: what the player's Havok world has under a point (the player's by default).
 			{ "ray_down", { [](const json& a) {
 				 auto* player = RequirePlayer();
 				 auto* world = player->GetParentCell() ? player->GetParentCell()->GetbhkWorld() : nullptr;
@@ -899,19 +899,17 @@ namespace Bridge
 				 return json{ { "hit", true }, { "z", at.z + 100.0f - 1100.0f * pick.rayOutput.hitFraction },
 					 { "ref", ref ? std::format("{:08X} cell {:08X}", ref->GetFormID(), ref->GetParentCell() ? ref->GetParentCell()->GetFormID() : 0) : "" } };
 			 } } },
-			// Tests: the in-game menu's debug switches and red tint.
+			// Diagnostics: parts of the portal's work left out, and the doorway tinted red.
 			{ "portal_switches", { [](const json& a) {
 				 auto s = Portal::Render::GetDebugSwitches();
 				 s.skipPortalPass = a.value("skipPortalPass", s.skipPortalPass);
 				 s.skipComposite = a.value("skipComposite", s.skipComposite);
 				 s.skipMotion = a.value("skipMotion", s.skipMotion);
 				 s.skipCommunityShaders = a.value("skipCommunityShaders", s.skipCommunityShaders);
-				 s.skipDepthWrite = a.value("skipDepthWrite", s.skipDepthWrite);
-				 s.lateComposite = a.value("lateComposite", s.lateComposite);
 				 Portal::Render::SetDebugSwitches(s);
 				 Portal::Render::SetTintDoorway(a.value("tint", Portal::Render::TintDoorway()));
-				 return json{ { "skipPortalPass", s.skipPortalPass }, { "skipComposite", s.skipComposite }, { "lateComposite", s.lateComposite },
-					 { "tint", Portal::Render::TintDoorway() } };
+				 return json{ { "skipPortalPass", s.skipPortalPass }, { "skipComposite", s.skipComposite }, { "skipMotion", s.skipMotion },
+					 { "skipCommunityShaders", s.skipCommunityShaders }, { "tint", Portal::Render::TintDoorway() } };
 			 } } },
 			// Waits for the next Present; running it on the main thread would deadlock the frame.
 			{ "screenshot", { Screenshot, false } },
@@ -1086,8 +1084,6 @@ namespace Bridge
 				 }
 				 return json{ { "orphans", found }, { "graphs", graphs } };
 			 } } },
-			// Where nodes whose name contains {name} hang, in the world's scene and the portal's:
-			// a piece of a room missing from one of them.
 			// The nodes of a cell's 3D whose bound is wider than {radius} (default 8000), with their
 			// widest children: one stray child (a node left at the origin) makes every bound above it
 			// span the world, and the engine's per-light walk of the scene can't skip any of it.
@@ -1128,6 +1124,8 @@ namespace Bridge
 				 });
 				 return json{ { "cell3D", describe(root) }, { "wide", found } };
 			 } } },
+			// Where nodes whose name contains {name} hang, in the world's scene and the portal's:
+			// a piece of a room missing from one of them.
 			{ "find_nodes", { [](const json& a) {
 				 const auto needle = a.at("name").get<std::string>();
 				 json       found = json::array();
@@ -1435,7 +1433,6 @@ namespace Bridge
 				 auto status = Portal::Manager::Status();
 				 status["lastFrame"] = Portal::Render::LastFrame();
 				 status["travel"] = Portal::Travel::Status();
-				 status["tone"] = Portal::Manager::ToneWhy();  // TEMP
 				 return status;
 			 } } },
 			{ "travel_options", { Portal::Travel::SetOptions } },

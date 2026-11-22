@@ -11,9 +11,10 @@ Found porting the plugin; each was checked in the code of both.
   `BGSTerrainManager::Update` (SE 31017 / AE 31802) calls the node placement (31041 / 31828) once,
   where AE calls it three times; SE has the placement's body (a call to 31048 / 31835 with flags
   7 or 0x27, then three vcalls) inlined at the other two places.
-- `Renderer::SetRenderTarget` AE 77453 is SE 75646, a wrapper that passes the RenderTargetManager
-  object (ID 524907) and jumps to 75654. CommonLib pairs 77453 with 75654, which takes `this` in
-  rcx; AE's 77453 ignores rcx.
+- `Renderer::SetRenderTarget` AE 77453 is SE 75646, a wrapper that passes the Renderer object
+  (ID 524907, AE 411393) and jumps to 75654. CommonLib pairs 77453 with 75654, which takes `this`
+  in rcx; AE's 77453 ignores rcx and loads 411393 itself. Either way the object a caller passes is
+  unused.
 - Player layout: the actor cull's drawn bits at +0x274 (AE +0x27C); the teleport's queue at
   +0x640 and its valid flag at +0x682 (AE +0x650, +0x692). TES's worldspace at +0x140 (AE +0x148).
 - Same in both: fog property fields (+0x38..+0x88), task pool (vfunc 0x80, +0xE0, +0xF0), the

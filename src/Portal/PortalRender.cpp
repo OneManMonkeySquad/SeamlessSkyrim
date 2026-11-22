@@ -59,7 +59,8 @@ namespace
 	constexpr auto kDepthTarget = RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN_COPY;
 
 	// The engine passes the RenderTargetManager object itself (&ID 411451) as `this` to these
-	// (AE 1.7.104, seen in ID 52727); CommonLib's wrappers pass a different object.
+	// (AE 1.7.104, seen in ID 52727); CommonLib's wrappers pass a different object. SetColorTarget's
+	// function ignores it on both runtimes (docs/ENGINE.md).
 	void* RenderTargetManagerObject()
 	{
 		static REL::Relocation<std::uintptr_t> object{ REL::RelocationID(524970, 411451) };
@@ -160,17 +161,12 @@ namespace
 		return ReadPointer(&a_pass->shader, shader) && ValidShader(reinterpret_cast<const RE::BSShader*>(shader));
 	}
 
-	// Lights queued for the portal scene when it was last culled (see the redraw in RenderWorldHook).
-	std::size_t lightsQueuedAtCull = 0;
+	// Passes drawn per portal pass, against the recent usual number: a pass drawing next to nothing
+	// is a doorway blinking black on screen.
+	std::uint32_t passesDrawnThisSubmit = 0;
+	float         usualPassesDrawn = 0.0f;
 
-	// Diagnostics for a doorway that blinks black: passes drawn per portal pass, against the
-	// recent usual number. A pass drawing next to nothing is a black doorway on screen.
-	std::uint32_t                      passesDrawnThisSubmit = 0;
-	float                              usualPassesDrawn = 0.0f;
-	bool                               heldThisFrame = false;  // the last good picture was kept (FrameTrace)
-	std::vector<const RE::BSGeometry*> shapesDrawnThisSubmit;  // in draw order, repeats included
-
-	// True for a pass that drew far less than usual (see ReportLowPass).
+	// True for a pass that drew far less than usual.
 	bool CheckPassesDrawn(std::uint32_t a_frame)
 	{
 		const auto drawn = static_cast<float>(passesDrawnThisSubmit);
@@ -183,40 +179,10 @@ namespace
 		return low;
 	}
 
-	// Diagnostics for those passes: what they drew, by shape and owner, and where the portal camera
-	// stood against the far door. Right after the submit: every shape listed was just drawn.
-	void ReportLowPass(std::uint32_t a_frame, const RE::NiCamera* a_camera, const RE::NiPoint3& a_farDoor, float a_toDoor, const std::array<float, 4>& a_doorway)
-	{
-		static int reports = 0;
-		if (reports++ >= 6) {
-			return;
-		}
-		const auto& p = a_camera->world.translate;
-		const auto& m = a_camera->world.rotate;
-		logger::warn("portal: low frame {}: camera ({:.0f},{:.0f},{:.0f}) forward ({:.2f},{:.2f},{:.2f}), far door ({:.0f},{:.0f},{:.0f}) {:.0f} away, {:.1f} along the view; near {:.1f}; doorway {:.3f}..{:.3f} x {:.3f}..{:.3f}",
-			a_frame, p.x, p.y, p.z, m.entry[0][0], m.entry[1][0], m.entry[2][0], a_farDoor.x, a_farDoor.y, a_farDoor.z, p.GetDistance(a_farDoor), a_toDoor,
-			a_camera->GetRuntimeData2().viewFrustum.fNear, a_doorway[0], a_doorway[1], a_doorway[2], a_doorway[3]);
-		std::map<const RE::BSGeometry*, int> counts;
-		for (auto* shape : shapesDrawnThisSubmit) {
-			++counts[shape];
-		}
-		for (const auto& [shape, count] : counts) {
-			const RE::TESObjectREFR* owner = nullptr;
-			for (const RE::NiAVObject* node = shape; node && !owner; node = node->parent) {
-				owner = node->GetUserData();
-			}
-			auto*       base = owner ? owner->GetBaseObject() : nullptr;
-			const auto& c = shape->worldBound.center;
-			logger::warn("portal:   '{}' x{} ref {:08X} {} '{}' at ({:.0f},{:.0f},{:.0f}) r {:.0f}, {:.0f} from the camera", shape->name.c_str(), count, owner ? owner->GetFormID() : 0,
-				base ? RE::FormTypeToString(base->GetFormType()) : "-", base ? base->GetName() : "", c.x, c.y, c.z, shape->worldBound.radius, c.GetDistance(p));
-		}
-	}
-
 	// The far door's shapes (see RenderPortal): never drawn by the portal pass, whatever brings
 	// them there, in case culling its root isn't enough.
 	std::unordered_set<const void*> portalHiddenShapes;
 	std::uint32_t                   portalHiddenDrawn = 0;
-	RE::NiPoint3                    farDoorCenter;  // of the portal pass being drawn
 
 	// The far door's plane for the portal pass being drawn (unit normal away from the portal camera,
 	// offset): what lies on the camera's side of it can't be seen through the doorway.
@@ -302,7 +268,6 @@ namespace
 			func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 			if (inPortalSubmit && a_pass) {
 				++passesDrawnThisSubmit;
-				shapesDrawnThisSubmit.push_back(a_pass->geometry);
 				CutBeforeFreed(a_pass);
 			}
 		}
@@ -364,8 +329,6 @@ namespace
 		bool  skipPortalPass = false;   // no portal pass, nothing in the doorway
 		bool  skipComposite = false;    // the pass is drawn, the picture not put into the doorway
 		bool  skipMotion = false;       // the picture put in without motion vectors for the upscaler
-		bool  skipDepthWrite = false;   // the picture put in without writing the doorway's depth
-		bool  lateComposite = false;    // the picture put in last before post-processing, over everything
 	} lightDebug;
 
 	// The main view's camera as the renderer held it when Main::RenderWorld began, which the doorway's
@@ -382,16 +345,6 @@ namespace
 		decltype(std::declval<ShadowStateData>().cameraData)        cameraData;
 	};
 	MainView mainView;
-
-	// Debug switch 6: the doorway's picture put in right before post-processing (after first
-	// person, water and everything else), without a depth test.
-	struct LateComposite
-	{
-		Active portal;
-		bool   cameraBehind;
-	};
-	std::optional<LateComposite> pendingLateComposite;
-	bool                         compositingLate = false;  // DrawDoorQuad: no depth test
 
 	// ---- rain and snow seen from indoors ----------------------------------------------------
 	// The weather's precipitation is one particle shape (Sky::precip, under the world scene's
@@ -959,7 +912,6 @@ namespace
 		ID3D11DepthStencilState* depthState = nullptr;
 		ID3D11RasterizerState*   rasterState = nullptr;
 		ID3D11BlendState*        blendState = nullptr;
-		bool                     failed = false;
 	} sky;
 
 	struct alignas(16) SkyConstants
@@ -973,10 +925,24 @@ namespace
 		float size[4];
 	};
 
-	bool EnsureSkyPipeline(ID3D11Device* a_device)
+	// Our own shaders and states: one that can't be made is our bug, not a state to draw around.
+	void CompileShader(const char* a_source, std::size_t a_size, const char* a_name, const char* a_entry, const char* a_profile, ID3DBlob** a_out)
 	{
-		if (sky.vertexShader || sky.failed) {
-			return !sky.failed;
+		ID3DBlob*     errors = nullptr;
+		const HRESULT result = ::D3DCompile(a_source, a_size, a_name, nullptr, nullptr, a_entry, a_profile, 0, 0, a_out, &errors);
+		if (FAILED(result)) {
+			logger::critical("portal: {} {} failed: {}", a_name, a_entry, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+		}
+		SEAMLESS_ASSERT(SUCCEEDED(result));
+		if (errors) {
+			errors->Release();
+		}
+	}
+
+	void EnsureSkyPipeline(ID3D11Device* a_device)
+	{
+		if (sky.vertexShader) {
+			return;
 		}
 		static const char source[] = R"(
 			cbuffer Sky : register(b0) { float4 Forward; float4 Right; float4 Up; float4 Upper; float4 Horizon; float4 Lower; float4 Size; };
@@ -989,39 +955,24 @@ namespace
 				return float4(color, 1);
 			}
 		)";
-		ID3DBlob*  vs = nullptr;
-		ID3DBlob*  ps = nullptr;
-		ID3DBlob*  errors = nullptr;
-		const auto compile = [&](const char* a_entry, const char* a_profile, ID3DBlob** a_out) {
-			if (FAILED(::D3DCompile(source, sizeof(source) - 1, "SeamlessPortalSky", nullptr, nullptr, a_entry, a_profile, 0, 0, a_out, &errors))) {
-				logger::error("portal: sky shader {} failed: {}", a_entry, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
-				sky.failed = true;
-			}
-		};
-		compile("VS", "vs_5_0", &vs);
-		compile("PS", "ps_5_0", &ps);
-		if (!sky.failed) {
-			D3D11_BUFFER_DESC        buffer{ sizeof(SkyConstants), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
-			D3D11_DEPTH_STENCIL_DESC depth{};  // no depth test or write
-			D3D11_RASTERIZER_DESC    raster{};
-			raster.FillMode = D3D11_FILL_SOLID;
-			raster.CullMode = D3D11_CULL_NONE;
-			D3D11_BLEND_DESC blend{};
-			blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-			sky.failed = FAILED(a_device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &sky.vertexShader)) ||
-			             FAILED(a_device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &sky.pixelShader)) ||
-			             FAILED(a_device->CreateBuffer(&buffer, nullptr, &sky.constants)) || FAILED(a_device->CreateDepthStencilState(&depth, &sky.depthState)) ||
-			             FAILED(a_device->CreateRasterizerState(&raster, &sky.rasterState)) || FAILED(a_device->CreateBlendState(&blend, &sky.blendState));
-			if (sky.failed) {
-				logger::error("portal: could not create the sky pipeline");
-			}
-		}
-		for (auto* blob : { vs, ps, errors }) {
-			if (blob) {
-				blob->Release();
-			}
-		}
-		return !sky.failed;
+		ID3DBlob* vs = nullptr;
+		ID3DBlob* ps = nullptr;
+		CompileShader(source, sizeof(source) - 1, "SeamlessPortalSky", "VS", "vs_5_0", &vs);
+		CompileShader(source, sizeof(source) - 1, "SeamlessPortalSky", "PS", "ps_5_0", &ps);
+		D3D11_BUFFER_DESC        buffer{ sizeof(SkyConstants), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
+		D3D11_DEPTH_STENCIL_DESC depth{};  // no depth test or write
+		D3D11_RASTERIZER_DESC    raster{};
+		raster.FillMode = D3D11_FILL_SOLID;
+		raster.CullMode = D3D11_CULL_NONE;
+		D3D11_BLEND_DESC blend{};
+		blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+		const bool made = SUCCEEDED(a_device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &sky.vertexShader)) &&
+		                  SUCCEEDED(a_device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &sky.pixelShader)) &&
+		                  SUCCEEDED(a_device->CreateBuffer(&buffer, nullptr, &sky.constants)) && SUCCEEDED(a_device->CreateDepthStencilState(&depth, &sky.depthState)) &&
+		                  SUCCEEDED(a_device->CreateRasterizerState(&raster, &sky.rasterState)) && SUCCEEDED(a_device->CreateBlendState(&blend, &sky.blendState));
+		SEAMLESS_ASSERT(made);
+		vs->Release();
+		ps->Release();
 	}
 
 	void DrawSky(ID3D11DeviceContext* a_context, ID3D11RenderTargetView* a_target, const RE::NiCamera* a_camera, const SkyColors& a_colors)
@@ -1033,13 +984,8 @@ namespace
 		resource->Release();
 		ID3D11Device* device = nullptr;
 		a_context->GetDevice(&device);
-		const bool ready = EnsureSkyPipeline(device);
+		EnsureSkyPipeline(device);
 		device->Release();
-		if (!ready) {
-			const FLOAT rgba[4]{ a_colors.horizon.red, a_colors.horizon.green, a_colors.horizon.blue, 1.0f };
-			a_context->ClearRenderTargetView(a_target, rgba);
-			return;
-		}
 
 		// NiCamera: looks along local +X, up is +Y, right is +Z.
 		const auto& m = a_camera->world.rotate;
@@ -1143,8 +1089,8 @@ namespace
 	}
 
 	// ---- the portal pass ----------------------------------------------------------------------
-	// Runs in the middle of the engine's frame (right before the world is drawn), so everything it
-	// changes in the engine's render state is put back afterwards.
+	// Runs in the middle of the engine's frame (right after the world is drawn, see RenderWorldHook),
+	// so everything it changes in the engine's render state is put back afterwards.
 
 	// Where the doorway is on screen, as a rectangle in the camera port's 0..1 coordinates
 	// (left, right, bottom, top); nothing when it is off screen. The portal is only rendered when
@@ -1485,7 +1431,7 @@ namespace
 	};
 	std::optional<CaptureDrawn> captureDrawn;
 
-	json RenderPortal(const Active& a_portal, const ScreenRect& a_doorway, bool a_cameraBehind, const std::optional<Portal::Snapshot::CaptureCamera>& a_capture = std::nullopt)
+	json RenderPortal(const Active& a_portal, const ScreenRect& a_doorway, const std::optional<Portal::Snapshot::CaptureCamera>& a_capture = std::nullopt)
 	{
 		auto* root = Portal::LightScene::Get();
 		auto* mainCamera = RE::Main::WorldRootCamera();
@@ -1536,16 +1482,13 @@ namespace
 		const auto&        rotate = portalCamera->world.rotate;
 		const RE::NiPoint3 forward{ rotate.entry[0][0], rotate.entry[1][0], rotate.entry[2][0] };  // NiCamera looks along local +X
 		const float        toDoor = capturing ? a_capture->toDoorway : (Portal::Doors::Center(linked) - portalCamera->world.translate).Dot(forward);
-		// With the main camera behind the doorway, the portal camera is in front of the linked door,
-		// in the open: nothing to clip away. The capture camera cuts just past the door plane: its
+		// The capture camera cuts just past the door plane: its
 		// picture reaches beyond the doorway, where the room's front wall and the door's frame
 		// stood within the 20 units kept for the doorway quad, slivers at the plane that the
 		// stand-in drew out into vertical streaks seen from aside. The street's side has its own
 		// wall and frame anyway.
 		constexpr float kCaptureCut = 12.0f;
-		portalCamera->GetRuntimeData2().viewFrustum.fNear = a_cameraBehind ? defaultNear :
-		                                                    capturing     ? toDoor + kCaptureCut :
-		                                                                    std::max(defaultNear, toDoor - 20.0f);
+		portalCamera->GetRuntimeData2().viewFrustum.fNear = capturing ? toDoor + kCaptureCut : std::max(defaultNear, toDoor - 20.0f);
 		// The doorway on screen still shows the last picture, read with the clip distances it was
 		// drawn with.
 		if (capturing) {
@@ -1597,7 +1540,6 @@ namespace
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
 		// So are other doors standing in its doorway (see DoorsBesideFarDoor).
-		farDoorCenter = Portal::Doors::Center(linked);
 		std::vector<std::pair<RE::NiAVObject*, bool>> besideCulled;
 		for (auto* object : DoorsBesideFarDoor(linked)) {
 			besideCulled.emplace_back(object, object->GetAppCulled());
@@ -1647,14 +1589,6 @@ namespace
 			// NPCs of a remote interior keep NiAVObject::kNotVisible on their 3D root, and the cull
 			// skips them: in the portal the room was empty. Outdoors the flag was clear.
 			const auto actors = capturing ? HideActorsForCapture(Portal::Manager::RemoteCells()) : ShowActorsForCull(Portal::Manager::RemoteCells());
-			{
-				// Diagnostics for the freed passes: lights added to a scene arrive queued and are
-				// taken in while it is culled, which may rebuild passes the same cull has already
-				// accumulated (unconfirmed).
-				auto&               lightData = root->GetRuntimeData();
-				RE::BSSpinLockGuard locker(lightData.lightQueueLock);
-				lightsQueuedAtCull = lightData.lightQueueAdd.size();
-			}
 			RE::BSCullingProcess::Process(context);
 			if (capturing) {
 				ShowActorsAgain(actors);
@@ -1707,9 +1641,9 @@ namespace
 			through.z = 0.0f;
 			through.Unitize();
 			const auto face = Portal::Doors::Center(linked) - through * Portal::Doors::Size(linked).halfDepth;
-			farDoorClip = a_cameraBehind ? std::nullopt : std::optional(std::pair{ through, face.Dot(through) });
+			farDoorClip = std::pair{ through, face.Dot(through) };
 			if (useBackend) {
-				const float plane[4] = { through.x, through.y, through.z, a_cameraBehind ? -1e9f : face.Dot(through) };
+				const float plane[4] = { through.x, through.y, through.z, face.Dot(through) };
 				::Render::Backend::SetPortalClip(plane);
 			}
 		}
@@ -1734,25 +1668,17 @@ namespace
 		portalFrame += 1;
 		freedPassesThisSubmit = 0;
 		passesDrawnThisSubmit = 0;
-		shapesDrawnThisSubmit.clear();
 		drawnThisSubmit.clear();
 		inPortalSubmit = true;
 		RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), kRenderFlags);
 		inPortalSubmit = false;
 		// The new picture goes on screen, unless it came out next to empty: then the last good one
-		// stays, for a few frames at most (after that the view may really have changed).
+		// stays, for a few frames at most (after that the view may really have changed). A capture
+		// isn't for the doorway: the last picture stays on screen this frame.
 		constexpr int kMaxHeldFrames = 15;
 		static int    heldFrames = 0;
-		if (capturing) {
-			// Not for the doorway: the last picture stays on screen this frame.
-			heldThisFrame = true;
-		} else {
-			const bool low = CheckPassesDrawn(portalFrame);
-			if (low) {
-				ReportLowPass(portalFrame, portalCamera.get(), farDoorCenter, toDoor, a_doorway);
-			}
-			heldThisFrame = low && heldFrames < kMaxHeldFrames;
-			if (heldThisFrame) {
+		if (!capturing) {
+			if (CheckPassesDrawn(portalFrame) && heldFrames < kMaxHeldFrames) {
 				++heldFrames;
 			} else {
 				heldFrames = 0;
@@ -1883,19 +1809,13 @@ namespace
 		ID3D11DepthStencilState* depthState = nullptr;
 		ID3D11RasterizerState*   rasterState = nullptr;
 		ID3D11BlendState*        blendState = nullptr;
-		ID3D11DepthStencilState* noDepthState = nullptr;  // camera behind the doorway: drawn over everything
-		ID3D11DepthStencilState* testOnlyDepthState = nullptr;  // debug: depth tested, not written
-		ID3D11Buffer*            motion = nullptr;        // constants for the doorway's motion vectors
-		// A copy of the scene, for the doorway when the portal image covers the rest of the screen.
-		ID3D11Texture2D*          sceneCopy = nullptr;
-		ID3D11ShaderResourceView* sceneCopySRV = nullptr;
-		bool                     failed = false;
+		ID3D11Buffer*            motion = nullptr;  // constants for the doorway's motion vectors
 	} quad;
 
-	bool EnsureQuadPipeline(ID3D11Device* a_device)
+	void EnsureQuadPipeline(ID3D11Device* a_device)
 	{
-		if (quad.vertexShader || quad.failed) {
-			return !quad.failed;
+		if (quad.vertexShader) {
+			return;
 		}
 		static const char source[] = R"(
 			Texture2D<float4> Portal : register(t0);
@@ -1956,81 +1876,33 @@ namespace
 		)";
 		ID3DBlob* vs = nullptr;
 		ID3DBlob* ps = nullptr;
-		ID3DBlob* errors = nullptr;
-		const auto compile = [&](const char* a_entry, const char* a_profile, ID3DBlob** a_out) {
-			if (FAILED(::D3DCompile(source, sizeof(source) - 1, "SeamlessPortalQuad", nullptr, nullptr, a_entry, a_profile, 0, 0, a_out, &errors))) {
-				logger::error("portal: quad shader {} failed: {}", a_entry, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
-				quad.failed = true;
-			}
+		CompileShader(source, sizeof(source) - 1, "SeamlessPortalQuad", "VS", "vs_5_0", &vs);
+		CompileShader(source, sizeof(source) - 1, "SeamlessPortalQuad", "PS", "ps_5_0", &ps);
+		const D3D11_INPUT_ELEMENT_DESC elements[]{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
-		compile("VS", "vs_5_0", &vs);
-		compile("PS", "ps_5_0", &ps);
-		if (!quad.failed) {
-			const D3D11_INPUT_ELEMENT_DESC elements[]{
-				{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			};
-			D3D11_BUFFER_DESC buffer{ sizeof(float) * 6 * 4, D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
-			D3D11_BUFFER_DESC motionBuffer{ sizeof(float) * 72, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
-			D3D11_DEPTH_STENCIL_DESC       depth{};
-			depth.DepthEnable = TRUE;
-			depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-			depth.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-			D3D11_DEPTH_STENCIL_DESC noDepth{};
-			D3D11_DEPTH_STENCIL_DESC testOnly = depth;  // debug switch 5: tested, not written
-			testOnly.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-			D3D11_RASTERIZER_DESC raster{};
-			raster.FillMode = D3D11_FILL_SOLID;
-			raster.CullMode = D3D11_CULL_NONE;
-			raster.DepthClipEnable = TRUE;
-			D3D11_BLEND_DESC blend{};
-			blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-			quad.failed = FAILED(a_device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &quad.vertexShader)) ||
-			              FAILED(a_device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &quad.pixelShader)) ||
-			              FAILED(a_device->CreateInputLayout(elements, 2, vs->GetBufferPointer(), vs->GetBufferSize(), &quad.layout)) ||
-			              FAILED(a_device->CreateBuffer(&buffer, nullptr, &quad.vertices)) || FAILED(a_device->CreateDepthStencilState(&depth, &quad.depthState)) ||
-			              FAILED(a_device->CreateRasterizerState(&raster, &quad.rasterState)) || FAILED(a_device->CreateBlendState(&blend, &quad.blendState)) ||
-			              FAILED(a_device->CreateDepthStencilState(&noDepth, &quad.noDepthState)) || FAILED(a_device->CreateBuffer(&motionBuffer, nullptr, &quad.motion)) ||
-			              FAILED(a_device->CreateDepthStencilState(&testOnly, &quad.testOnlyDepthState));
-			if (quad.failed) {
-				logger::error("portal: could not create the quad pipeline");
-			}
-		}
-		for (auto* blob : { vs, ps, errors }) {
-			if (blob) {
-				blob->Release();
-			}
-		}
-		return !quad.failed;
-	}
-
-	// The scene copy for the "camera behind the doorway" composite, (re)created to match the scene.
-	bool EnsureSceneCopy(ID3D11Device* a_device, ID3D11Texture2D* a_scene, ID3D11ShaderResourceView* a_sceneSRV)
-	{
-		D3D11_TEXTURE2D_DESC desc{};
-		a_scene->GetDesc(&desc);
-		if (quad.sceneCopy) {
-			D3D11_TEXTURE2D_DESC current{};
-			quad.sceneCopy->GetDesc(&current);
-			if (current.Width == desc.Width && current.Height == desc.Height && current.Format == desc.Format) {
-				return true;
-			}
-			quad.sceneCopySRV->Release();
-			quad.sceneCopy->Release();
-			quad.sceneCopySRV = nullptr;
-			quad.sceneCopy = nullptr;
-		}
-		desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-		desc.MiscFlags = 0;
-		desc.CPUAccessFlags = 0;
-		desc.Usage = D3D11_USAGE_DEFAULT;
-		D3D11_SHADER_RESOURCE_VIEW_DESC view{};
-		a_sceneSRV->GetDesc(&view);  // the scene's own (typed) view format
-		if (FAILED(a_device->CreateTexture2D(&desc, nullptr, &quad.sceneCopy)) || FAILED(a_device->CreateShaderResourceView(quad.sceneCopy, &view, &quad.sceneCopySRV))) {
-			logger::error("portal: could not create the scene copy");
-			return false;
-		}
-		return true;
+		D3D11_BUFFER_DESC        buffer{ sizeof(float) * 6 * 4, D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
+		D3D11_BUFFER_DESC        motionBuffer{ sizeof(float) * 72, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
+		D3D11_DEPTH_STENCIL_DESC depth{};
+		depth.DepthEnable = TRUE;
+		depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		depth.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+		D3D11_RASTERIZER_DESC raster{};
+		raster.FillMode = D3D11_FILL_SOLID;
+		raster.CullMode = D3D11_CULL_NONE;
+		raster.DepthClipEnable = TRUE;
+		D3D11_BLEND_DESC blend{};
+		blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+		const bool made = SUCCEEDED(a_device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &quad.vertexShader)) &&
+		                  SUCCEEDED(a_device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &quad.pixelShader)) &&
+		                  SUCCEEDED(a_device->CreateInputLayout(elements, 2, vs->GetBufferPointer(), vs->GetBufferSize(), &quad.layout)) &&
+		                  SUCCEEDED(a_device->CreateBuffer(&buffer, nullptr, &quad.vertices)) && SUCCEEDED(a_device->CreateDepthStencilState(&depth, &quad.depthState)) &&
+		                  SUCCEEDED(a_device->CreateRasterizerState(&raster, &quad.rasterState)) && SUCCEEDED(a_device->CreateBlendState(&blend, &quad.blendState)) &&
+		                  SUCCEEDED(a_device->CreateBuffer(&motionBuffer, nullptr, &quad.motion));
+		SEAMLESS_ASSERT(made);
+		vs->Release();
+		ps->Release();
 	}
 
 	bool Invert4x4(const double m[16], double out[16])
@@ -2062,7 +1934,7 @@ namespace
 		return true;
 	}
 
-	json DrawDoorQuad(const Active& a_portal, bool a_cameraBehind)
+	json DrawDoorQuad(const Active& a_portal)
 	{
 		auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
 		auto& rendererData = renderer->GetRuntimeData();
@@ -2074,18 +1946,14 @@ namespace
 		auto* sceneDSV = reinterpret_cast<ID3D11DepthStencilView*>(sceneDepth.views[0]);
 		auto* portalSRV = reinterpret_cast<ID3D11ShaderResourceView*>(portal.SRV);
 		auto* portalDepthSRV = reinterpret_cast<ID3D11ShaderResourceView*>(ShownTargets().depth.depthSRV);
-		SEAMLESS_ASSERT(portalSRV);  // cloned from the engine's pause-menu background, which has one
+		SEAMLESS_ASSERT(portalSRV);  // our own target, made like the main scene's (EnsureOwnTargets)
 		if (!sceneRTV || !sceneDSV) {
 			throw std::runtime_error("scene render target missing");
 		}
-		auto*         sceneSRV = reinterpret_cast<ID3D11ShaderResourceView*>(sceneColor.SRV);
 		ID3D11Device* device = nullptr;
 		context->GetDevice(&device);
-		const bool ready = EnsureQuadPipeline(device) && (!a_cameraBehind || (sceneSRV && EnsureSceneCopy(device, reinterpret_cast<ID3D11Texture2D*>(sceneColor.texture), sceneSRV)));
+		EnsureQuadPipeline(device);
 		device->Release();
-		if (!ready) {
-			return { { "composited", false } };
-		}
 
 		D3D11_TEXTURE2D_DESC sceneDesc{}, portalDesc{};
 		reinterpret_cast<ID3D11Texture2D*>(sceneColor.texture)->GetDesc(&sceneDesc);
@@ -2168,7 +2036,7 @@ namespace
 		// Motion vectors for the doorway, when the portal's depth can be read (the engine's depth
 		// copy, which ours is made like, has a view for that).
 		auto* motionRTV = reinterpret_cast<ID3D11RenderTargetView*>(rendererData.renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR].RTV);
-		const bool withMotion = !a_cameraBehind && motionRTV && portalDepthSRV && !lightDebug.skipMotion;
+		const bool withMotion = motionRTV && portalDepthSRV && !lightDebug.skipMotion;
 		{
 			float constants[72]{};
 			const auto* current = reinterpret_cast<const float*>(&view.viewProjMat);
@@ -2194,8 +2062,7 @@ namespace
 			constants[54] = portalDepthSRV && here && !here->IsInteriorCell() && a_portal.cell && !a_portal.cell->IsInteriorCell() ? 1.0f : 0.0f;
 			constants[52] = sceneDesc.Width * scaleX;
 			constants[53] = sceneDesc.Height * scaleY;
-			// Camera behind the doorway: the doorway shows a copy of the scene, fogged already.
-			if (!a_cameraBehind) {
+			{
 				const auto fog = WorldFog();
 				std::memcpy(constants + 60, fog.data(), sizeof(float) * 4);
 				std::memcpy(constants + 64, fog.data() + 4, sizeof(float) * 3);
@@ -2211,7 +2078,7 @@ namespace
 		context->OMSetRenderTargets(withMotion ? 2 : 1, quadTargets, sceneDSV);
 		context->PSSetConstantBuffers(0, 1, &quad.motion);
 		context->PSSetShaderResources(1, 1, &portalDepthSRV);
-		context->OMSetDepthStencilState(compositingLate ? quad.noDepthState : lightDebug.skipDepthWrite ? quad.testOnlyDepthState : quad.depthState, 0);
+		context->OMSetDepthStencilState(quad.depthState, 0);
 		context->OMSetBlendState(quad.blendState, nullptr, 0xFFFFFFFF);
 		context->RSSetState(quad.rasterState);
 		context->RSSetViewports(1, &viewport);
@@ -2223,35 +2090,14 @@ namespace
 		context->IASetInputLayout(quad.layout);
 		context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 		context->IASetVertexBuffers(0, 1, &quad.vertices, &stride, &offset);
-		const auto drawQuad = [&](const float (&a_vertices)[4][6], ID3D11ShaderResourceView* a_texture) {
+		{
 			D3D11_MAPPED_SUBRESOURCE mapped{};
 			if (SUCCEEDED(context->Map(quad.vertices, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-				std::memcpy(mapped.pData, a_vertices, sizeof(a_vertices));
+				std::memcpy(mapped.pData, clip, sizeof(clip));
 				context->Unmap(quad.vertices, 0);
-				context->PSSetShaderResources(0, 1, &a_texture);
+				context->PSSetShaderResources(0, 1, &portalSRV);
 				context->Draw(4, 0);
 			}
-		};
-		if (!a_cameraBehind) {
-			drawQuad(clip, portalSRV);
-		} else {
-			// The camera is behind the doorway (it trails the player through the door, or the player
-			// walked backwards into it): it is in the void behind the door, where the space it
-			// looks into is the portal's. The portal image covers the whole screen, and only the
-			// doorway shows the player's space, as the scene had drawn it (copied first).
-			context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, noTargets, nullptr);
-			context->CopyResource(quad.sceneCopy, reinterpret_cast<ID3D11Texture2D*>(sceneColor.texture));
-			context->OMSetRenderTargets(1, &sceneRTV, sceneDSV);
-			context->OMSetDepthStencilState(quad.noDepthState, 0);
-			const float sx = clip[0][4], sy = clip[0][5];
-			const float fullScreen[4][6] = { { -1, -1, 0, 1, sx, sy }, { 1, -1, 0, 1, sx, sy }, { -1, 1, 0, 1, sx, sy }, { 1, 1, 0, 1, sx, sy } };
-			drawQuad(fullScreen, portalSRV);
-			float doorway[4][6];
-			std::memcpy(doorway, clip, sizeof(doorway));
-			for (auto& vertex : doorway) {
-				vertex[4] = vertex[5] = 1.0f;  // the copy has the scene's own layout
-			}
-			drawQuad(doorway, quad.sceneCopySRV);
 		}
 
 		context->PSSetShaderResources(0, 1, &saved.texture);
@@ -2286,42 +2132,6 @@ namespace
 	}
 
 	// ---- the outdoors' light, seen from inside a place --------------------------------------------
-
-	bool outdoorLightingSent = false;
-
-	void SendMergedLighting(const float* a_lighting)
-	{
-		::Render::Backend::SetMergedLighting(0, a_lighting);
-	}
-
-	// The sun and the directional ambient as they are now (the sky's, outdoors), in the layout the
-	// patched Community Shaders takes (SeamlessPortal_SetMergedLighting, as MergedLighting).
-	std::optional<std::array<float, 19>> OutdoorLighting(RE::ShadowSceneNode* a_world)
-	{
-		auto* sun = a_world->GetRuntimeData().sunLight;
-		auto* light = sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr;
-		if (!light) {
-			return std::nullopt;
-		}
-		const auto&           data = light->GetLightRuntimeData();
-		const auto            towardLight = light->GetWorldDirection() * -1.0f;
-		const auto&           ambient = RE::BSShaderManager::State::GetSingleton().directionalAmbientTransform;
-		std::array<float, 19> out{};
-		out[0] = data.diffuse.red * data.fade;
-		out[1] = data.diffuse.green * data.fade;
-		out[2] = data.diffuse.blue * data.fade;
-		out[3] = towardLight.x;
-		out[4] = towardLight.y;
-		out[5] = towardLight.z;
-		for (int row = 0; row < 3; ++row) {
-			out[6 + row * 4] = ambient.rotate.entry[row][0];
-			out[7 + row * 4] = ambient.rotate.entry[row][1];
-			out[8 + row * 4] = ambient.rotate.entry[row][2];
-			out[9 + row * 4] = ambient.translate[row];
-		}
-		out[18] = 1.0f;
-		return out;
-	}
 
 	// ---- doorways before the space behind them is there (Portal::Snapshot) -------------------
 
@@ -2363,7 +2173,7 @@ namespace
 	// After the world (and the portal's picture) is drawn: the doorway shown open on the real space
 	// is photographed, and a door swung open before its space is there gets its picture.
 	// a_realShown: the real space is in the doorway this frame. A frame without it (the picture
-	// not composited, or put in only later) was photographed with the void behind the door, and
+	// not composited) was photographed with the void behind the door, and
 	// that picture was kept on disk and shown on every slow load of the door after.
 	void DoorwayPictures(bool a_realShown)
 	{
@@ -2459,12 +2269,9 @@ namespace
 
 	// ---- the frame hook -----------------------------------------------------------------------
 
-	const char* portalSkipReason = "";  // why PortalToDraw gave none (FrameTrace)
-
 	std::optional<Active> PortalToDraw()
 	{
 		auto portal = Portal::Manager::ActivePortal();
-		portalSkipReason = portal ? "" : Portal::Manager::Merged() ? "merged" : Portal::Manager::CurrentPortal() ? "not ready" : "no portal";
 		// Right after an attach the remote cell's references load their 3D over the next frames;
 		// until both doors have it there's nothing to map through, which is not a failure (treating
 		// it as one made the manager release and re-attach every frame).
@@ -2479,61 +2286,13 @@ namespace
 				logger::warn("portal: not drawn this frame, a door has no 3D (source {}, linked {})", has3D(portal->sourceDoor), has3D(portal->linkedDoor));
 			}
 			portal.reset();
-			portalSkipReason = "door without 3D";
 		}
 		// A door swung shut (walking away, Manager::Update) is a door: the portal's quad on its face
 		// would show the other side through it.
 		if (portal && !Portal::Manager::DoorwayOpen()) {
 			portal.reset();
-			portalSkipReason = "door shut";
 		}
 		return portal;
-	}
-
-	// Diagnostics for a whole-screen flash with the doorway's picture gone for that frame (first
-	// person, standing still at a door): the per-frame state that decides what is drawn, logged
-	// whenever it changes, with the engine's frame number (ID 390886). A one-frame flash shows as two
-	// lines one frame apart.
-	struct FrameTrace
-	{
-		bool        portalDrawn = false;
-		std::string why;  // nothing drawn: the reason
-		bool        toneBlend = false;
-		bool        firstPerson = false;
-		bool        cameraStopped = false;
-		bool        held = false;
-		bool        redrawn = false;
-
-		bool operator==(const FrameTrace&) const = default;
-	};
-
-	void TraceFrame(const FrameTrace& a_now, bool a_menuOpen)
-	{
-		static REL::Relocation<std::uint32_t*> frameCount{ REL::RelocationID(513162, 390886) };
-		static FrameTrace    last;
-		static std::uint32_t lastFrameNumber = 0;
-		static int           lines = 0;
-		const auto           frame = *frameCount;
-		if (lastFrameNumber && frame == lastFrameNumber && lines < 300) {
-			// The world drawn a second time in one engine frame: by whom (which camera, where).
-			++lines;
-			const auto* camera = RE::Main::WorldRootCamera();
-			const auto  pos = camera ? camera->world.translate : RE::NiPoint3{};
-			logger::info("portal trace: frame {}: the world drawn a second time in this frame (menu open {}, camera {:X} at ({:.0f},{:.0f},{:.0f}))", frame, a_menuOpen,
-				reinterpret_cast<std::uintptr_t>(camera), pos.x, pos.y, pos.z);
-		} else if (lastFrameNumber && frame != lastFrameNumber + 1 && lines < 300) {
-			++lines;
-			logger::info("portal trace: frame {}: the world was drawn again after {} frame(s) without it", frame, frame - lastFrameNumber - 1);
-		}
-		lastFrameNumber = frame;
-		if (a_now == last || !Portal::Manager::CurrentPortal() || lines >= 300) {
-			last = a_now;
-			return;
-		}
-		++lines;
-		last = a_now;
-		logger::info("portal trace: frame {}: picture {}{}, tone blend {}, first person {}, camera stopped {}, held {}, redrawn {}", frame, a_now.portalDrawn ? "drawn" : "not drawn",
-			a_now.why.empty() ? "" : " (" + a_now.why + ")", std::format("{} [{}]", a_now.toneBlend, Portal::Manager::ToneWhy()), a_now.firstPerson, a_now.cameraStopped, a_now.held, a_now.redrawn);
 	}
 
 	// Main::RenderPlayerView as called from ID 36558 (+0x11D): the main view is culled inside it,
@@ -2570,8 +2329,6 @@ namespace
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
-
-	constexpr bool kCameraBehindComposite = false;
 
 	// The engine decides per actor whether it is drawn (ID 40335, run for every actor with 3D
 	// each frame): a frustum test, then a test against the space the camera is in (ID 106433).
@@ -2666,26 +2423,6 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
-	// The call into post-processing (ID 107148 + 0x1E7 -> ID 105674; Community Shaders hooks it to
-	// upscale). Debug switch 6 puts the doorway's picture in here, over everything drawn before.
-	struct PostProcessingHook
-	{
-		static void Thunk(RE::ImageSpaceManager* a_manager, std::uint32_t a_arg2, RE::RENDER_TARGET a_target, void* a_arg4, bool a_arg5)
-		{
-			if (auto late = std::exchange(pendingLateComposite, std::nullopt)) {
-				compositingLate = true;
-				try {
-					DrawDoorQuad(late->portal, late->cameraBehind);
-				} catch (const std::exception& e) {
-					logger::warn("portal: late doorway picture failed: {}", e.what());
-				}
-				compositingLate = false;
-			}
-			func(a_manager, a_arg2, a_target, a_arg4, a_arg5);
-		}
-		static inline REL::Relocation<decltype(Thunk)> func;
-	};
-
 	// Main::RenderWorld as called from Main::RenderPlayerView (ID 36559 + 0x85E). Community Shaders
 	// wraps the same call; installed after it, this wraps both, so the portal pass runs outside
 	// CS's deferred "in world" section, like it did when it was drawn at Present.
@@ -2738,10 +2475,6 @@ namespace
 					}
 				}
 			}
-			if (outdoorLightingSent) {
-				SendMergedLighting(nullptr);
-				outdoorLightingSent = false;
-			}
 			{
 				const auto& state = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
 				mainView = { state.posAdjust, state.previousPosAdjust, state.cameraData };
@@ -2751,30 +2484,13 @@ namespace
 			auto portal = PortalToDraw();
 			if (portal && lightDebug.skipPortalPass) {
 				portal.reset();
-				portalSkipReason = "debug switch";
 			}
-			json       result;
-			bool       drawn = false;
-			bool       redrawn = false;
-			std::string notDrawn = portalSkipReason;
-			heldThisFrame = false;
+			json result;
+			bool drawn = false;
+			bool composited = false;
 			captureDrawn.reset();
-			bool cameraBehind = false;
 			if (portal) {
 				try {
-					// The camera behind the source door's plane (in the void behind the doorway): the
-					// whole screen is the portal's space, see DrawDoorQuad.
-					const auto mapping = Portal::Doors::Compute(*portal);
-					const auto offset = RE::Main::WorldRootCamera()->world.translate - mapping.sourceCenter;
-					// Only in the doorway's column: beside the door, beyond its plane, is still the
-					// player's space (a house's wall, the street around it).
-					const float depth = offset.x * mapping.inward.x + offset.y * mapping.inward.y;
-					const float side = std::abs(offset.x * mapping.inward.y - offset.y * mapping.inward.x);
-					// The "camera behind the doorway" composite (the portal image over the whole screen,
-					// the scene in the doorway) never looked right: warped, layered pictures and a
-					// second player. The camera is kept on the player's side of a portal's doorway
-					// instead (CameraLimit::SetPlane), so this stays off.
-					cameraBehind = kCameraBehindComposite && depth > 0.0f && depth < 400.0f && side < mapping.halfWidth + 80.0f;
 					// A diagnostic file request wants the whole picture.
 					constexpr ScreenRect wholeScreen{ 0.0f, 1.0f, 0.0f, 1.0f };
 					// Taken here, so a pass drawn again (below) is the capture camera's too. Not for
@@ -2787,39 +2503,34 @@ namespace
 						auto* camera = RE::Main::WorldRootCamera();
 						capture = Portal::Snapshot::CameraFor(door, Portal::Doors::Quad(Portal::Doors::Door(door), camera->world.translate, true), camera->world.translate);
 					}
-					if (capture && (file || cameraBehind || capture->door != portal->sourceDoor)) {
+					if (capture && (file || capture->door != portal->sourceDoor)) {
 						capture.reset();
 					}
 					capturedLastFrame = capture.has_value();
 					// The capture camera doesn't need the doorway on screen.
-					const auto doorway = file || cameraBehind || capture ? std::optional(wholeScreen) : DoorwayOnScreen(*portal);
+					const auto doorway = file || capture ? std::optional(wholeScreen) : DoorwayOnScreen(*portal);
 					if (doorway) {
-						result = RenderPortal(*portal, *doorway, cameraBehind, capture);
+						result = RenderPortal(*portal, *doorway, capture);
 						// Render passes found freed in the draw were left out (parts of the view
 						// missing for that frame: a flicker, seen right after walking in). The cull
 						// builds the passes again; drawn once more, the picture is whole.
 						if (freedPassesThisSubmit > 0) {
 							static std::uint32_t redraws = 0;
 							if (redraws++ < 20) {
-								logger::info("portal: {} freed render pass(es) skipped; portal pass drawn again ({} light(s) were queued at the cull)", freedPassesThisSubmit,
-									lightsQueuedAtCull);
+								logger::info("portal: {} freed render pass(es) skipped; portal pass drawn again", freedPassesThisSubmit);
 							}
-							result = RenderPortal(*portal, *doorway, cameraBehind, capture);
-							redrawn = true;
+							result = RenderPortal(*portal, *doorway, capture);
 							if (freedPassesThisSubmit > 0 && redraws < 20) {
 								logger::warn("portal: the second portal pass still met {} freed render pass(es)", freedPassesThisSubmit);
 							}
 						}
 						result["doorway"] = *doorway;
-						result["cameraBehind"] = cameraBehind;
 						drawn = true;
 					} else {
 						result = { { "offscreen", true } };
-						notDrawn = "doorway off screen";
 					}
 				} catch (const std::exception& e) {
 					// Doors unloaded mid-frame and similar: drop the portal instead of failing every frame.
-					notDrawn = std::string("render failed: ") + e.what();
 					logger::warn("portal: render failed: {}", e.what());
 					result = { { "error", e.what() } };
 					Portal::Manager::ReleaseAll(std::format("render failed: {}", e.what()));
@@ -2840,33 +2551,18 @@ namespace
 				}
 			}
 
-			pendingLateComposite.reset();
-			if (drawn && lightDebug.skipComposite) {
-				notDrawn = "debug switch: not composited";
-			} else if (drawn && lightDebug.lateComposite) {
-				pendingLateComposite = LateComposite{ *portal, cameraBehind };
-			} else if (drawn) {
+			if (drawn && !lightDebug.skipComposite) {
 				try {
-					const auto composite = DrawDoorQuad(*portal, cameraBehind);
-					if (!composite.value("composited", false)) {
-						notDrawn = "doorway picture not composited";
-					}
-					result.update(composite);
+					result.update(DrawDoorQuad(*portal));
+					composited = true;
 				} catch (const std::exception& e) {
 					result["error"] = e.what();
-					notDrawn = std::string("doorway picture failed: ") + e.what();
 				}
 			}
 			if (!a_menuOpen) {
 				// Merged, the real space is drawn with the world itself. A pass that still met freed
 				// render passes has parts of the view missing.
-				DoorwayPictures(Portal::Manager::Merged() || (drawn && notDrawn.empty() && !pendingLateComposite && freedPassesThisSubmit == 0));
-			}
-			{
-				auto* camera = RE::PlayerCamera::GetSingleton();
-				TraceFrame({ drawn && notDrawn.empty(), notDrawn, Portal::Manager::ToneBlendOn(), camera && camera->IsInFirstPerson(), Portal::CameraLimit::FirstPersonStopped(),
-							   heldThisFrame, redrawn },
-					a_menuOpen);
+				DoorwayPictures(Portal::Manager::Merged() || (composited && freedPassesThisSubmit == 0));
 			}
 			if (portal) {
 				std::scoped_lock lock(stateLock);
@@ -2925,12 +2621,6 @@ namespace Portal::Render
 			RenderPlayerViewHook::func = trampoline.write_call<5>(playerView.address(), RenderPlayerViewHook::Thunk);
 		}
 		DrawPassHook::func = trampoline.write_call<5>(drawPass.address(), DrawPassHook::Thunk);
-		{
-			REL::Relocation<std::uintptr_t> post{ REL::RelocationID(100430, 107148), REL::Relocate(0x1F0, 0x1E7) };
-			if (Hooks::CallsTo(post.address(), REL::RelocationID(99023, 105674), "portal: post-processing")) {
-				PostProcessingHook::func = trampoline.write_call<5>(post.address(), PostProcessingHook::Thunk);
-			}
-		}
 		for (const auto& [caller, offset] : { std::pair{ REL::RelocationID(98849, 105486), 0x55 }, std::pair{ REL::RelocationID(98937, 105588), 0x87 } }) {
 			REL::Relocation<std::uintptr_t> site{ caller, offset };
 			if (Hooks::CallsTo(site.address(), REL::RelocationID(98850, 105487), std::format("portal: fade node level of detail in ID {}", caller.id()))) {
@@ -3004,7 +2694,7 @@ namespace Portal::Render
 
 	DebugSwitches GetDebugSwitches()
 	{
-		return { lightDebug.skipPortalPass, lightDebug.skipComposite, lightDebug.skipMotion, !lightDebug.communityShaders, lightDebug.skipDepthWrite, lightDebug.lateComposite };
+		return { lightDebug.skipPortalPass, lightDebug.skipComposite, lightDebug.skipMotion, !lightDebug.communityShaders };
 	}
 
 	void SetDebugSwitches(const DebugSwitches& a_switches)
@@ -3013,8 +2703,6 @@ namespace Portal::Render
 		lightDebug.skipComposite = a_switches.skipComposite;
 		lightDebug.skipMotion = a_switches.skipMotion;
 		lightDebug.communityShaders = !a_switches.skipCommunityShaders;
-		lightDebug.skipDepthWrite = a_switches.skipDepthWrite;
-		lightDebug.lateComposite = a_switches.lateComposite;
 	}
 
 	void SetTintDoorway(bool a_tint)

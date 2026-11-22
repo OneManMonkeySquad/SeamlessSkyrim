@@ -47,6 +47,5 @@ namespace Portal::MergedCull
 	void                 SetRoomCull(bool a_on);
 	// kOff (the default), kWhole or kShapes. Diagnostics: both change the sun's shadows, see Cull.
 	void                 SetStreetMode(Mode a_mode);
-	[[nodiscard]] Mode   GetMode();
 	[[nodiscard]] json   Describe();
 }

@@ -12,7 +12,6 @@ namespace Render::Native
 	void SetDoor(const float* a_door);
 	void SetPortalClip(const float* a_plane);
 	void SetPortalPass(bool a_active);
-	[[nodiscard]] bool InPortalPass();
 	[[nodiscard]] json DescribeMask();
 
 	// NativeLighting.cpp: the light of the merged space and of the portal pass.

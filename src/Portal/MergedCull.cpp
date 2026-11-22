@@ -684,11 +684,7 @@ namespace Portal::MergedCull
 			AfterView();  // not closed last time; the hidden must not stay hidden
 		}
 		viewOpen = true;
-		try {
-			Cull();
-		} catch (...) {
-			// A view without the cull is only slower.
-		}
+		Cull();
 		stats.lastHidden = static_cast<std::uint32_t>(hidden.size());
 		lastCullMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - viewStarted).count();
 	}
@@ -717,11 +713,6 @@ namespace Portal::MergedCull
 		mode = a_mode;
 		// The view times are compared per mode.
 		stats.index = 0;
-	}
-
-	Mode GetMode()
-	{
-		return mode;
 	}
 
 	void SetStreetMode(Mode a_mode)

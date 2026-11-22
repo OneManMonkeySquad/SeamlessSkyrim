@@ -497,9 +497,8 @@ namespace
 	}
 
 	// Main::Update (ID 36564) processes the player's queued teleport as its first step
-	// (+0x6E: ID 40438). A crossing detected during a frame is carried out right before that, at
-	// the start of the next frame: the frame in between is still drawn with the portal in the
-	// doorway, and the first frame after the teleport is already drawn from the other side.
+	// (+0x6E: ID 40438). Only where the end-of-frame call isn't found (EndOfFrameHook) is a
+	// crossing carried out here, at the start of the frame after it was detected.
 	bool endOfFrameHooked = false;
 	std::atomic<bool> arrivalFrame = false;  // the next frame drawn is the first in the new space
 
@@ -639,10 +638,7 @@ namespace
 				// Manager::Update above, from the door outside), a room walked out into was drawn for
 				// one frame with the outdoors' and flashed white.
 				Portal::Manager::UpdateImageSpace();
-				Note(std::format("image space blended: {} ({})", Portal::Manager::ToneBlendOn(), Portal::Manager::ToneWhy()));
-				if (auto* body = a_player->Get3D(false); body && camera->IsInFirstPerson()) {
-					Note(std::format("third-person body flags {:08X}", body->GetFlags().underlying()));
-							}
+				Note(std::format("image space blended: {}", Portal::Manager::ToneBlendOn()));
 				// Taking the space over, the engine fades its references in (behind a loading screen,
 				// unseen): the room or street the player had been looking into faded out and in again.
 				Portal::NpcTravel::ShowAtOnce(a_player->GetParentCell(), 2.0f);
@@ -666,8 +662,8 @@ namespace
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
-	// Main::Update (ID 36564) + 0xAC4: the wait for the frame's jobs (ID 35409), after the frame has
-	// been drawn. A crossing is carried out here, at the very end of the frame it was detected in,
+	// Main::Update (ID 36564), the call returning to +0xAC4 (SE: the call at +0x5E8): the wait for
+	// the frame's jobs (ID 35409), after the frame has been drawn. A crossing is carried out here, at the very end of the frame it was detected in,
 	// rather than at the start of the next one: everything the engine updates once per frame for
 	// the space the player is in (sky and ambient, image space, cloth physics, the camera) then
 	// runs for the new space before its first frame is drawn. Done at the start of a frame, that
@@ -828,23 +824,6 @@ namespace Portal::Travel
 		const auto menus = OpenMenus();
 		if (frameMs > 40.0 || *loadScreenUp || !menus.empty()) {
 			Note(std::format("frame {} took {:.1f} ms, load screen flag {}, menus: {}", trace.frames, frameMs, *loadScreenUp, menus));
-		}
-		if (trace.frames <= 8) {
-			// TEMP diagnostics: a fully white frame two or three frames after the first walk-out of a session.
-			auto*       sky = RE::Sky::GetSingleton();
-			auto*       isManager = RE::ImageSpaceManager::GetSingleton();
-			const auto* base = isManager ? isManager->GetRuntimeData().currentBaseData : nullptr;
-			const auto* over = isManager ? isManager->GetRuntimeData().overrideBaseData : nullptr;
-			const auto* hdr = over ? &over->hdr : base ? &base->hdr : nullptr;
-			auto*       scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
-			auto*       sun = scene && scene->GetRuntimeData().sunLight ? scene->GetRuntimeData().sunLight->light.get() : nullptr;
-			const auto  diffuse = sun ? sun->GetLightRuntimeData().diffuse : RE::NiColor{};
-			if (trace.frames <= 3) {
-					}
-			Note(std::format("frame {}: sky mode {} weather {:08X}, sun ({:.2f},{:.2f},{:.2f}) fade {:.2f}, image space {} eyeAdapt {:.2f}/{:.2f} white {:.2f} sunScale {:.2f} skyScale {:.2f}",
-				trace.frames, sky ? sky->mode.underlying() : 99u, sky && sky->currentWeather ? sky->currentWeather->GetFormID() : 0u, diffuse.red, diffuse.green, diffuse.blue,
-				sun ? sun->GetLightRuntimeData().fade : 0.0f, over ? "override" : "current", hdr ? hdr->eyeAdaptSpeed : -1.0f, hdr ? hdr->eyeAdaptStrength : -1.0f,
-				hdr ? hdr->white : -1.0f, hdr ? hdr->sunlightScale : -1.0f, hdr ? hdr->skyScale : -1.0f));
 		}
 		if (trace.arrivedMs < 0.0 && cell && cell->GetFormID() != trace.fromCell) {
 			trace.arrivedMs = Ms(now - trace.start);

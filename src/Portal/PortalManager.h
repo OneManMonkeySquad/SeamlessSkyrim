@@ -3,9 +3,8 @@
 struct IDXGISwapChain;
 
 // Runs the door portals: picks the load door the player is approaching, keeps the cell behind it
-// alive (RemoteCell), renders it into the doorway (PortalRender) and carries the player through
-// without a loading screen when they walk in (Travel). Outside -> inside, and inside -> outside
-// with only the exterior cell that holds the other door (no neighbours, sky or distant land yet).
+// alive (RemoteCell), shows it in the doorway (merged into the world, or drawn by PortalRender)
+// and carries the player through without a loading screen when they walk in (Travel).
 namespace Portal::Manager
 {
 	struct Active
@@ -66,7 +65,6 @@ namespace Portal::Manager
 	[[nodiscard]] bool DoorwayOpen();
 	// Diagnostics: the image-space blend across the doorway is on (UpdateTone).
 	[[nodiscard]] bool ToneBlendOn();
-	std::string ToneWhy();
 	// The portal whose other side is ready, drawn by the portal pass or merged.
 	[[nodiscard]] std::optional<Active> ReadyPortal();
 	// The door pair in use, merged or not, loaded or not.

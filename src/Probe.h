@@ -1,11 +1,9 @@
 #pragma once
 
-// Spike instrumentation, not shipping code. Its log answers the question the whole design hinges
-// on: does the engine keep an interior cell resident (and its actors processed) after the player
-// leaves it, and in which state? The answer is in docs/ENGINE.md, "Cells and spaces".
+// Log helpers: a cell as one line, and which cells the engine keeps loaded and simulated.
 namespace Probe
 {
-	void Install();
+	// The loaded interiors and the cells with high-process actors, after a load and for the bridge.
 	void DumpWorldState(std::string_view a_reason);
 	std::string DescribeCell(RE::TESObjectCELL* a_cell);
 }

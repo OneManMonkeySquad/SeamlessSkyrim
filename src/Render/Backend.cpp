@@ -71,9 +71,6 @@ namespace
 			why = "the native backend could not hook the renderer";
 		}
 	}
-
-	// A space being drawn behind a door that only the fork can light or fog as its own.
-	bool portalPassActive = false;
 }
 
 namespace Render::Backend
@@ -213,7 +210,6 @@ namespace Render::Backend
 
 	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior)
 	{
-		portalPassActive = true;
 		if (kind == Kind::kCommunityShaders) {
 			// The fork uploads its per-frame lighting once per frame, for the world: around the
 			// portal pass it must describe the other side. The game's shaders read the sun and the
@@ -228,7 +224,6 @@ namespace Render::Backend
 
 	void EndPortalPass()
 	{
-		portalPassActive = false;
 		if (kind == Kind::kCommunityShaders) {
 			if (fork.endPass) {
 				fork.endPass();
@@ -236,11 +231,6 @@ namespace Render::Backend
 		} else if (kind == Kind::kNative) {
 			Render::Native::SetPortalPass(false);
 		}
-	}
-
-	bool InPortalPass()
-	{
-		return portalPassActive;
 	}
 
 	bool OutdoorSunDirection(float a_hour, const float* a_position, float* a_towardSun)

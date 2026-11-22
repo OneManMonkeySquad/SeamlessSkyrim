@@ -808,8 +808,7 @@ namespace Render::Native
 	void SetPortalClip(const float* a_plane)
 	{
 		std::scoped_lock lock(stateLock);
-		// The portal code passes an offset of -1e9 for "no cut" (camera behind the doorway).
-		if (!a_plane || a_plane[3] < -1e8f) {
+		if (!a_plane) {
 			portalClip.reset();
 		} else {
 			portalClip = std::array<float, 4>{ a_plane[0], a_plane[1], a_plane[2], a_plane[3] };
@@ -823,11 +822,6 @@ namespace Render::Native
 			++stats.portalPasses;
 		}
 		job.active = false;
-	}
-
-	bool InPortalPass()
-	{
-		return portalPass;
 	}
 
 	json DescribeMask()

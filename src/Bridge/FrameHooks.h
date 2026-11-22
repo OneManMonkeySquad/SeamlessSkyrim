@@ -29,9 +29,6 @@ namespace FrameHooks
 	// Any thread except the main/render thread: blocks until the next Present wrote the file.
 	json CaptureScreenshot(const std::wstring& a_path, std::chrono::milliseconds a_timeout);
 
-	// Any thread: saves the next presented frame without waiting. False if one is still pending.
-	bool RequestScreenshot(const std::wstring& a_path);
-
 	// Diagnostics: the next a_frames presented frames, each one, saved to a_directory as
 	// frame_<index>_<ms since the request>.jpg once the last is taken. A flash lasting one frame
 	// falls between screenshots, which are taken one at a time and slowly. False without the

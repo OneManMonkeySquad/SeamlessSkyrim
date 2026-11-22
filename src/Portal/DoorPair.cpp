@@ -894,6 +894,18 @@ namespace Portal::Doors
 		return mapping;
 	}
 
+	std::optional<Mapping> TryCompute(const Manager::Active& a_portal)
+	{
+		const auto has3D = [](RE::FormID a_id) {
+			auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_id);
+			return door && door->Get3D();
+		};
+		if (!has3D(a_portal.sourceDoor) || !has3D(a_portal.linkedDoor)) {
+			return std::nullopt;
+		}
+		return Compute(a_portal);
+	}
+
 	namespace
 	{
 		// One door can be held open twice at once: as the portal door of the space the player is in

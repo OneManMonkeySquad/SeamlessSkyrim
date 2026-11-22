@@ -87,7 +87,6 @@ namespace
 		static void Thunk(RE::FirstPersonState* a_state, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
 			func(a_state, a_nextState);
-			stopped = false;
 			auto* root = RE::PlayerCamera::GetSingleton()->cameraRoot.get();
 			if (!firstPersonStop || !root) {
 				return;
@@ -100,11 +99,9 @@ namespace
 				root->local.translate -= stop.inward * (depth - stop.maxDepth);
 				RE::NiUpdateData update;
 				root->Update(update);
-				stopped = true;
 			}
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
-		static inline bool                             stopped = false;
 	};
 
 	bool InThirdPerson()
@@ -217,11 +214,6 @@ namespace Portal::CameraLimit
 	{
 		plane.reset();
 		firstPersonStop.reset();
-	}
-
-	bool FirstPersonStopped()
-	{
-		return FirstPersonHook::stopped;
 	}
 
 	bool HidePlayer()

@@ -62,7 +62,6 @@ namespace Render::Backend
 	void SetPortalClip(const float* a_plane);
 	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior);
 	void EndPortalPass();
-	[[nodiscard]] bool InPortalPass();
 
 	// Community Shaders' Sky Sync: the sun's direction for an hour and its place on the sky.
 	bool OutdoorSunDirection(float a_hour, const float* a_position, float* a_towardSun);

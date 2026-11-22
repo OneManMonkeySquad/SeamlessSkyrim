@@ -61,67 +61,6 @@ namespace
 			loaded && loaded->cell3D ? "yes" : "no",
 			actors.total, actors.high, actors.with3D);
 	}
-
-	class ActivateSink final : public RE::BSTEventSink<RE::TESActivateEvent>
-	{
-	public:
-		static ActivateSink* GetSingleton()
-		{
-			static ActivateSink singleton;
-			return &singleton;
-		}
-
-		RE::BSEventNotifyControl ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*) override
-		{
-			if (!a_event || !a_event->objectActivated || a_event->actionRef.get() != RE::PlayerCharacter::GetSingleton()) {
-				return RE::BSEventNotifyControl::kContinue;
-			}
-			auto* door = a_event->objectActivated.get();
-			auto* teleport = door->extraList.GetByType<RE::ExtraTeleport>();
-			if (!teleport || !teleport->teleportData) {
-				return RE::BSEventNotifyControl::kContinue;
-			}
-
-			// Logged before the load screen runs, so the target cell's state here tells us whether
-			// it was still resident from an earlier visit.
-			const auto& data = *teleport->teleportData;
-			auto        linked = data.linkedDoor.get();
-			const auto  pos = door->GetPosition();
-			logger::info("--- load door {:08X} at ({:.0f}, {:.0f}, {:.0f}) in {}",
-				door->GetFormID(), pos.x, pos.y, pos.z, Describe(door->GetParentCell()));
-			logger::info("    -> linked door {:08X}, arrival ({:.0f}, {:.0f}, {:.0f}) rotZ={:.3f}",
-				linked ? linked->GetFormID() : 0u,
-				data.position.x, data.position.y, data.position.z, data.rotation.z);
-			if (linked && !linked->GetParentCell()) {
-				// Seen for interior -> exterior doors: the linked door is a persistent ref whose
-				// exterior cell isn't loaded, so it has no parent cell yet.
-				logger::info("    -> target: unloaded exterior (worldspace {:08X})",
-					linked->GetWorldspace() ? linked->GetWorldspace()->GetFormID() : 0u);
-			} else {
-				logger::info("    -> target cell {}", Describe(linked ? linked->GetParentCell() : nullptr));
-			}
-			return RE::BSEventNotifyControl::kContinue;
-		}
-	};
-
-	class CellLoadedSink final : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>
-	{
-	public:
-		static CellLoadedSink* GetSingleton()
-		{
-			static CellLoadedSink singleton;
-			return &singleton;
-		}
-
-		RE::BSEventNotifyControl ProcessEvent(const RE::TESCellFullyLoadedEvent* a_event, RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*) override
-		{
-			// Exterior grids fire this once per cell; only interiors mark a door transition.
-			if (a_event && a_event->cell && a_event->cell->IsInteriorCell()) {
-				Probe::DumpWorldState(std::format("interior fully loaded: {:08X}", a_event->cell->GetFormID()));
-			}
-			return RE::BSEventNotifyControl::kContinue;
-		}
-	};
 }
 
 namespace Probe
@@ -129,14 +68,6 @@ namespace Probe
 	std::string DescribeCell(RE::TESObjectCELL* a_cell)
 	{
 		return Describe(a_cell);
-	}
-
-	void Install()
-	{
-		auto* events = RE::ScriptEventSourceHolder::GetSingleton();
-		events->AddEventSink<RE::TESActivateEvent>(ActivateSink::GetSingleton());
-		events->AddEventSink<RE::TESCellFullyLoadedEvent>(CellLoadedSink::GetSingleton());
-		logger::info("probe installed");
 	}
 
 	void DumpWorldState(std::string_view a_reason)
@@ -148,9 +79,8 @@ namespace Probe
 		logger::info("player cell:   {}", Describe(player ? player->GetParentCell() : nullptr));
 		logger::info("TES interior:  {}", Describe(tes ? tes->interiorCell : nullptr));
 
-		// Every interior that is not fully unloaded. This is the cell buffer we would like to
-		// exploit: if a cell we just left stays here as Unattached with its 3D, the portal can
-		// reuse it instead of loading a second copy.
+		// Every interior that is not fully unloaded: the engine's interior buffer, and ours held
+		// behind doors.
 		if (auto* data = RE::TESDataHandler::GetSingleton()) {
 			auto* playerCell = player ? player->GetParentCell() : nullptr;
 			int   resident = 0;
@@ -163,8 +93,8 @@ namespace Probe
 			logger::info("{} other interior(s) resident", resident);
 		}
 
-		// Which cells the engine is running full AI/animation for. Actors in a non-current
-		// interior showing up here would mean dual-cell simulation is closer than expected.
+		// Which cells the engine runs full AI and animation for: a space held behind a door should
+		// be among them.
 		if (auto* processes = RE::ProcessLists::GetSingleton()) {
 			std::unordered_map<RE::TESObjectCELL*, int> highPerCell;
 			for (auto& handle : processes->highActorHandles) {

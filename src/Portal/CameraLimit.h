@@ -26,8 +26,6 @@ namespace Portal::CameraLimit
 	// short of the doorway's picture by the camera's near distance. Cleared with ClearPlane.
 	void SetFirstPersonStop(const RE::NiPoint3& a_center, const RE::NiPoint3& a_inward, float a_halfWidth, float a_maxDepth);
 	void ClearPlane();
-	// Diagnostics: the first-person stop moved the camera in its last update.
-	[[nodiscard]] bool FirstPersonStopped();
 
 	// The camera is at the player's head: the player's body is not drawn this frame.
 	[[nodiscard]] bool HidePlayer();

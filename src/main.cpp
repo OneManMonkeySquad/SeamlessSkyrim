@@ -25,7 +25,6 @@ namespace
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kDataLoaded:
 			// Event sources, the data handler and the renderer's swap chain all exist by now.
-			Probe::Install();
 			Portal::Manager::Install();
 			if (Portal::Manager::HooksInstalled()) {
 				Portal::NpcTravel::Install();

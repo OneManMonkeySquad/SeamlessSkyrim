@@ -857,7 +857,8 @@ def main_thread_answers() -> bool:
         return False
 
 
-@mcp.tool()
+# A text and a picture: as structured output the picture can't be serialized.
+@mcp.tool(structured_output=False)
 def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any]:
     """Run the test routes of suite.json (or the given ones) and report each route's checks.
 
@@ -1204,7 +1205,8 @@ def capture_frames(frames: int = 16, crop: list[float] | None = None, name: str 
     return burst_reply(directory, crop)
 
 
-@mcp.tool()
+# A text and a picture: as structured output the picture can't be serialized.
+@mcp.tool(structured_output=False)
 def frames_sheet(directory: str, crop: list[float] | None = None) -> list[Any]:
     """The contact sheet and odd frames of a burst already taken: a folder that capture_frames or
     run_route returned (absolute, or its name), optionally cropped as in capture_frames."""
@@ -1345,8 +1347,8 @@ def dump_world(grep: str = "") -> dict[str, Any]:
 
 @mcp.tool()
 def portals_enable(enabled: bool = True) -> dict[str, Any]:
-    """Switch the door portals on/off for this session (the INI default is off:
-    Data/SKSE/Plugins/SeamlessSkyrim.ini, [Portals] bEnabled=1 to enable permanently)."""
+    """Switch the door portals on/off for this session (the INI default is on:
+    Data/SKSE/Plugins/SeamlessSkyrim.ini, [Portals] bEnabled=0 to disable permanently)."""
     return with_log("portals_enable", enabled=enabled)
 
 
@@ -1354,7 +1356,7 @@ def portals_enable(enabled: bool = True) -> dict[str, Any]:
 def portal_status(keys: list[str] | None = None, grep: str = "") -> dict[str, Any]:
     """Active portal (doors), the remote cell with its NPCs, light scene counts, last frame info.
 
-    keys: only these top-level fields (e.g. ["lod", "merged", "tone"]); None: all of them.
+    keys: only these top-level fields (e.g. ["lod", "merged", "travel"]); None: all of them.
     grep: log lines written meanwhile that match (a regex); empty: none.
     """
     reply = with_log("portal_status", grep=grep)

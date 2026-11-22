@@ -13,8 +13,8 @@ namespace Portal::Travel
 	// Once, at kDataLoaded.
 	void Install();
 
-	// Main thread: the player stepped through the portal's doorway. Carried out at the start of
-	// the next frame.
+	// Main thread: the player stepped through the portal's doorway. Carried out at the end of this
+	// frame, after it has been drawn.
 	// a_limitCamera: the camera was pulled in for this crossing and is let out after arrival.
 	// a_cameraFloor: the closest the let-out may hold the camera.
 	// a_exact: the player is already standing in the other space as drawn (a merged room walked into
@@ -45,6 +45,7 @@ namespace Portal::Travel
 	// Diagnostics: sample the main thread's stacks for 1.5 s from the next crossing on (Sampler).
 	void ProfileNext(const std::filesystem::path& a_file);
 
-	// Diagnostics: which parts of the engine's transition are skipped (skipLoadWait, skipLoadScreenClose).
+	// Diagnostics: which parts of the engine's transition are skipped or changed (skipLoadWait,
+	// skipLoadScreenClose, skipExtraFrame, spreadLights).
 	json SetOptions(const json& a_options);
 }

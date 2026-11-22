@@ -580,19 +580,6 @@ namespace FrameHooks
 		CaptureFrames(directory, a_frames);
 	}
 
-	bool RequestScreenshot(const std::wstring& a_path)
-	{
-		if (!originalPresent) {
-			return false;
-		}
-		std::scoped_lock lock(captureLock);
-		if (pendingCapture) {
-			return false;
-		}
-		pendingCapture = CaptureRequest{ a_path, std::make_shared<std::promise<json>>() };
-		return true;
-	}
-
 	void GuardFlashes(int a_frames)
 	{
 		guardReset = true;
