@@ -223,6 +223,11 @@ namespace
 		return DoorKey(a_door) + "#" + (a_outdoors ? kParts[a_part] : "inside");
 	}
 
+	std::filesystem::path Folder()
+	{
+		return Paths::PluginDirectory() / "SeamlessSkyrim_Doorways";
+	}
+
 	std::filesystem::path FileOf(const std::string& a_key)
 	{
 		std::string name = a_key;
@@ -231,7 +236,7 @@ namespace
 				c = '_';
 			}
 		}
-		return Paths::PluginDirectory() / "SeamlessSkyrim_Doorways" / Paths::Widen(name + ".ssdw");
+		return Folder() / Paths::Widen(name + ".ssdw");
 	}
 
 	ID3D11DeviceContext* Context()
@@ -339,10 +344,32 @@ namespace
 		});
 	}
 
+	// Set by DeleteAll on the menu's thread; the pictures and readbacks are the main thread's.
+	std::atomic<bool> forgetAllWanted;
+
+	// After DeleteAll: kept in memory, a door went on showing its old picture, and a readback still
+	// in flight wrote its file back.
+	void ForgetAllIfDeleted()
+	{
+		if (!forgetAllWanted.exchange(false)) {
+			return;
+		}
+		for (auto& [key, picture] : pictures) {
+			Release(picture.view);
+			Release(picture.texture);
+		}
+		pictures.clear();
+		for (auto& readback : readbacks) {
+			readback.staging->Release();
+		}
+		readbacks.clear();
+	}
+
 	// The door's picture for this part of the day, loaded from disk the first time it is asked
 	// for; another part's when this one was never taken (a door first passed at night).
 	Picture* Find(ID3D11Device* a_device, RE::FormID a_door, bool a_outdoors)
 	{
+		ForgetAllIfDeleted();
 		ForgetUnused();
 		const int part = PartOfDay();
 		std::array<int, 4> order{ part, (part + 1) % 4, (part + 3) % 4, (part + 2) % 4 };
@@ -865,6 +892,7 @@ namespace
 	// asked for at once, the read would wait for the GPU).
 	void WriteReadbacks(ID3D11DeviceContext* a_context)
 	{
+		ForgetAllIfDeleted();
 		for (auto it = readbacks.begin(); it != readbacks.end();) {
 			if (++it->frames < 3) {
 				++it;
@@ -1388,5 +1416,22 @@ namespace Portal::Snapshot
 	{
 		// A multiple of 4, so that the width (three quarters) is whole.
 		pictureHeight = std::clamp(a_height, kMinHeight, kMaxHeight) / 4 * 4;
+	}
+
+	int DeleteAll()
+	{
+		forgetAllWanted = true;
+		int             deleted = 0;
+		std::error_code error;
+		for (const auto& entry : std::filesystem::directory_iterator(Folder(), error)) {
+			// One being read this moment stays (Windows won't delete an open file); it is a valid
+			// picture, only older.
+			std::error_code removeError;
+			if (entry.path().extension() == L".ssdw" && std::filesystem::remove(entry.path(), removeError)) {
+				++deleted;
+			}
+		}
+		logger::info("doorway snapshot: {} pictures deleted", deleted);
+		return deleted;
 	}
 }

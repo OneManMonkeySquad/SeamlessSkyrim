@@ -156,6 +156,16 @@ namespace
 			ImGui::TextWrapped("The blurred picture a doorway shows while the space behind it loads, in texels across the doorway. "
 							   "Larger is sharper; each door is taken again at the new size when next seen open (doors to the outdoors "
 							   "keep one per part of the day, of the doorway only: a 25th of the size).");
+			// Until another click: the result of this one, so the click visibly did something.
+			static std::optional<int> deleted;
+			if (ImGui::Button("Delete all doorway pictures")) {
+				deleted = Portal::Snapshot::DeleteAll();
+			}
+			if (deleted) {
+				ImGui::SameLine();
+				ImGui::Text("%d deleted", *deleted);
+			}
+			ImGui::TextWrapped("Each door shows the plain colour until it is next seen open, and is taken again then.");
 		}
 
 		ImGui::NewLine();

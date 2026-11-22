@@ -120,6 +120,10 @@ namespace Portal::Snapshot
 	int  PictureHeight();
 	void SetPictureHeight(int a_height);
 
+	// Any thread: every picture deleted from disk (returns how many) and, at the main thread's next
+	// use, from memory. Each door is taken again when next seen open.
+	int DeleteAll();
+
 	// Brightness as an eye judges a scene: the geometric mean of the luminance, in the main scene's
 	// units (before tone mapping). Skyrim has no lasting eye adaptation (the tone map's exposure is
 	// the ratio of two adapted copies of the same average, 1 once settled), so a room seen from a
