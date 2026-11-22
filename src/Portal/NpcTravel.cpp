@@ -300,7 +300,9 @@ namespace Portal::NpcTravel
 			if (high->fadeState == Fade::kTeleportOut) {
 				high->fadeAlpha = std::min(high->fadeAlpha, 0.01f);
 				KeepVisible(actor.get());
-			} else if (high->fadeState == Fade::kTeleportIn || high->fadeState == Fade::kIn) {
+			} else if (high->fadeState == Fade::kTeleportIn || (high->fadeState == Fade::kIn && keptVisible.contains(actor->GetFormID()))) {
+				// The plain fade-in only as the end of a door's (seen fading out, or carried through):
+				// it is also how a script or a summoning lets someone appear, anywhere.
 				KeepVisible(actor.get());
 			}
 		}
