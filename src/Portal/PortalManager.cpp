@@ -1332,8 +1332,13 @@ namespace
 	// in. Instead the two are blended by where the camera is relative to the doorway, on both
 	// sides of the crossing, through the manager's override.
 	RE::ImageSpaceBaseData toneBlend;
+	// The outdoors' as the engine last had it, with the weather and the hour it was taken in: it
+	// holds for those. Kept for good, a save loaded indoors at night after a noon outdoors blended
+	// the doorway with noon's, and lit the street seen from the room by noon's sun.
 	RE::ImageSpaceBaseData toneOutdoors;
-	bool                   toneOutdoorsKnown = false;
+	const RE::TESWeather*  toneOutdoorsWeather = nullptr;
+	float                  toneOutdoorsHour = 0.0f;  // in Calendar's hours passed
+	bool                   toneOutdoorsLogged = false;
 	RE::ImageSpaceBaseData toneIndoors;            // the interior the player is in, as the engine had it
 	RE::TESObjectCELL*     toneIndoorsCell = nullptr;
 
@@ -1360,6 +1365,14 @@ namespace
 		const auto  time = hour < 5.0f || hour >= 21.0f ? Time::kNight : hour < 8.0f ? Time::kSunrise : hour < 17.0f ? Time::kDay : Time::kSunset;
 		auto*       imageSpace = weather->imageSpaces[time];
 		return imageSpace ? &imageSpace->data : nullptr;
+	}
+
+	const RE::ImageSpaceBaseData* OutdoorImageSpace()
+	{
+		constexpr float kHoldsForHours = 0.5f;
+		const bool      holds = toneOutdoorsWeather && toneOutdoorsWeather == RE::Sky::GetSingleton()->currentWeather &&
+		                        std::abs(RE::Calendar::GetSingleton()->GetHoursPassed() - toneOutdoorsHour) < kHoldsForHours;
+		return holds ? &toneOutdoors : WeatherImageSpace();
 	}
 
 	const RE::ImageSpaceBaseData* CellImageSpace(RE::TESObjectCELL* a_cell)
@@ -1399,7 +1412,9 @@ namespace
 				toneIndoorsCell = a_here;
 			} else {
 				toneOutdoors = *runtime.currentBaseData;
-				if (!std::exchange(toneOutdoorsKnown, true)) {
+				toneOutdoorsWeather = RE::Sky::GetSingleton()->currentWeather;
+				toneOutdoorsHour = RE::Calendar::GetSingleton()->GetHoursPassed();
+				if (!std::exchange(toneOutdoorsLogged, true)) {
 					const auto* weather = WeatherImageSpace();
 					const auto& e = toneOutdoors.hdr;
 					logger::info("portal: outdoor image space eye adapt {:.2f}/{:.2f} white {:.2f} sun {:.2f} sky {:.2f} brightness {:.2f}; the weather's {:.2f}/{:.2f} {:.2f} {:.2f} {:.2f} {:.2f}",
@@ -1410,7 +1425,7 @@ namespace
 			}
 		}
 		const auto* indoors = inside ? (toneIndoorsCell == a_here ? &toneIndoors : CellImageSpace(a_here)) : CellImageSpace(a_behindDoor);
-		const auto* outdoorsData = toneOutdoorsKnown ? &toneOutdoors : WeatherImageSpace();
+		const auto* outdoorsData = OutdoorImageSpace();
 		constexpr float kFrom = -150.0f, kTo = 120.0f;
 		float           t = std::clamp((a_interiorDepth - kFrom) / (kTo - kFrom), 0.0f, 1.0f);
 		t = t * t * (3.0f - 2.0f * t);
@@ -3320,7 +3335,7 @@ namespace Portal::Manager
 					// the street a dull grey with barely visible shadows, next to the bright street
 					// outside.
 					if (street) {
-						const auto* outdoors = toneOutdoorsKnown ? &toneOutdoors : WeatherImageSpace();
+						const auto* outdoors = OutdoorImageSpace();
 						const float scale = outdoors ? outdoors->hdr.sunlightScale : 1.0f;
 						for (int i = 0; i < 3; ++i) {
 							(*lighting)[i] *= scale;
