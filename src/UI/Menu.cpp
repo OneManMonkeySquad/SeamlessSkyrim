@@ -240,14 +240,6 @@ namespace
 		
 		ImGui::NewLine();
 
-		ImGui::TextWrapped("Which end of the door is hinged (only guessed from the mesh):");
-		int style = static_cast<int>(Portal::Doors::Style(pair.key->GetFormID()));
-		bool changed = ImGui::RadioButton("Swing", &style, 0);
-		ImGui::SameLine();
-		changed |= ImGui::RadioButton("Swing, other hinge", &style, 1);
-		if (changed) {
-			Portal::Doors::SetStyle(pair.key->GetFormID(), static_cast<Portal::Doors::OpenStyle>(style));
-		}
 		float swing = Portal::Doors::SwingDegrees(pair.key->GetFormID());
 		if (ImGui::SliderFloat("How far it opens (degrees)", &swing, 30.0f, 120.0f, "%.0f")) {
 			Portal::Doors::SetSwingDegrees(pair.key->GetFormID(), swing);

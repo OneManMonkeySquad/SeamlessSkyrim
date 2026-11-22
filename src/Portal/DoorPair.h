@@ -71,17 +71,8 @@ namespace Portal::Doors
 	[[nodiscard]] RE::NiPoint3       Shift(RE::FormID a_door);
 	void                             SetShift(RE::FormID a_door, const RE::NiPoint3& a_shift);
 
-	// How the pair's door opens, chosen per pair in the menu (stored with the correction): which
-	// end is hinged can only be guessed from the mesh.
-	enum class OpenStyle : int
-	{
-		kSwing = 0,          // turns on the end the mesh guess picked
-		kSwingOtherEnd = 1,  // turns on the other end
-	};
-	[[nodiscard]] OpenStyle Style(RE::FormID a_door);
-	void                    SetStyle(RE::FormID a_door, OpenStyle a_style);
-	// How far its leaves turn, fully open (the menu, stored with the correction): less where the
-	// wall beside the doorway is closer than the leaf is wide, or the leaf ends up in it.
+	// How far the pair's door leaves turn, fully open (the menu, stored with the correction): less
+	// where the wall beside the doorway is closer than a leaf is wide, or the leaf ends up in it.
 	constexpr float     kSwingDegrees = 95.0f;
 	[[nodiscard]] float SwingDegrees(RE::FormID a_door);
 	void                SetSwingDegrees(RE::FormID a_door, float a_degrees);
@@ -127,7 +118,7 @@ namespace Portal::Doors
 	// Main thread: the door's leaves swung open around their hinges, a_amount from 0 (closed) to 1
 	// (open), towards a_room (a horizontal world direction: the side it opens into); its frame
 	// stays. Placement and everything derived from it keep using the closed door. a_settings: the
-	// pair's correction door, whose hinge and angle it takes.
+	// pair's correction door, whose angle it takes.
 	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, RE::FormID a_settings);
 	// Main thread: the panel back where it was.
 	void Unswing(RE::FormID a_door);
