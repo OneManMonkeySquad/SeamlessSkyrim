@@ -10,6 +10,15 @@ https://github.com/OneManMonkeySquad/CommunityShaders-Seamless (branch `seamless
 
 Building: `docs/BUILD.md`.
 
+## Compatibility
+Faster Objects - Compatible, recommended
+Load Screens Hider - Compatible, recommended
+Community Shaders - Compatible
+FSMP - Faster HDT-SMP - Compatible
+Precision - Compatible
+Faster Loadscreens - Compatible
+Faster Decompression - Compatible
+
 ## License
 
 GPL-3.0-or-later: SeamlessSkyrim is free software; you can redistribute it and/or modify it
