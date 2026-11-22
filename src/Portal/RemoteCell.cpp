@@ -195,9 +195,9 @@ namespace Portal
 	{
 		// 19111 loads the cell's temporary references (no-op when loaded); 18976 attaches it
 		// under a parent node of our choosing; 19063 finishes the attach (state -> Attached).
-		REL::Relocation<bool (*)(RE::TESObjectCELL*)>               loadTempData{ REL::ID(19111) };
-		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::NiNode*)> attachCell{ REL::ID(18976) };
-		REL::Relocation<std::uint8_t (*)(RE::TESObjectCELL*, bool)> finishAttach{ REL::ID(19063) };
+		REL::Relocation<bool (*)(RE::TESObjectCELL*)>               loadTempData{ REL::RelocationID(18637, 19111) };
+		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::NiNode*)> attachCell{ REL::RelocationID(18518, 18976) };
+		REL::Relocation<std::uint8_t (*)(RE::TESObjectCELL*, bool)> finishAttach{ REL::RelocationID(18594, 19063) };
 		// The attach installs the cell's room/portal occlusion graph in the *world* light scene
 		// (ShadowSceneNode::SetPortalGraph on State slot 0). Left there, the main view culled with
 		// the remote cell's rooms: actors outside them (the player, every NPC) vanished, and the
@@ -242,7 +242,7 @@ namespace Portal
 		// never made again: the portal showed it unlit. TES::SetCurrentCell recreates them with
 		// ID 19059 (cell, true), which runs ID 19678 (CreatePointLight) for each reference with 3D;
 		// they land in the world scene and are adopted like any other.
-		REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> attachRefLights{ REL::ID(19059) };
+		REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> attachRefLights{ REL::RelocationID(18590, 19059) };
 		if (!(debugSkip & 2)) {
 			attachRefLights(a_cell, true);
 		}
@@ -620,7 +620,7 @@ namespace Portal
 				// crashed seconds later (S2f). If the engine has meanwhile re-parented the cell (the
 				// player walked in normally), it owns it now and we only forget it.
 				root->DetachChild(cell3D);
-				REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::ID(19130) };
+				REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::RelocationID(18655, 19130) };
 				detachCell(cell, true);
 			} else {
 				logger::info("portal: forgot {} (taken over by the engine)", Probe::DescribeCell(cell));
@@ -645,7 +645,7 @@ namespace Portal
 		// engine attaching their cell on the way out hangs only the 3D it loads itself, and Markarth's
 		// ground and rocks outside the Smelter Overseer's House were gone, only their collision left.
 		// ID 19165 is what the engine's cell attach (ID 18976, through ID 19187) puts each one in with.
-		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::TESObjectREFR*, bool, bool)> attachRef3D{ REL::ID(19165) };
+		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::TESObjectREFR*, bool, bool)> attachRef3D{ REL::RelocationID(18683, 19165) };
 		int hung = 0, notAttached = 0;
 		for (const auto id : std::exchange(handedPersistent, {})) {
 			auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
@@ -1105,11 +1105,11 @@ namespace Portal
 		stepEnabled = a_enabled;
 		// `call qword ptr [rax+0x190]` (6 bytes) at +0x18 in both jobs; rcx/edx already hold the
 		// world and the argument, so a 5-byte call to the thunk plus a nop replaces it.
-		for (const auto id : { 18870, 18897 }) {
-			REL::Relocation<std::uintptr_t> site{ REL::ID(id), 0x18 };
+		for (const auto id : { REL::RelocationID(18440, 18870), REL::RelocationID(18466, 18897) }) {
+			REL::Relocation<std::uintptr_t> site{ id, 0x18 };
 			const auto*                     code = reinterpret_cast<const std::uint8_t*>(site.address());
 			if (code[0] != 0xFF || code[1] != 0x90 || *reinterpret_cast<const std::uint32_t*>(code + 2) != 0x190) {
-				logger::error("portal: Havok step call in ID {} not found, remote cells won't be simulated", id);
+				logger::error("portal: Havok step call in ID {} not found, remote cells won't be simulated", id.id());
 				continue;
 			}
 			SKSE::GetTrampoline().write_call<5>(site.address(), StepHook::Thunk);
@@ -1799,7 +1799,7 @@ namespace Portal
 		void InstallUnloadHook()
 		{
 			// Its first 9 bytes, test rdx, rdx / je to its ret, are redone by the stub.
-			REL::Relocation<std::uintptr_t> unload{ REL::ID(13721) };
+			REL::Relocation<std::uintptr_t> unload{ REL::RelocationID(13623, 13721) };
 			const auto*                     code = reinterpret_cast<const std::uint8_t*>(unload.address());
 			std::int32_t                    toEnd = 0;
 			std::memcpy(&toEnd, code + 5, sizeof(toEnd));
@@ -1842,12 +1842,12 @@ namespace Portal
 	void RemoteCell::InstallGridHook()
 	{
 		InstallUnloadHook();
-		REL::Relocation<std::uintptr_t> graphSite{ REL::ID(18976), 0x140 };
-		if (Hooks::CallsTo(graphSite.address(), 106385, "portal: room graph on attach")) {
+		REL::Relocation<std::uintptr_t> graphSite{ REL::RelocationID(18518, 18976), REL::Relocate(0x135, 0x140) };
+		if (Hooks::CallsTo(graphSite.address(), REL::RelocationID(99741, 106385), "portal: room graph on attach")) {
 			AttachGraphHook::func = SKSE::GetTrampoline().write_call<5>(graphSite.address(), AttachGraphHook::Thunk);
 		}
-		REL::Relocation<std::uintptr_t> site{ REL::ID(13317), 0xF4 };
-		if (!Hooks::CallsTo(site.address(), 15951, "portal: grid ready check")) {
+		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(13172, 13317), REL::Relocate(0x104, 0xF4) };
+		if (!Hooks::CallsTo(site.address(), REL::RelocationID(15716, 15951), "portal: grid ready check")) {
 			logger::warn("portal: street cells are detached when walking out");
 			handOverStreet = false;
 			return;

@@ -53,15 +53,15 @@ namespace
 
 	std::byte* ActiveFog()
 	{
-		static REL::Relocation<std::uint8_t*>    sceneIndex{ REL::ID(390982) };
-		static REL::Relocation<void* (*)(int)> fogOf{ REL::ID(105637) };
+		static REL::Relocation<std::uint8_t*>    sceneIndex{ REL::RelocationID(513241, 390982) };
+		static REL::Relocation<void* (*)(int)> fogOf{ REL::RelocationID(98984, 105637) };
 		return static_cast<std::byte*>(fogOf(*sceneIndex.get()));
 	}
 
 	// The directional ambient transform the lighting shader's setup reads (rotation, translation, scale).
 	RE::NiTransform& AmbientTransform()
 	{
-		static REL::Relocation<RE::NiTransform*> transform{ REL::ID(390984) };
+		static REL::Relocation<RE::NiTransform*> transform{ REL::RelocationID(513243, 390984) };
 		return *transform.get();
 	}
 
@@ -324,7 +324,7 @@ namespace Render::Native
 			std::memcpy(s.fog + kFogBegin, s.fogBytes.data(), s.fogBytes.size());
 			// SetupAndDrawPass (ID 107644) sets a technique up only when it differs from the last
 			// one (ID 415272); forgotten, the next shape sets it up again, with the world's fog.
-			static REL::Relocation<std::uint32_t*> lastTechnique{ REL::ID(415272) };
+			static REL::Relocation<std::uint32_t*> lastTechnique{ REL::RelocationID(528320, 415272) };
 			*lastTechnique.get() = 0;
 		}
 		storageInUse = false;
@@ -344,8 +344,8 @@ namespace Render::Native
 
 	void InstallLightingHooks()
 	{
-		REL::Relocation<std::uintptr_t> site{ REL::ID(107245), 0xD26 };
-		if (Hooks::CallsTo(site.address(), 105637, "native backend: SSAO composite's fog")) {
+		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(100520, 107245), REL::Relocate(0xC37, 0xD26) };
+		if (Hooks::CallsTo(site.address(), REL::RelocationID(98984, 105637), "native backend: SSAO composite's fog")) {
 			CompositeFogHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), CompositeFogHook::Thunk);
 		}
 	}

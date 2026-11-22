@@ -62,27 +62,27 @@ namespace
 	// (AE 1.7.104, seen in ID 52727); CommonLib's wrappers pass a different object.
 	void* RenderTargetManagerObject()
 	{
-		static REL::Relocation<std::uintptr_t> object{ REL::ID(411451) };
+		static REL::Relocation<std::uintptr_t> object{ REL::RelocationID(524970, 411451) };
 		return reinterpret_cast<void*>(object.address());
 	}
 
 	void* RendererObject()
 	{
-		static REL::Relocation<std::uintptr_t> object{ REL::ID(411393) };
+		static REL::Relocation<std::uintptr_t> object{ REL::RelocationID(524907, 411393) };
 		return reinterpret_cast<void*>(object.address());
 	}
 
 	void SetColorTarget(std::uint32_t a_slot, std::uint32_t a_target, std::uint32_t a_mode, bool a_updateViewport)
 	{
 		using func_t = void (*)(void*, std::uint32_t, std::uint32_t, std::uint32_t, bool);
-		static REL::Relocation<func_t> func{ REL::ID(77453) };
+		static REL::Relocation<func_t> func{ REL::RelocationID(75646, 77453) };
 		func(RenderTargetManagerObject(), a_slot, a_target, a_mode, a_updateViewport);
 	}
 
 	void SetDepthTarget(std::uint32_t a_target, std::uint32_t a_mode, std::uint32_t a_slice)
 	{
 		using func_t = void (*)(void*, std::uint32_t, std::uint32_t, std::uint32_t, bool);
-		static REL::Relocation<func_t> func{ REL::ID(77454) };
+		static REL::Relocation<func_t> func{ REL::RelocationID(75647, 77454) };
 		func(RenderTargetManagerObject(), a_target, a_mode, a_slice, false);
 	}
 
@@ -91,8 +91,8 @@ namespace
 	// cleanup Main::RenderPlayerView / RenderWorld do for the main accumulator.
 	void ResetAccumulator(RE::BSShaderAccumulator* a_accumulator)
 	{
-		static REL::Relocation<void (*)(RE::BSShaderAccumulator*)>                clearItems{ REL::ID(106597) };  // NiBackToFrontAccumulator::ClearItemsList
-		static REL::Relocation<void (*)(RE::BSShaderAccumulator*, std::int32_t)> clearGroup{ REL::ID(106600) };
+		static REL::Relocation<void (*)(RE::BSShaderAccumulator*)>                clearItems{ REL::RelocationID(99952, 106597) };  // NiBackToFrontAccumulator::ClearItemsList
+		static REL::Relocation<void (*)(RE::BSShaderAccumulator*, std::int32_t)> clearGroup{ REL::RelocationID(99955, 106600) };
 		clearItems(a_accumulator);
 		clearGroup(a_accumulator, 6);
 		clearGroup(a_accumulator, 5);
@@ -458,7 +458,7 @@ namespace
 	// them as it does for the engine's own calls).
 	void ApplyAmbient(const AmbientState& a_state)
 	{
-		static REL::Relocation<void (*)(const float*, const float*, float)> setAmbient{ REL::ID(105643) };
+		static REL::Relocation<void (*)(const float*, const float*, float)> setAmbient{ REL::RelocationID(98989, 105643) };
 		setAmbient(&a_state.colors[0][0][0], a_state.tint, a_state.fresnel);
 	}
 
@@ -477,11 +477,11 @@ namespace
 	std::pair<std::byte*, std::byte*> AmbientMemory()
 	{
 		static const auto memory = [] {
-			auto* inputs = reinterpret_cast<std::byte*>(REL::ID(414646).address());
-			auto* built = reinterpret_cast<std::byte*>(REL::ID(390984).address());
+			auto* inputs = reinterpret_cast<std::byte*>(REL::RelocationID(527705, 414646).address());
+			auto* built = reinterpret_cast<std::byte*>(REL::RelocationID(513243, 390984).address());
 			// The layout read off the function (AE 1.7.104): both blocks contiguous.
-			SEAMLESS_ASSERT(REL::ID(414657).address() - REL::ID(414646).address() == 0x44);
-			SEAMLESS_ASSERT(REL::ID(391000).address() - REL::ID(390984).address() == 0x40);
+			SEAMLESS_ASSERT(REL::RelocationID(527716, 414657).address() - REL::RelocationID(527705, 414646).address() == 0x44);
+			SEAMLESS_ASSERT(REL::RelocationID(513259, 391000).address() - REL::RelocationID(513243, 390984).address() == 0x40);
 			return std::pair{ inputs, built };
 		}();
 		return memory;
@@ -495,8 +495,8 @@ namespace
 	// with K the engine's globals ID 410515..410517.
 	RE::NiTransform AmbientTransform(const AmbientState& a_state)
 	{
-		static REL::Relocation<const float*> offsets{ REL::ID(410515) };
-		SEAMLESS_ASSERT(REL::ID(410517).address() - REL::ID(410515).address() == 8);  // three floats in a row
+		static REL::Relocation<const float*> offsets{ REL::RelocationID(523935, 410515) };
+		SEAMLESS_ASSERT(REL::RelocationID(523937, 410517).address() - REL::RelocationID(523935, 410515).address() == 8);  // three floats in a row
 		RE::NiTransform transform;
 		for (int channel = 0; channel < 3; ++channel) {
 			float sum = offsets.get()[channel];
@@ -582,8 +582,8 @@ namespace
 	// inherits the rotation).
 	RE::NiPoint3 FormulaDirection(RE::TESObjectCELL* a_cell)
 	{
-		static REL::Relocation<std::uint32_t (*)(RE::TESObjectCELL*)> rotationXY{ REL::ID(18929) };
-		static REL::Relocation<std::uint32_t (*)(RE::TESObjectCELL*)> rotationZ{ REL::ID(18931) };
+		static REL::Relocation<std::uint32_t (*)(RE::TESObjectCELL*)> rotationXY{ REL::RelocationID(18487, 18929) };
+		static REL::Relocation<std::uint32_t (*)(RE::TESObjectCELL*)> rotationZ{ REL::RelocationID(18488, 18931) };
 		const float xy = RE::deg_to_rad(static_cast<float>(rotationXY(a_cell)));
 		const float z = RE::deg_to_rad(static_cast<float>(rotationZ(a_cell)));
 		return { std::cos(xy) * std::cos(z), -std::sin(xy) * std::cos(z), std::sin(z) };
@@ -612,11 +612,11 @@ namespace
 		auto* sky = RE::Sky::GetSingleton();
 		auto* calendar = RE::Calendar::GetSingleton();
 		SEAMLESS_ASSERT(sky && calendar);  // only asked for with a game running
-		static REL::Relocation<const float*> alphaTransTime{ REL::ID(370247) };
-		static REL::Relocation<const float*> xExtreme{ REL::ID(370250) };
-		static REL::Relocation<const float*> yExtreme{ REL::ID(370253) };
-		static REL::Relocation<const float*> zExtreme{ REL::ID(370256) };
-		static REL::Relocation<const float*> dirXExtreme{ REL::ID(370259) };
+		static REL::Relocation<const float*> alphaTransTime{ REL::RelocationID(502619, 370247) };
+		static REL::Relocation<const float*> xExtreme{ REL::RelocationID(502621, 370250) };
+		static REL::Relocation<const float*> yExtreme{ REL::RelocationID(502623, 370253) };
+		static REL::Relocation<const float*> zExtreme{ REL::RelocationID(502625, 370256) };
+		static REL::Relocation<const float*> dirXExtreme{ REL::RelocationID(502627, 370259) };
 		// The engine reads the sky's own hour, which may stand still while the sky is in interior
 		// mode; the calendar's is the same hour, always current.
 		const float hour = calendar->GetHour();
@@ -1576,10 +1576,10 @@ namespace
 		const auto  savedPreviousPosAdjust = shadowState.previousPosAdjust;
 		const auto  savedCameraData = shadowState.cameraData;
 		auto* const savedAccumulator = RE::BSShaderAccumulator::GetCurrentAccumulator();
-		static REL::Relocation<RE::NiCamera**>  currentCamera{ REL::ID(414580) };  // set by SubmitAccumulator
-		static REL::Relocation<std::uint32_t*> depthMode{ REL::ID(388840) };       // cached DepthStencilDepthMode
-		static REL::Relocation<std::uint32_t*> dirtyStates{ REL::ID(388819) };
-		static REL::Relocation<std::uint8_t*>  menuDrawGlobal{ REL::ID(411494) };
+		static REL::Relocation<RE::NiCamera**>  currentCamera{ REL::RelocationID(527667, 414580) };  // set by SubmitAccumulator
+		static REL::Relocation<std::uint32_t*> depthMode{ REL::RelocationID(524794, 388840) };       // cached DepthStencilDepthMode
+		static REL::Relocation<std::uint32_t*> dirtyStates{ REL::RelocationID(524773, 388819) };
+		static REL::Relocation<std::uint8_t*>  menuDrawGlobal{ REL::RelocationID(525013, 411494) };
 		auto* const savedCamera = *currentCamera;
 		const auto  savedDepthMode = *depthMode;
 		const auto  savedMenuDrawGlobal = *menuDrawGlobal;
@@ -1672,8 +1672,8 @@ namespace
 		SetColorTarget(0, kColorTarget, RE::BSGraphics::SRTM_CLEAR, true);
 		SetDepthTarget(kDepthTarget, RE::BSGraphics::SRTM_CLEAR, 0);
 		{
-			static REL::Relocation<void (*)(void*)>                resetState{ REL::ID(77371) };  // Renderer::ResetState
-			static REL::Relocation<void (*)(void*, std::uint32_t)> applyState{ REL::ID(77247) };
+			static REL::Relocation<void (*)(void*)>                resetState{ REL::RelocationID(75570, 77371) };  // Renderer::ResetState
+			static REL::Relocation<void (*)(void*, std::uint32_t)> applyState{ REL::RelocationID(75462, 77247) };
 			resetState(RendererObject());
 			applyState(RendererObject(), 0);
 		}
@@ -1688,7 +1688,7 @@ namespace
 		// Set by Main::RenderWaterEffects when the main view has water in it; the post-accumulation
 		// stage (ID 106584) then rebinds the world's depth buffer for its blended passes, which
 		// inside the portal pass would test and draw them against the main view's depth.
-		static REL::Relocation<std::uint32_t*> waterMode{ REL::ID(391008) };
+		static REL::Relocation<std::uint32_t*> waterMode{ REL::RelocationID(513267, 391008) };
 		const auto                             savedWaterMode = *waterMode;
 		*waterMode = 0;
 
@@ -1848,7 +1848,7 @@ namespace
 	// be fogged by itself or it stands out of the haze around it, sharp and dark.
 	std::array<float, 12> WorldFog()
 	{
-		static REL::Relocation<std::byte* (*)(int)> fogOf{ REL::ID(105637) };
+		static REL::Relocation<std::byte* (*)(int)> fogOf{ REL::RelocationID(98984, 105637) };
 		std::array<float, 12> out{};
 		const auto*           property = fogOf(0);
 		if (!property) {
@@ -2509,7 +2509,7 @@ namespace
 
 	void TraceFrame(const FrameTrace& a_now, bool a_menuOpen)
 	{
-		static REL::Relocation<std::uint32_t*> frameCount{ REL::ID(390886) };
+		static REL::Relocation<std::uint32_t*> frameCount{ REL::RelocationID(513162, 390886) };
 		static FrameTrace    last;
 		static std::uint32_t lastFrameNumber = 0;
 		static int           lines = 0;
@@ -2599,11 +2599,11 @@ namespace
 		// them, and the function starts with a jump to the thunk.
 		static void Install()
 		{
-			// The function writes the drawn bits at +0x27C (AE 1.7.104); ShowActor writes them through
+			// The function writes the drawn bits at +0x27C (SE: +0x274); ShowActor writes them through
 			// CommonLib's layout, which must agree.
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetActorRuntimeData().unk274) - reinterpret_cast<std::uintptr_t>(player) == 0x27C);
-			REL::Relocation<std::uintptr_t> target{ REL::ID(40335) };
+			SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetActorRuntimeData().unk274) - reinterpret_cast<std::uintptr_t>(player) == REL::Relocate(0x274, 0x27C));
+			REL::Relocation<std::uintptr_t> target{ REL::RelocationID(39262, 40335) };
 			static constexpr std::uint8_t   expected[19] = { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x30 };
 			if (std::memcmp(reinterpret_cast<const void*>(target.address()), expected, sizeof(expected)) != 0) {
 				logger::warn("portal: actor cull function not as expected; NPCs of a merged room stay invisible");
@@ -2633,16 +2633,18 @@ namespace
 	// counts as faded in.
 	struct RefFadeHook
 	{
-		static bool Thunk(RE::TESObjectREFR* a_ref)
+		// Its argument is the reference's 3D (every caller passes TESObjectREFR::Get3D2's result),
+		// not the reference.
+		static bool Thunk(RE::NiAVObject* a_object)
 		{
-			const RE::NiAVObject* top = a_ref ? a_ref->Get3D() : nullptr;
-			while (top && top->parent) {
+			const RE::NiAVObject* top = a_object;
+			while (top->parent) {
 				top = top->parent;
 			}
 			if (Portal::LightScene::IsOurs(top)) {
 				return true;
 			}
-			return func(a_ref);
+			return func(a_object);
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
@@ -2903,41 +2905,41 @@ namespace Portal::Render
 	void Install()
 	{
 		auto& trampoline = SKSE::GetTrampoline();
-		REL::Relocation<std::uintptr_t> renderWorld{ REL::ID(36559), 0x85E };
-		REL::Relocation<std::uintptr_t> drawPass{ REL::ID(107642), 0x28F };
-		REL::Relocation<std::uintptr_t> refraction{ REL::ID(106583), 0x3B4 };
-		REL::Relocation<std::uintptr_t> worldDepth{ REL::ID(107522), 0x6A };
+		REL::Relocation<std::uintptr_t> renderWorld{ REL::RelocationID(35560, 36559), REL::Relocate(0x831, 0x85E) };
+		REL::Relocation<std::uintptr_t> drawPass{ REL::RelocationID(100852, 107642), REL::Relocate(0x29E, 0x28F) };
+		REL::Relocation<std::uintptr_t> refraction{ REL::RelocationID(99938, 106583), REL::Relocate(0x3C5, 0x3B4) };
+		REL::Relocation<std::uintptr_t> worldDepth{ REL::RelocationID(100741, 107522), REL::Relocate(0x6A, 0x6A) };
 		// All checked (no short-circuit), so the log names every site that doesn't match.
-		const bool sitesFound = static_cast<int>(Hooks::CallsTo(renderWorld.address(), 107142, "portal: Main::RenderWorld")) &
-		                        static_cast<int>(Hooks::CallsTo(drawPass.address(), 107644, "portal: SetupAndDrawPass")) &
-		                        static_cast<int>(Hooks::CallsTo(refraction.address(), 107655, "portal: refraction passes query")) &
-		                        static_cast<int>(Hooks::CallsTo(worldDepth.address(), 77457, "portal: world depth target"));
+		const bool sitesFound = static_cast<int>(Hooks::CallsTo(renderWorld.address(), REL::RelocationID(100424, 107142), "portal: Main::RenderWorld")) &
+		                        static_cast<int>(Hooks::CallsTo(drawPass.address(), REL::RelocationID(100854, 107644), "portal: SetupAndDrawPass")) &
+		                        static_cast<int>(Hooks::CallsTo(refraction.address(), REL::RelocationID(100861, 107655), "portal: refraction passes query")) &
+		                        static_cast<int>(Hooks::CallsTo(worldDepth.address(), REL::RelocationID(75650, 77457), "portal: world depth target"));
 		if (!sitesFound) {
 			logger::error("portal: render hooks not installed (unexpected code at the hook sites); portals stay invisible");
 			return;
 		}
 		RenderWorldHook::func = trampoline.write_call<5>(renderWorld.address(), RenderWorldHook::Thunk);
 		ActorCullHook::Install();
-		REL::Relocation<std::uintptr_t> playerView{ REL::ID(36558), 0x11D };
-		if (Hooks::CallsTo(playerView.address(), 36559, "portal: Main::RenderPlayerView")) {
+		REL::Relocation<std::uintptr_t> playerView{ REL::RelocationID(35559, 36558), REL::Relocate(0x11D, 0x11D) };
+		if (Hooks::CallsTo(playerView.address(), REL::RelocationID(35560, 36559), "portal: Main::RenderPlayerView")) {
 			RenderPlayerViewHook::func = trampoline.write_call<5>(playerView.address(), RenderPlayerViewHook::Thunk);
 		}
 		DrawPassHook::func = trampoline.write_call<5>(drawPass.address(), DrawPassHook::Thunk);
 		{
-			REL::Relocation<std::uintptr_t> post{ REL::ID(107148), 0x1E7 };
-			if (Hooks::CallsTo(post.address(), 105674, "portal: post-processing")) {
+			REL::Relocation<std::uintptr_t> post{ REL::RelocationID(100430, 107148), REL::Relocate(0x1F0, 0x1E7) };
+			if (Hooks::CallsTo(post.address(), REL::RelocationID(99023, 105674), "portal: post-processing")) {
 				PostProcessingHook::func = trampoline.write_call<5>(post.address(), PostProcessingHook::Thunk);
 			}
 		}
-		for (const auto& [caller, offset] : { std::pair{ 105486, 0x55 }, std::pair{ 105588, 0x87 } }) {
-			REL::Relocation<std::uintptr_t> site{ REL::ID(caller), offset };
-			if (Hooks::CallsTo(site.address(), 105487, std::format("portal: fade node level of detail in ID {}", caller))) {
+		for (const auto& [caller, offset] : { std::pair{ REL::RelocationID(98849, 105486), 0x55 }, std::pair{ REL::RelocationID(98937, 105588), 0x87 } }) {
+			REL::Relocation<std::uintptr_t> site{ caller, offset };
+			if (Hooks::CallsTo(site.address(), REL::RelocationID(98850, 105487), std::format("portal: fade node level of detail in ID {}", caller.id()))) {
 				FadeLevelHook::func = trampoline.write_call<5>(site.address(), FadeLevelHook::Thunk);
 			}
 		}
-		for (const auto& [caller, offset] : { std::pair{ 18894, 0x90 }, std::pair{ 18900, 0xA2 }, std::pair{ 19204, 0x96 } }) {
-			REL::Relocation<std::uintptr_t> site{ REL::ID(caller), offset };
-			if (Hooks::CallsTo(site.address(), 19384, std::format("portal: reference fade update in ID {}", caller))) {
+		for (const auto& [caller, offset] : { std::pair{ REL::RelocationID(18463, 18894), 0x90 }, std::pair{ REL::RelocationID(18469, 18900), 0xA2 }, std::pair{ REL::RelocationID(18714, 19204), 0x96 } }) {
+			REL::Relocation<std::uintptr_t> site{ caller, offset };
+			if (Hooks::CallsTo(site.address(), REL::RelocationID(18972, 19384), std::format("portal: reference fade update in ID {}", caller.id()))) {
 				// All three call the same function; the thunk's func is that function either way.
 				RefFadeHook::func = trampoline.write_call<5>(site.address(), RefFadeHook::Thunk);
 			}

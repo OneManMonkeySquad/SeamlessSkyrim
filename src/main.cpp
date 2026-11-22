@@ -7,9 +7,10 @@
 #include "UI/Menu.h"
 #include "Probe.h"
 
-// We read engine structs directly (cells, TES, process lists) and only target the installed 1.7.x
-// runtime, so declare the post-1.6.629 layout honestly. SKSE then refuses to load us on runtimes
-// whose layout we never tested, instead of letting us read garbage.
+// Runs on SE 1.5.97 and on AE from 1.6.629. We read engine structs directly (cells, TES, process
+// lists), so declare the post-1.6.629 layout honestly: AE's SKSE then refuses to load us on the
+// earlier AE layout, which we never tested, instead of letting us read garbage. SE's SKSE ignores
+// this declaration and loads us through SKSEPlugin_Query.
 SKSEPluginInfo(
 	.Version = REL::Version{ PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH, 0 },
 	.Name = PLUGIN_NAME,

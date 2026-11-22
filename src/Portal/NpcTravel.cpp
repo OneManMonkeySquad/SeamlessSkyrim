@@ -170,8 +170,8 @@ namespace Portal::NpcTravel
 	void Install()
 	{
 		// MovementMessageActivateDoor's handler, its call that starts the activate idle at the door.
-		REL::Relocation<std::uintptr_t> site{ REL::ID(37878), 0x1AA };
-		if (Hooks::CallsTo(site.address(), 39255, "npc travel: door idle")) {
+		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(36854, 37878), REL::Relocate(0x1A3, 0x1AA) };
+		if (Hooks::CallsTo(site.address(), REL::RelocationID(38289, 39255), "npc travel: door idle")) {
 			DoorIdleHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), DoorIdleHook::Thunk);
 		}
 	}

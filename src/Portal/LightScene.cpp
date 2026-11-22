@@ -45,7 +45,7 @@ namespace Portal::LightScene
 		// Same construction as the engine's own light scenes (Main init ID 36554, menu-3D
 		// ID 52726): engine heap, ctor ID 106320 with the world scene's capacities.
 		using ctor_t = RE::ShadowSceneNode* (*)(void*, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t);
-		REL::Relocation<ctor_t>            ctor{ REL::ID(106320) };
+		REL::Relocation<ctor_t>            ctor{ REL::RelocationID(99686, 106320) };
 		RE::NiPointer<RE::ShadowSceneNode> scene(ctor(RE::malloc(0x308), 0x100, 4, 4, 0x4000, 0x80, 0x10));
 		// Shaders look the active light scene up by this index (fog via ID 105637); only drawn once
 		// registered there (Show).
@@ -68,7 +68,7 @@ namespace Portal::LightScene
 		}
 		// Slot 3 (0 world, 1 menu-3D, 2/3 free): an unregistered index crashed the first frame. On
 		// game load/reset the engine clears the lights of every registered scene (ID 13280).
-		REL::Relocation<void (*)(std::uint32_t, RE::ShadowSceneNode*)> registerScene{ REL::ID(105635) };
+		REL::Relocation<void (*)(std::uint32_t, RE::ShadowSceneNode*)> registerScene{ REL::RelocationID(98982, 105635) };
 		registerScene(kSlot, a_scene);
 		registered = a_scene;
 	}
@@ -207,8 +207,8 @@ namespace Portal::LightScene
 		}
 		// What Main::RenderPlayerView does for every registered scene (ID 36559 + 0x194, through
 		// ID 106337), with the same second argument.
-		REL::Relocation<void (*)(RE::ShadowSceneNode*, void*)> updateLights{ REL::ID(106335) };
-		REL::Relocation<void***>                               viewer{ REL::ID(415022) };
+		REL::Relocation<void (*)(RE::ShadowSceneNode*, void*)> updateLights{ REL::RelocationID(99701, 106335) };
+		REL::Relocation<void***>                               viewer{ REL::RelocationID(528077, 415022) };
 		void* const                                            argument = *viewer ? **viewer : nullptr;
 		updateLights(a_scene, argument);
 		ForEachLight(a_scene, [](RE::BSLight* a_light) {

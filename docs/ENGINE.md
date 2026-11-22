@@ -3,6 +3,26 @@
 Skyrim AE 1.7.104, IDs from the Address Library. These were expensive to find. Add new ones in
 the same change that needed them.
 
+## SE 1.5.97 against AE 1.7.104
+
+Found porting the plugin; each was checked in the code of both.
+
+- Mostly the same code at different offsets. Where the compiler inlined differently:
+  `BGSTerrainManager::Update` (SE 31017 / AE 31802) calls the node placement (31041 / 31828) once,
+  where AE calls it three times; SE has the placement's body (a call to 31048 / 31835 with flags
+  7 or 0x27, then three vcalls) inlined at the other two places.
+- `Renderer::SetRenderTarget` AE 77453 is SE 75646, a wrapper that passes the RenderTargetManager
+  object (ID 524907) and jumps to 75654. CommonLib pairs 77453 with 75654, which takes `this` in
+  rcx; AE's 77453 ignores rcx.
+- Player layout: the actor cull's drawn bits at +0x274 (AE +0x27C); the teleport's queue at
+  +0x640 and its valid flag at +0x682 (AE +0x650, +0x692). TES's worldspace at +0x140 (AE +0x148).
+- Same in both: fog property fields (+0x38..+0x88), task pool (vfunc 0x80, +0xE0, +0xF0), the
+  grid array (+0x10 size, +0x18 cells), ShadowSceneNode allocation 0x308, the Havok step call
+  (`call [rax+0x190]` at +0x18 of SE 18440 / 18466), the actor cull's first 19 bytes, culling
+  process vtable slots.
+- ID 19384 (SE 18972), the reference fade update, takes the reference's 3D
+  (`TESObjectREFR::Get3D2`, vfunc 0x70, at every call site), not the reference.
+
 ## Cells and spaces
 
 - **One current space.** The engine runs either one interior (`TES::interiorCell`) or one exterior

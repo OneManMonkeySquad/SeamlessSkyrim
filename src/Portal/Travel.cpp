@@ -15,9 +15,9 @@ namespace
 	using Clock = std::chrono::steady_clock;
 
 	// ID 13363 (TES: show/hide the loading screen) returns without showing it while this is set.
-	REL::Relocation<bool*> skipLoadScreen{ REL::ID(400337) };
+	REL::Relocation<bool*> skipLoadScreen{ REL::RelocationID(514187, 400337) };
 	// Set while the loading screen is up (written by ID 13363).
-	REL::Relocation<bool*> loadScreenUp{ REL::ID(400336) };
+	REL::Relocation<bool*> loadScreenUp{ REL::RelocationID(514186, 400336) };
 
 	struct Trace
 	{
@@ -73,7 +73,7 @@ namespace
 	// optional check at +0xF0).
 	bool LoadsPending()
 	{
-		static REL::Relocation<std::byte**> pool{ REL::ID(411121) };
+		static REL::Relocation<std::byte**> pool{ REL::RelocationID(524542, 411121) };
 		auto* taskPool = *pool;
 		if (!taskPool) {
 			return false;
@@ -209,7 +209,7 @@ namespace
 		// start a fade to black whose callback then calls ID 17924, which queues the teleport
 		// (PlayerCharacter::queuedTargetLoc, ID 40442). Doors flagged "automatic" skip the fade and
 		// call ID 17924 directly; an open doorway has no reason to wait either.
-		REL::Relocation<void (*)(RE::TESObjectDOOR*, RE::RefHandle*)> teleportThroughDoor{ REL::ID(17924) };
+		REL::Relocation<void (*)(RE::TESObjectDOOR*, RE::RefHandle*)> teleportThroughDoor{ REL::RelocationID(17523, 17924) };
 		RE::RefHandle                                                handle = door->GetHandle().native_handle();
 		auto&                                                        queued = player->GetPlayerRuntimeData().queuedTargetLoc;
 		teleportThroughDoor(base, &handle);
@@ -622,7 +622,7 @@ namespace
 				// frame, before the crossing: the first frame in the new space was lit with the old
 				// one's. Into a room from the street, the room was lit by the outdoor sun for a frame.
 				{
-					static REL::Relocation<void (*)(RE::Sky*, float)> updateSky{ REL::ID(26229) };
+					static REL::Relocation<void (*)(RE::Sky*, float)> updateSky{ REL::RelocationID(25682, 26229) };
 					if (auto* sky = RE::Sky::GetSingleton()) {
 						updateSky(sky, 0.0f);
 						auto* scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -705,54 +705,56 @@ namespace Portal::Travel
 				std::filesystem::create_directories(profileAllTo, error);
 			}
 		}
-		// The engine's teleport (ID 40438) reads its queue at +0x650 and the valid flag at +0x692 on
-		// the runtime this was reversed on; CommonLib's layout must agree, or Begin writes elsewhere.
+		// The engine's teleport (ID 40438) reads its queue at +0x650 and the valid flag at +0x692 (SE:
+		// +0x640, +0x682); CommonLib's layout must agree, or Begin writes elsewhere.
 		auto* player = RE::PlayerCharacter::GetSingleton();
-		SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetPlayerRuntimeData().queuedTargetLoc.isValid) - reinterpret_cast<std::uintptr_t>(player) == 0x692);
-		REL::Relocation<std::uintptr_t> site{ REL::ID(36564), 0x6E };
-		if (!Hooks::CallsTo(site.address(), 40438, "travel: teleport")) {
+		SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetPlayerRuntimeData().queuedTargetLoc.isValid) - reinterpret_cast<std::uintptr_t>(player) == REL::Relocate(0x682, 0x692));
+		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(35565, 36564), REL::Relocate(0x53, 0x6E) };
+		if (!Hooks::CallsTo(site.address(), REL::RelocationID(39366, 40438), "travel: teleport")) {
 			logger::error("travel: walking through doors uses the normal transition");
 			return;
 		}
 		ProcessTeleportHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), ProcessTeleportHook::Thunk);
-		REL::Relocation<std::uintptr_t> autosave{ REL::ID(40438), 0x927 };
-		if (Hooks::CallsTo(autosave.address(), 35769, "travel: autosave")) {
+		REL::Relocation<std::uintptr_t> autosave{ REL::RelocationID(39366, 40438), REL::Relocate(0x897, 0x927) };
+		if (Hooks::CallsTo(autosave.address(), REL::RelocationID(34859, 35769), "travel: autosave")) {
 			TravelAutosaveHook::func = SKSE::GetTrampoline().write_call<5>(autosave.address(), TravelAutosaveHook::Thunk);
 		}
-		REL::Relocation<std::uintptr_t> waitForLoads{ REL::ID(40438), 0x8B2 };
-		REL::Relocation<std::uintptr_t> closeLoadScreen{ REL::ID(40438), 0x952 };
-		const auto                      callsTo = [](std::uintptr_t a_site, std::uint64_t a_id) { return Hooks::CallsTo(a_site, a_id, std::format("travel: call to ID {}", a_id)); };
-		if (callsTo(waitForLoads.address(), 75708)) {
+		const REL::RelocationID         kWaitForLoads(73972, 75708);
+		REL::Relocation<std::uintptr_t> waitForLoads{ REL::RelocationID(39366, 40438), REL::Relocate(0x822, 0x8B2) };
+		REL::Relocation<std::uintptr_t> closeLoadScreen{ REL::RelocationID(39366, 40438), REL::Relocate(0x8C3, 0x952) };
+		const auto                      callsTo = [](std::uintptr_t a_site, REL::RelocationID a_id) { return Hooks::CallsTo(a_site, a_id, std::format("travel: call to ID {}", a_id.id())); };
+		if (callsTo(waitForLoads.address(), kWaitForLoads)) {
 			WaitForLoadsHook::func = SKSE::GetTrampoline().write_call<5>(waitForLoads.address(), WaitForLoadsHook::Thunk);
 		} else {
 			logger::warn("travel: load wait call not found, crossings keep waiting for loads");
 		}
-		for (const auto offset : { 0x4A0, 0x4D5 }) {
-			REL::Relocation<std::uintptr_t> gridWait{ REL::ID(13317), offset };
-			if (callsTo(gridWait.address(), 75708)) {
+		for (const auto offset : REL::Relocate(std::array{ 0x402, 0x437 }, std::array{ 0x4A0, 0x4D5 })) {
+			REL::Relocation<std::uintptr_t> gridWait{ REL::RelocationID(13172, 13317), offset };
+			if (callsTo(gridWait.address(), kWaitForLoads)) {
 				GridLoadWaitHook::func = SKSE::GetTrampoline().write_call<5>(gridWait.address(), GridLoadWaitHook::Thunk);
 			}
 		}
-		if (callsTo(closeLoadScreen.address(), 13363)) {
+		if (callsTo(closeLoadScreen.address(), REL::RelocationID(13214, 13363))) {
 			CloseLoadScreenHook::func = SKSE::GetTrampoline().write_call<5>(closeLoadScreen.address(), CloseLoadScreenHook::Thunk);
 		} else {
 			logger::warn("travel: loading screen close call not found");
 		}
-		REL::Relocation<std::uintptr_t> endOfFrame{ REL::ID(36564), 0xAC4 - 5 };
-		if (callsTo(endOfFrame.address(), 35409)) {
+		REL::Relocation<std::uintptr_t> endOfFrame{ REL::RelocationID(35565, 36564), REL::Relocate(0x5E8, 0xAC4 - 5) };
+		if (callsTo(endOfFrame.address(), REL::RelocationID(34554, 35409))) {
 			EndOfFrameHook::func = SKSE::GetTrampoline().write_call<5>(endOfFrame.address(), EndOfFrameHook::Thunk);
 			endOfFrameHooked = true;
 		} else {
 			logger::warn("travel: end-of-frame call not found, crossings are carried out at the start of a frame");
 		}
-		REL::Relocation<std::uintptr_t> teleportLights{ REL::ID(40744), 0x3D2 };
-		REL::Relocation<std::uintptr_t> frameLights{ REL::ID(106337), 0x2B };
-		if (callsTo(teleportLights.address(), 106335) && callsTo(frameLights.address(), 106335)) {
+		const REL::RelocationID         kUpdateLights(99701, 106335);
+		REL::Relocation<std::uintptr_t> teleportLights{ REL::RelocationID(39657, 40744), REL::Relocate(0x3DC, 0x3D2) };
+		REL::Relocation<std::uintptr_t> frameLights{ REL::RelocationID(99703, 106337), REL::Relocate(0x2B, 0x2B) };
+		if (callsTo(teleportLights.address(), kUpdateLights) && callsTo(frameLights.address(), kUpdateLights)) {
 			TeleportLightsHook::func = SKSE::GetTrampoline().write_call<5>(teleportLights.address(), TeleportLightsHook::Thunk);
 			FrameLightsHook::func = SKSE::GetTrampoline().write_call<5>(frameLights.address(), FrameLightsHook::Thunk);
 		}
-		REL::Relocation<std::uintptr_t> extraFrame{ REL::ID(13316), 0x273 };
-		if (callsTo(extraFrame.address(), 36555)) {
+		REL::Relocation<std::uintptr_t> extraFrame{ REL::RelocationID(13171, 13316), REL::Relocate(0x24C, 0x273) };
+		if (callsTo(extraFrame.address(), REL::RelocationID(35556, 36555))) {
 			ExtraFrameHook::func = SKSE::GetTrampoline().write_call<5>(extraFrame.address(), ExtraFrameHook::Thunk);
 		} else {
 			logger::warn("travel: Main::Draw call in SetCurrentCell not found");
@@ -783,7 +785,7 @@ namespace Portal::Travel
 	{
 		auto* base = a_door && a_door->GetBaseObject() ? a_door->GetBaseObject()->As<RE::TESObjectDOOR>() : nullptr;
 		SEAMLESS_ASSERT(base);
-		REL::Relocation<void (*)(RE::TESObjectDOOR*, RE::RefHandle*)> teleportThroughDoor{ REL::ID(17924) };
+		REL::Relocation<void (*)(RE::TESObjectDOOR*, RE::RefHandle*)> teleportThroughDoor{ REL::RelocationID(17523, 17924) };
 		RE::RefHandle handle = a_door->GetHandle().native_handle();
 		auto&         queued = RE::PlayerCharacter::GetSingleton()->GetPlayerRuntimeData().queuedTargetLoc;
 		teleportThroughDoor(base, &handle);

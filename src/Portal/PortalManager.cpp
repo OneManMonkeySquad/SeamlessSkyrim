@@ -1853,12 +1853,12 @@ namespace Portal::Manager
 			DoorActivateHook::func = vtable.write_vfunc(0x37, DoorActivateHook::Thunk);
 		}
 		{
-			REL::Relocation<std::uintptr_t> pickSite{ REL::ID(40620), 0x1E7 };
-			if (Hooks::CallsTo(pickSite.address(), 26127, "portal: crosshair pick")) {
+			REL::Relocation<std::uintptr_t> pickSite{ REL::RelocationID(39534, 40620), REL::Relocate(0x214, 0x1E7) };
+			if (Hooks::CallsTo(pickSite.address(), REL::RelocationID(25591, 26127), "portal: crosshair pick")) {
 				CrosshairPickHook::func = SKSE::GetTrampoline().write_call<5>(pickSite.address(), CrosshairPickHook::Thunk);
 			}
-			REL::Relocation<std::uintptr_t> useSite{ REL::ID(40548), 0x10D };
-			if (Hooks::CallsTo(useSite.address(), 19796, "portal: use of the picked reference")) {
+			REL::Relocation<std::uintptr_t> useSite{ REL::RelocationID(39471, 40548), REL::Relocate(0x135, 0x10D) };
+			if (Hooks::CallsTo(useSite.address(), REL::RelocationID(19369, 19796), "portal: use of the picked reference")) {
 				UseHook::func = SKSE::GetTrampoline().write_call<5>(useSite.address(), UseHook::Thunk);
 			}
 		}
@@ -3964,7 +3964,7 @@ namespace Portal::Manager
 			{ "npcTravel", NpcTravel::Status() },
 			// Which Havok world the engine steps (*ID 400440) against the player's and the remote one.
 			{ "havok", [] {
-				 static REL::Relocation<RE::bhkWorld**> current{ REL::ID(400440) };
+				 static REL::Relocation<RE::bhkWorld**> current{ REL::RelocationID(514280, 400440) };
 				 auto*      here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 				 const auto ptr = [](const void* a_p) { return std::format("{:X}", reinterpret_cast<std::uintptr_t>(a_p)); };
 				 return json{ { "stepped", ptr(*current) }, { "playerCell", ptr(here ? here->GetbhkWorld() : nullptr) },

@@ -839,7 +839,7 @@ namespace Bridge
 				 auto* player = RequirePlayer();
 				 auto* pick = RE::CrosshairPickData::GetSingleton();
 				 const auto target = pick ? pick->GetActiveTarget().get() : nullptr;
-				 static REL::Relocation<void (*)(RE::PlayerCharacter*)> activatePickRef{ REL::ID(40548) };
+				 static REL::Relocation<void (*)(RE::PlayerCharacter*)> activatePickRef{ REL::RelocationID(39471, 40548) };
 				 activatePickRef(player);
 				 return json{ { "target", target ? std::format("{:08X}", target->GetFormID()) : "" } };
 			 } } },

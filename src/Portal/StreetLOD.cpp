@@ -33,8 +33,8 @@ namespace
 	{
 		using Flags_t = void(RE::BGSTerrainNode*);
 		using Place_t = void(RE::BGSTerrainManager*, RE::BGSTerrainNode*, const RE::NiPoint3*, RE::TESObjectCELL*, bool);
-		static REL::Relocation<Flags_t> flags{ REL::ID(31841) };
-		static REL::Relocation<Place_t> place{ REL::ID(31828) };
+		static REL::Relocation<Flags_t> flags{ REL::RelocationID(31054, 31841) };
+		static REL::Relocation<Place_t> place{ REL::RelocationID(31041, 31828) };
 		flags(a_node);
 		place(a_manager, a_node, &a_viewPos, a_cell, a_node->nodeState.any(RE::BGSTerrainNode::Flag::kInLargeRefGrid));
 	}
@@ -71,7 +71,7 @@ namespace
 	// anew (ID 31802 calls 105650 unconditionally), so the move never adds up.
 	void MoveHighDetailRange(const RE::NiTransform& a_toInterior)
 	{
-		static REL::Relocation<HighDetailRange*> range{ REL::ID(390958) };
+		static REL::Relocation<HighDetailRange*> range{ REL::RelocationID(513218, 390958) };
 		auto&      r = *range;
 		const auto center = a_toInterior * RE::NiPoint3{ r.centerX, r.centerY, 0.0f };
 		const auto& m = a_toInterior.rotate;
@@ -91,8 +91,8 @@ namespace
 	{
 		using Hide_t = void(RE::BSSubIndexTriShape*, std::uint32_t);
 		using Commit_t = void(RE::BSSubIndexTriShape*);
-		static REL::Relocation<Hide_t>   hide{ REL::ID(76790) };
-		static REL::Relocation<Commit_t> commit{ REL::ID(76791) };
+		static REL::Relocation<Hide_t>   hide{ REL::RelocationID(75028, 76790) };
+		static REL::Relocation<Commit_t> commit{ REL::RelocationID(75029, 76791) };
 		const auto level = a_manager->segmentedBlockLevel;
 		std::function<void(RE::BGSTerrainNode*)> visit = [&](RE::BGSTerrainNode* a_node) {
 			const int lod = static_cast<int>(a_node->GetLODLevel());
@@ -266,21 +266,29 @@ namespace Portal::StreetLOD
 	void Install()
 	{
 		// All or none: the job let through indoors without the update's cell taken over crashed.
-		constexpr std::uint64_t kJob = 39102, kUpdate = 31802, kPlaceAround = 31828, kPlaceAroundAll = 31835;
-		REL::Relocation<std::uintptr_t> worldSite{ REL::ID(kJob), 0x2F };
-		REL::Relocation<std::uintptr_t> updateSite{ REL::ID(kJob), 0x6E };
-		REL::Relocation<std::uintptr_t> allSite{ REL::ID(kUpdate), 0x260 };
-		const std::array placeSites{ REL::Relocation<std::uintptr_t>(REL::ID(kUpdate), 0x2A1), REL::Relocation<std::uintptr_t>(REL::ID(kUpdate), 0x2F5),
-			REL::Relocation<std::uintptr_t>(REL::ID(kUpdate), 0x37E) };
-		bool ok = Hooks::CallsTo(worldSite.address(), 19816, "street LOD: the job's worldspace") &&
-		          Hooks::CallsTo(updateSite.address(), kUpdate, "street LOD: the job's update") &&
-		          Hooks::CallsTo(allSite.address(), kPlaceAroundAll, "street LOD: the update's cell (all)");
+		const REL::RelocationID kJob(38145, 39102), kUpdate(31017, 31802), kPlaceAround(31041, 31828), kPlaceAroundAll(31048, 31835);
+		REL::Relocation<std::uintptr_t> worldSite{ kJob, REL::Relocate(0x1E, 0x2F) };
+		REL::Relocation<std::uintptr_t> updateSite{ kJob, REL::Relocate(0x5D, 0x6E) };
+		// SE inlines two of the update's three calls to kPlaceAround, leaving calls to kPlaceAroundAll
+		// in their place: those are hooked as the update's cell (all) instead.
+		std::vector<REL::Relocation<std::uintptr_t>> allSites, placeSites;
+		for (const auto offset : REL::Relocate(std::vector{ 0x22C, 0x2C6, 0x381 }, std::vector{ 0x260 })) {
+			allSites.emplace_back(kUpdate, offset);
+		}
+		for (const auto offset : REL::Relocate(std::vector{ 0x26D }, std::vector{ 0x2A1, 0x2F5, 0x37E })) {
+			placeSites.emplace_back(kUpdate, offset);
+		}
+		bool ok = Hooks::CallsTo(worldSite.address(), REL::RelocationID(19389, 19816), "street LOD: the job's worldspace") &&
+		          Hooks::CallsTo(updateSite.address(), kUpdate, "street LOD: the job's update");
+		for (const auto& site : allSites) {
+			ok = ok && Hooks::CallsTo(site.address(), kPlaceAroundAll, "street LOD: the update's cell (all)");
+		}
 		for (const auto& site : placeSites) {
 			ok = ok && Hooks::CallsTo(site.address(), kPlaceAround, "street LOD: the update's cell");
 		}
-		// The whole function is "mov rax, [rcx+148h]; ret": replaced, not called.
-		REL::Relocation<std::uintptr_t> tesWorld{ REL::ID(13314) };
-		constexpr std::array<std::uint8_t, 8> kTesWorldCode{ 0x48, 0x8B, 0x81, 0x48, 0x01, 0x00, 0x00, 0xC3 };
+		// The whole function is "mov rax, [rcx+148h]; ret" (SE: +140h): replaced, not called.
+		REL::Relocation<std::uintptr_t> tesWorld{ REL::RelocationID(13169, 13314) };
+		const std::array<std::uint8_t, 8> kTesWorldCode{ 0x48, 0x8B, 0x81, REL::Relocate<std::uint8_t>(0x40, 0x48), 0x01, 0x00, 0x00, 0xC3 };
 		if (std::memcmp(reinterpret_cast<const void*>(tesWorld.address()), kTesWorldCode.data(), kTesWorldCode.size()) != 0) {
 			logger::error("hooks: street LOD: TES's worldspace getter isn't the one reversed (another mod's hook, or a different game build)");
 			ok = false;
@@ -310,7 +318,9 @@ namespace Portal::StreetLOD
 			std::memcpy(code, stub.data(), stub.size());
 			trampoline.write_branch<5>(tesWorld.address(), reinterpret_cast<std::uintptr_t>(code));
 		}
-		PlaceAroundAllHook::func = trampoline.write_call<5>(allSite.address(), PlaceAroundAllHook::Thunk);
+		for (const auto& site : allSites) {
+			PlaceAroundAllHook::func = trampoline.write_call<5>(site.address(), PlaceAroundAllHook::Thunk);
+		}
 		for (const auto& site : placeSites) {
 			// The engine's function at each site (checked above), whichever write returns it.
 			PlaceAroundHook::func = trampoline.write_call<5>(site.address(), PlaceAroundHook::Thunk);

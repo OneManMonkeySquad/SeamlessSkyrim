@@ -1,6 +1,6 @@
 # SeamlessSkyrim
 
-An SKSE plugin for Skyrim AE: the space behind a load door is seen through its open
+An SKSE plugin for Skyrim SE 1.5.97 and AE (1.6.629 and later): the space behind a load door is seen through its open
 doorway, and the player walks through without a loading screen.
 
 https://www.nexusmods.com/skyrimspecialedition/mods/199801

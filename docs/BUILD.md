@@ -204,6 +204,41 @@ Frame rate:
 - `move_to` across the door plane into the merged room teleports into its cell at the street's
   coordinates (the player falls in the void): load the game again.
 
+## SE 1.5.97
+
+A second game at `E:\Oldrim-1.5.97` (SKSE 2.0.20, Address Library `version-1-5-97-0.bin`
+copied from the AE game's plugins folder, trainwreck, no Community Shaders). It shares
+`Documents\My Games\Skyrim Special Edition` with AE: logs, crash logs, ini files and saves.
+
+- Deploy by hand: copy `build/RelWithDebInfo/SeamlessSkyrim.dll` and `.pdb` (and the two ini
+  files) into `E:\Oldrim-1.5.97\Data\SKSE\Plugins`. `toolsuild.ps1` deploys to AE only.
+- The MCP server drives it with `SKYRIM_GAME_DIR=E:\Oldrim-1.5.97` (set when the server starts;
+  from a script: `SKYRIM_GAME_DIR=... PYTHONPATH=. uv run python script.py` in `tools/skyrim-mcp`).
+- The saves are AE saves and don't load in 1.5.97 (a crash after loading). Start from the main
+  menu with `coc`/`place_go`. A place whose cell is `Wilderness` (`understone-keep-front`) can't
+  be reached that way: `coc Wilderness` picks some cell of that name, here one without a
+  worldspace, and crashed; use `cow MarkarthWorld -44 0` and `move_to`.
+- A new game asks about Survival Mode after a minute and the prompt holds the player. `press_key`
+  doesn't reach it in background mode: `game_window_mode("show")`, `right`, `enter`, then back.
+- Doors start locked in a new game (the Smelter Overseer's House): a locked door gets no portal.
+
+Porting an address (every engine address is a `REL::RelocationID(se, ae)`; call sites inside a
+function take `REL::Relocate(seOffset, aeOffset)`):
+
+- The 1.5.97 exe on disk is encrypted (Steam's DRM); its code is read from the running game:
+  `python tools/se-port/dump.py <pid> build/se-port/SkyrimSE-1.5.97-mem.exe` once at the main
+  menu (game started with `skse64_loader.exe`). The image keeps SKSE's few patches.
+- `tools/se-port/addrlib.py <version-1-5-97-0.bin> build/se-port/se-ids.csv` decodes the SE
+  Address Library (format 1; AE's `versionlib` files are a newer format, use the MCP server's
+  exported table in `tools/skyrim-mcp/.cache`).
+- AE->SE candidates: `se_ae.csv`, `se-ae-attempted-match.csv` (save as `attempted.csv`) and
+  `offsets-1-6-318-0.csv` from github.com/alandtse/skyrim_vr_address_library into
+  `build/se-port`, then `tools/se-port/fullmap.py`. They covered all but 7 of ~100 IDs and were
+  right wherever checked; CommonLib's pairs differ once (77453, below).
+- `tools/se-port/sepair.py` (run from `tools/skyrim-mcp`): `site` finds a call in SE by its
+  callee and position among the calls to it, `refs` votes an SE ID for an AE global by the
+  functions referencing it, `dis` shows either side.
+
 ## Graphics debugging
 
 - RenderDoc: Community Shaders writes captures to `<game>\Data\SKSE\Plugins\CommunityShaders\Captures`

@@ -172,7 +172,7 @@ namespace Portal::MergedCull
 					const auto drawn = [](const RE::BSMultiBoundRoom* a_side) { return a_side && IsMergedRoom(a_side) && !a_side->GetAppCulled(); };
 					const auto* owner = drawn(portal->entranceRoom) ? portal->entranceRoom : portal->exitRoom;
 					if (owner == a_room) {
-						static REL::Relocation<void (*)(RE::NiAVObject*, RE::NiCullingProcess&, std::uint32_t)> cull{ REL::ID(70267) };
+						static REL::Relocation<void (*)(RE::NiAVObject*, RE::NiCullingProcess&, std::uint32_t)> cull{ REL::RelocationID(68916, 70267) };
 						cull(shared, a_process, static_cast<std::uint32_t>(a_alphaGroupIndex));
 					}
 				}
@@ -629,9 +629,8 @@ namespace Portal::MergedCull
 
 	void Install()
 	{
-		// AE IDs: the plugin runs on AE only.
-		REL::Relocation<std::uintptr_t> vtable{ REL::ID(238170) };
-		const auto                      expected = REL::Relocation<std::uintptr_t>{ REL::ID(75886) }.address();
+		REL::Relocation<std::uintptr_t> vtable{ REL::RelocationID(287733, 238170) };
+		const auto                      expected = REL::Relocation<std::uintptr_t>{ REL::RelocationID(74147, 75886) }.address();
 		const auto                      slot = *reinterpret_cast<const std::uintptr_t*>(vtable.address() + 0x34 * sizeof(std::uintptr_t));
 		if (slot != expected) {
 			logger::warn("portal: BSMultiBoundRoom's OnVisible is not ID 75886; merged rooms built of room bounds stay unseen");
@@ -639,11 +638,11 @@ namespace Portal::MergedCull
 		}
 		RoomCullHook::func = vtable.write_vfunc(0x34, RoomCullHook::Thunk);
 		// BSCullingProcess's and BSGeometryListCullingProcess's (the main view's, ID 415022) share it.
-		const auto processExpected = REL::Relocation<std::uintptr_t>{ REL::ID(76553) }.address();
-		for (const auto vtableId : { 238422, 196460 }) {
-			REL::Relocation<std::uintptr_t> processVtable{ REL::ID(vtableId) };
+		const auto processExpected = REL::Relocation<std::uintptr_t>{ REL::RelocationID(74804, 76553) }.address();
+		for (const auto vtableId : { REL::RelocationID(288074, 238422), REL::RelocationID(242858, 196460) }) {
+			REL::Relocation<std::uintptr_t> processVtable{ vtableId };
 			if (*reinterpret_cast<const std::uintptr_t*>(processVtable.address() + 0x16 * sizeof(std::uintptr_t)) != processExpected) {
-				logger::warn("portal: a culling process's Process (vtable ID {}) is not ID 76553; the player's space's occluders hide merged rooms", vtableId);
+				logger::warn("portal: a culling process's Process (vtable ID {}) is not ID 76553; the player's space's occluders hide merged rooms", vtableId.id());
 				continue;
 			}
 			ProcessHook::func = processVtable.write_vfunc(0x16, ProcessHook::Thunk);

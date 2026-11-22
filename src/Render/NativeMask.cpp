@@ -629,7 +629,7 @@ namespace
 	// The context the engine draws with: its draw functions (e.g. ID 77282) read this global.
 	ID3D11DeviceContext* DrawingContext()
 	{
-		static REL::Relocation<ID3D11DeviceContext**> context{ REL::ID(411391) };
+		static REL::Relocation<ID3D11DeviceContext**> context{ REL::RelocationID(524771, 411391) };
 		return *context.get();
 	}
 

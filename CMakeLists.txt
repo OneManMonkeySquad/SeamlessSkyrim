@@ -9,9 +9,9 @@ project(
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# The installed game is 1.7.104, which uses AE address IDs. SE stays enabled so CommonLib resolves
-# struct layouts at runtime (GetRuntimeData) instead of baking in one layout; AE itself has two
-# (before/after 1.6.629). VR is off: its openvr submodule is not checked out and we never target it.
+# Targets SE 1.5.97 and AE 1.7.104: addresses are SE/AE ID pairs, and CommonLib resolves struct
+# layouts at runtime (GetRuntimeData); AE itself has two (before/after 1.6.629). VR is off: its
+# openvr submodule is not checked out and we never target it.
 set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
