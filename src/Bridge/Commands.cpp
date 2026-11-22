@@ -1176,6 +1176,11 @@ namespace Bridge
 						 }
 						 line += std::format(" at ({:.0f} {:.0f} {:.0f}) x{:.2f} prev ({:.0f} {:.0f} {:.0f})", a_object->world.translate.x, a_object->world.translate.y, a_object->world.translate.z,
 							 a_object->world.scale, a_object->previousWorld.translate.x, a_object->previousWorld.translate.y, a_object->previousWorld.translate.z);
+						 // A model's axes needn't be the world's: a door modelled lying down and stood up
+						 // by a node's rotation.
+						 const auto& r = a_object->local.rotate.entry;
+						 line += std::format(" local ({:.0f} {:.0f} {:.0f}) rot [{:.2f} {:.2f} {:.2f} | {:.2f} {:.2f} {:.2f} | {:.2f} {:.2f} {:.2f}]", a_object->local.translate.x,
+							 a_object->local.translate.y, a_object->local.translate.z, r[0][0], r[0][1], r[0][2], r[1][0], r[1][1], r[1][2], r[2][0], r[2][1], r[2][2]);
 						 if (auto* shape = a_object->AsGeometry()) {
 							 if (auto* shader = shape->GetGeometryRuntimeData().shaderProperty.get()) {
 								 line += " raw";

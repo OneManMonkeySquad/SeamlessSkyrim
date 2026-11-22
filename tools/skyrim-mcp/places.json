@@ -65,6 +65,17 @@
       11496.474609375
     ]
   },
+  "solitude-castle-dour-door": {
+    "cell": "SolitudeCastleDourDistrict02",
+    "headingDeg": 290.0,
+    "interior": false,
+    "note": "Solitude, Castle Dour's courtyard, close in front of its door (00025199, SDoorJail02Load.nif: modelled lying down, the reference turned 90 degrees about x). Was: a leaf swung down across the bottom of the doorway, and a brick wall in the doorway (mapped turned 90 degrees).",
+    "pos": [
+      -61689.0,
+      108570.9921875,
+      -7936.02734375
+    ]
+  },
   "solitude-gate-inside": {
     "cell": "SolitudeOrigin",
     "headingDeg": 247.75177001953125,

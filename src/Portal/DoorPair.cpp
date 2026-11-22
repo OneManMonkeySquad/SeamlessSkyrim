@@ -88,7 +88,7 @@ namespace Portal::Doors
 			return nodes;
 		}
 
-		// a_visit(a, b, c) for each triangle of the shape, in the door's model space. False when the
+		// a_visit(a, b, c) for each triangle of the shape, put through a_toRoot. False when the
 		// shape keeps no copy of its mesh in memory.
 		template <class F>
 		bool ForEachTriangle(RE::BSGeometry* a_shape, const RE::NiTransform& a_toRoot, F&& a_visit)
@@ -134,7 +134,7 @@ namespace Portal::Doors
 		struct Leaf
 		{
 			RE::NiPointer<RE::NiAVObject> node;
-			Box                           box;    // its shapes, in the door's model space
+			Box                           box;    // its shapes, in the door's space (Geometry::upright)
 			RE::NiPoint3                  pivot;  // its origin there: what its animation turns it around
 			// Modelled from the front only: a load door's back faces the other cell and was never
 			// seen until a doorway showed it swung open (Markarth's Dwemer doors, empty but for their
@@ -148,6 +148,9 @@ namespace Portal::Doors
 			Box                           panel;  // the leaves; along the thin axis, their faces
 			bool                          thinX = false;
 			bool                          measured = false;  // false: the base object's bounds
+			// Model space to the door's space, where every box above is: the model turned so that its
+			// z is up (Upright).
+			RE::NiMatrix3 upright;
 			std::vector<Leaf>             leaves;  // the root itself when nothing is animated
 			// Shapes the leaves don't move, with their extent: a frame stays, the box behind the
 			// panel goes with the panel (Open).
@@ -156,11 +159,47 @@ namespace Portal::Doors
 
 		std::unordered_map<RE::FormID, Geometry>   geometries;  // under geometryLock
 
+		// A model isn't always made standing: Castle Dour's doors (SDoorJail02Load.nif) are modelled
+		// lying down, their references turned 90 degrees about x to stand them up. Everything here
+		// takes z as up and the panel as across x or y; measured in the model's own axes, such a
+		// door swung its leaves about the wrong axis and was mapped turned 90 degrees. The axes are
+		// put in the order that makes the model's upward axis z (a turn by quarters).
+		RE::NiMatrix3 Upright(RE::FormID a_door, RE::NiAVObject* a_root)
+		{
+			const auto* closed = ClosedLocal(a_door, a_root);
+			const auto& local = closed ? closed->rotate : a_root->local.rotate;
+			const auto  placed = a_root->parent ? a_root->parent->world.rotate * local : local;
+			const auto  up = placed.Transpose() * RE::NiPoint3{ 0.0f, 0.0f, 1.0f };
+			const float along[3] = { up.x, up.y, up.z };
+			int         axis = 2;
+			for (int i = 0; i < 2; ++i) {
+				if (std::abs(along[i]) > std::abs(along[axis])) {
+					axis = i;
+				}
+			}
+			const float   sign = along[axis] >= 0.0f ? 1.0f : -1.0f;
+			RE::NiMatrix3 upright({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+			upright.entry[0][(axis + 1) % 3] = sign;  // the sign twice: still a turn, not a mirror
+			upright.entry[1][(axis + 2) % 3] = 1.0f;
+			upright.entry[2][axis] = sign;
+			return upright;
+		}
+
+		RE::NiTransform Turned(const RE::NiMatrix3& a_rotate, const RE::NiTransform& a_transform)
+		{
+			RE::NiTransform turn;
+			turn.rotate = a_rotate;
+			return turn * a_transform;
+		}
+
 		Geometry Measure(RE::TESObjectREFR* a_door, RE::NiAVObject* a_root)
 		{
 			const auto id = a_door->GetFormID();
 			Geometry   geometry;
 			geometry.root.reset(a_root);
+			geometry.upright = Upright(id, a_root);
+			// a_object's transform in the door's space.
+			const auto toDoor = [&](const RE::NiAVObject* a_object) { return Turned(geometry.upright, ToRoot(id, a_object, a_root)); };
 			const auto animated = AnimatedNodes(a_root);
 			const auto leafOf = [&](const RE::NiAVObject* a_object) -> int {
 				for (auto* node = a_object; node && node != a_root; node = node->parent) {
@@ -174,7 +213,7 @@ namespace Portal::Doors
 				geometry.leaves.push_back({ RE::NiPointer<RE::NiAVObject>(a_root), {}, {} });
 			}
 			for (auto* node : animated) {
-				geometry.leaves.push_back({ RE::NiPointer<RE::NiAVObject>(node), {}, ToRoot(id, node, a_root).translate });
+				geometry.leaves.push_back({ RE::NiPointer<RE::NiAVObject>(node), {}, toDoor(node).translate });
 			}
 
 			struct Triangle
@@ -186,9 +225,8 @@ namespace Portal::Doors
 			bool                  complete = true;
 			RE::BSVisit::TraverseScenegraphGeometries(a_root, [&](RE::BSGeometry* a_shape) {
 				const int  leaf = leafOf(a_shape);
-				const auto toRoot = ToRoot(id, a_shape, a_root);
 				Box        box;
-				complete &= ForEachTriangle(a_shape, toRoot, [&](const RE::NiPoint3& a, const RE::NiPoint3& b, const RE::NiPoint3& c) {
+				complete &= ForEachTriangle(a_shape, toDoor(a_shape), [&](const RE::NiPoint3& a, const RE::NiPoint3& b, const RE::NiPoint3& c) {
 					box.Add(a);
 					box.Add(b);
 					box.Add(c);
@@ -217,9 +255,9 @@ namespace Portal::Doors
 			if (!complete || geometry.panel.Empty()) {
 				const auto& bound = a_door->GetBaseObject()->boundData;
 				geometry.panel = {};
-				geometry.panel.Add({ static_cast<float>(bound.boundMin.x), static_cast<float>(bound.boundMin.y), static_cast<float>(bound.boundMin.z) });
-				geometry.panel.Add({ static_cast<float>(bound.boundMax.x), static_cast<float>(bound.boundMax.y), static_cast<float>(bound.boundMax.z) });
-				geometry.thinX = (bound.boundMax.x - bound.boundMin.x) < (bound.boundMax.y - bound.boundMin.y);
+				geometry.panel.Add(geometry.upright * RE::NiPoint3{ static_cast<float>(bound.boundMin.x), static_cast<float>(bound.boundMin.y), static_cast<float>(bound.boundMin.z) });
+				geometry.panel.Add(geometry.upright * RE::NiPoint3{ static_cast<float>(bound.boundMax.x), static_cast<float>(bound.boundMax.y), static_cast<float>(bound.boundMax.z) });
+				geometry.thinX = (geometry.panel.max.x - geometry.panel.min.x) < (geometry.panel.max.y - geometry.panel.min.y);
 				for (auto& leaf : geometry.leaves) {
 					leaf.box = geometry.panel;
 				}
@@ -322,6 +360,17 @@ namespace Portal::Doors
 		return cell3D ? cell3D->world.Invert() * closed : closed;
 	}
 
+	// The door's space (Geometry::upright) to its cell's own coordinates.
+	RE::NiTransform DoorFrame(RE::TESObjectREFR* a_door)
+	{
+		RE::NiTransform upright;
+		{
+			std::scoped_lock lock(geometryLock);
+			upright.rotate = GeometryOf(a_door).upright;
+		}
+		return Placement(a_door) * upright.Invert();
+	}
+
 	// The cell's own coordinates to where it is drawn: Placement undone.
 	RE::NiTransform ToShown(RE::TESObjectREFR* a_door)
 	{
@@ -367,7 +416,9 @@ namespace Portal::Doors
 			}
 		}
 		const auto closedWorld = ClosedWorld(a_door, door3D);
-		const auto room = closedWorld.rotate.Transpose() * a_room;
+		const auto room = geometry.upright * (closedWorld.rotate.Transpose() * a_room);
+		RE::NiTransform upright;
+		upright.rotate = geometry.upright;
 		const bool wideX = !geometry.thinX;
 		for (std::size_t i = 0; i < geometry.leaves.size() && i < swung.size(); ++i) {
 			const auto& leaf = geometry.leaves[i];
@@ -386,14 +437,14 @@ namespace Portal::Doors
 			const float        sign = (-free.y * room.x + free.x * room.y) >= 0.0f ? 1.0f : -1.0f;  // the free end turns towards the room
 			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.0f) * RE::deg_to_rad(degrees);
 			const float        c = std::cos(angle), s = std::sin(angle);
-			RE::NiTransform    turn;  // in the door's model space
+			RE::NiTransform    turn;  // in the door's space
 			turn.rotate = RE::NiMatrix3({ c, -s, 0.0f }, { s, c, 0.0f }, { 0.0f, 0.0f, 1.0f });
 			turn.translate = hinge - turn.rotate * hinge;
 			if (node == door3D) {
-				node->local = swung[i].closedLocal * turn;
+				node->local = swung[i].closedLocal * upright.Invert() * turn * upright;
 			} else {
-				// The leaf's parent, in model space: the turn is carried into the leaf's own frame.
-				const auto parent = node->parent ? ToRoot(id, node->parent, door3D) : RE::NiTransform{};
+				// The leaf's parent, in the door's space: the turn is carried into the leaf's own frame.
+				const auto parent = upright * (node->parent ? ToRoot(id, node->parent, door3D) : RE::NiTransform{});
 				node->local = parent.Invert() * turn * parent * swung[i].closedLocal;
 			}
 		}
@@ -435,10 +486,10 @@ namespace Portal::Doors
 
 	namespace
 	{
-		// A box in the door's model space, placed like the door (see Corners for the bit order).
+		// A box in the door's space, placed like the door (see Corners for the bit order).
 		std::array<RE::NiPoint3, 8> CornersOf(RE::TESObjectREFR* a_door, const Box& a_box)
 		{
-			const auto                  world = Placement(a_door);
+			const auto                  world = DoorFrame(a_door);
 			std::array<RE::NiPoint3, 8> corners;
 			for (int i = 0; i < 8; ++i) {
 				const RE::NiPoint3 local{ i & 1 ? a_box.max.x : a_box.min.x, i & 2 ? a_box.max.y : a_box.min.y, i & 4 ? a_box.max.z : a_box.min.z };
@@ -542,7 +593,7 @@ namespace Portal::Doors
 			if (!partnerTeleport || !partnerTeleport->teleportData) {
 				return {};
 			}
-			const auto  front = Placement(a_door).Invert() * partnerTeleport->teleportData->position;
+			const auto  front = DoorFrame(a_door).Invert() * partnerTeleport->teleportData->position;
 			std::scoped_lock lock(geometryLock);
 			const auto& geometry = GeometryOf(a_door);
 			if (!geometry.measured) {

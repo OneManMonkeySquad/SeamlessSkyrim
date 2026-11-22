@@ -245,6 +245,53 @@
       }
     ]
   },
+  "solitude-castle-dour-walk-in": {
+    "note": "Solitude, Castle Dour's courtyard door (SDoorJail02Load.nif, modelled lying down, its reference stood up by a turn about x): look at it, walk in. Was: a leaf swung down across the doorway's foot, a brick wall in the doorway.",
+    "steps": [
+      {
+        "load": "SeamlessTestSolitudeCastleDour"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "place": "solitude-castle-dour-door"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "door"
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -62131,
+            108732
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 30
+      },
+      {
+        "check": {
+          "name": "inside"
+        }
+      }
+    ]
+  },
   "solitude-gate-walk-out": {
     "note": "Solitude, inside the city gate (Battle for Solitude save: pair 00101D9D -> Tamriel 00101D9E, whose city-side marker is 48 degrees off the gate), look out, walk out, turn and look back in. Was: the outside turned ~50 degrees in the gateway.",
     "steps": [

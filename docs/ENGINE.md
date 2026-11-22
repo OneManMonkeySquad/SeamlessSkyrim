@@ -82,6 +82,10 @@ Found porting the plugin; each was checked in the code of both.
   other (00037F1B/0001C386). Markarth's Smelter Overseer's House, street side: 17°. Whiterun's
   shops: 4-11°. Most doors: under 1°. The doorway mapping takes each door's facing from its panel
   and only the side from the marker (`Doors::Compute`).
+- **A door's model isn't always upright.** Castle Dour's doors (`SDoorJail02Load.nif`, 00025199
+  and 000223B2) are modelled lying down, y up; their references are turned 90° about x to stand
+  them up. The door code works in the model turned so its z is up (`Upright` in `DoorPair.cpp`).
+  Bridge `ref_3d` prints each node's local rotation.
 - **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
   13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
 
