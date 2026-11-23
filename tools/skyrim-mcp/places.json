@@ -32,6 +32,17 @@
       320.3499450683594
     ]
   },
+  "jorrvaskr-front-door": {
+    "cell": "WhiterunWindDistrict03",
+    "headingDeg": 90.0,
+    "interior": false,
+    "note": "Whiterun, in front of Jorrvaskr's left front door (0001A702, not set to always open), looking at it. Doors open only when used: shut while merged it must show the door (was: the doorway mask cut the shut panel away, sky showed).",
+    "pos": [
+      27199.998046875,
+      -4059.999755859375,
+      -2614.19580078125
+    ]
+  },
   "markarth-smelter-house-door-out": {
     "cell": "MarkarthSmelterOverseersHouse",
     "headingDeg": 173.0817108154297,

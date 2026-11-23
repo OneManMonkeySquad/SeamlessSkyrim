@@ -815,9 +815,15 @@ def take_picture(path: Path, max_width: int = 960) -> None:
 def check_step(arg: dict[str, Any]) -> str:
     """{"check": {}}: scene_check (radius 3000), and a picture while run_suite runs. Options:
     "radius"; "merged": true or false, whether a space should be merged behind the door (not
-    checked when left out); "name": the picture's name within the route (default: its number)."""
+    checked when left out); "worldspace": the form ID the player must be in (a city's own, not the
+    street worldspace's low-detail copy of it); "name": the picture's name within the route
+    (default: its number)."""
     result = bridge.call("scene_check", radius=float(arg.get("radius", 3000)))
     problems: list[str] = []
+    if "worldspace" in arg:
+        here = (bridge.call("state").get("player") or {}).get("worldspace", "")
+        if here.upper() != str(arg["worldspace"]).upper():
+            problems.append(f"in worldspace {here or 'none'}, expected {arg['worldspace']}")
     for part in ("here", "merged"):
         if result.get(part):
             problems += [f"{part}: {p}" for p in result[part]["problems"]]

@@ -45,6 +45,7 @@ namespace
 	bool                                   pendingExact = false;  // see Request
 	std::optional<RE::NiPoint3>            exactArrival;          // see Begin
 	constexpr float                        kArrivalStep = 12.0f;
+	constexpr float                        kPlayerRadius = 20.0f;
 	std::optional<float>                   arrivalYaw;  // heading to set once the teleport has run
 	// The doorway the player came out of: the camera is let out again as they walk away from it.
 	struct Arrival
@@ -55,6 +56,8 @@ namespace
 		RE::FormID        door = 0;  // the doorway came out of, kept open until the player is through
 		bool              limitCamera = true;  // the camera was pulled in and is let out again
 		float             cameraFloor = 0.0f;  // ... but never closer than this
+		float             clear = 0.0f;  // depth at which the player no longer touches the door
+		std::optional<float> firstDepth;  // where the player stood in the first frame after it
 		std::optional<Clock::time_point> released;  // when the doorway behind got its own camera stop
 	};
 	std::optional<Arrival> arrival;
@@ -115,8 +118,9 @@ namespace
 		logger::info("travel: {:7.1f} ms: {}", at, a_what);
 	}
 
-	// The door the player came out of stands open behind them, like the one they walked into:
-	// no collision (they are standing in its doorway, the camera just behind them), not drawn.
+	// The door the player came out of stands open behind them, like the one they walked into,
+	// until they have stepped out of its way (CameraLimit): no collision (they are standing in its
+	// doorway, the camera just behind them), not drawn.
 	Portal::Doors::OpenState arrivalDoor;
 
 	void SetArrivalDoorOpen(bool a_open)
@@ -241,7 +245,6 @@ namespace
 			// them through again. Past its collision instead, by about the player's radius.
 			auto* here = player->GetParentCell();
 			if (here && !here->IsInteriorCell() && a_portal.cell && !a_portal.cell->IsInteriorCell()) {
-				constexpr float kPlayerRadius = 20.0f;
 				if (const auto reach = CollisionReach(RE::TESForm::LookupByID<RE::TESObjectREFR>(a_portal.linkedDoor), farCenter, inwardInside, queuedPos.z + 60.0f)) {
 					wanted = std::max(wanted, *reach + kPlayerRadius);
 				}
@@ -267,7 +270,8 @@ namespace
 		}
 		auto* from = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		leftExterior = from && !from->IsInteriorCell();
-		arrival = Arrival{ mapping.toLinked * mapping.sourceCenter, inwardInside, Clock::now(), a_portal.linkedDoor, a_limitCamera, pendingCameraFloor };
+		arrival = Arrival{ mapping.toLinked * mapping.sourceCenter, inwardInside, Clock::now(), a_portal.linkedDoor, a_limitCamera, pendingCameraFloor,
+			mapping.halfDepth + kPlayerRadius };
 		queuedAngle = { player->GetAngleX(), 0.0f, player->GetAngleZ() + mapping.yawDelta };
 		arrivalYaw = queuedAngle.z;
 		Note(std::format("teleport queued: ({:.0f},{:.0f},{:.0f}) yaw {:.1f} instead of marker ({:.0f},{:.0f},{:.0f})", queuedPos.x,
@@ -882,6 +886,22 @@ namespace Portal::Travel
 			SetArrivalDoorOpen(false);
 			arrival.reset();
 			return std::nullopt;
+		}
+		// Out of the door's way, or turning back to it, the player gets its collision back, and the
+		// door is drawn again. Walkable until the portal back through it was ready (up to seconds
+		// outdoors, where the view back waits for the purge), the player could turn round and walk
+		// back through: past a city gate into the street worldspace's low-detail copy of the city,
+		// left there with no crossing back. Hidden as long, a door walked out of stood open with no
+		// leaves in it. Turning back while still touching it, the player is pushed out of it on the
+		// side they stand on, the one they came out on.
+		if (arrivalDoor.door) {
+			if (!arrival->firstDepth) {
+				arrival->firstDepth = depth;  // the hold begins with the teleport, not with the request
+			}
+			constexpr float kTurnedBack = 4.0f;
+			if (depth >= arrival->clear || depth < *arrival->firstDepth - kTurnedBack) {
+				SetArrivalDoorOpen(false);
+			}
 		}
 		// Once the portal back out through it is ready (drawn or merged), the door is held swung
 		// open by the portal: hidden on top of that, the room's doorway had no door at all from

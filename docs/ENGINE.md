@@ -82,6 +82,16 @@ Found porting the plugin; each was checked in the code of both.
   other (00037F1B/0001C386). Markarth's Smelter Overseer's House, street side: 17°. Whiterun's
   shops: 4-11°. Most doors: under 1°. The doorway mapping takes each door's facing from its panel
   and only the side from the marker (`Doors::Compute`).
+- **City gates are animated doors.** Their meshes have two leaves turned by a
+  `NiMultiTargetTransformController`, like a house door: Whiterun's `WRDoorMainGate01.nif`
+  (`FrontGateDoor06`/`08`), Riften's `RTMainGate01.nif` (`DoorL`/`DoorR`), Solitude's
+  `SGateDoor.nif` (`SGateDoorLeft`/`Right`).
+- **Behind a city gate the player's own worldspace has a stand-in** for the other side, seen
+  through the gateway once the gate is gone: Tamriel holds simple copies of Whiterun's and
+  Riften's houses behind their gates, and Whiterun's worldspace its land beyond. Solitude's
+  gatehouse is walled up behind its gate on both sides (`SMainGate.nif` in Tamriel).
+- **A door's open and close sounds** are its base form's `TESObjectDOOR::openSound` and
+  `closeSound`; `BSAudioManager::GetSoundHandle`, then `SetPosition`/`SetObjectToFollow`, `Play`.
 - **A door's model isn't always upright.** Castle Dour's doors (`SDoorJail02Load.nif`, 00025199
   and 000223B2) are modelled lying down, y up; their references are turned 90° about x to stand
   them up. The door code works in the model turned so its z is up (`Upright` in `DoorPair.cpp`).
@@ -241,6 +251,11 @@ Found porting the plugin; each was checked in the code of both.
 - **The main view's culling process** is a `BSGeometryListCullingProcess` (vtable ID 196460, the
   process in ID 415022), not a `BSCullingProcess` (vtable ID 238422): a hook on one vtable misses
   the other.
+- **The doorway mask's plane** lies `Render::Doorway::kMargin` (5 units) beyond the door's
+  middle, so the two spaces' frames don't z-fight. A panel shut on the plane is drawn by
+  neither space: the world's shut door was cut away (the sky showed), the merged space's door
+  near shut vanished. Shut, the mask is sent from behind the panel; nearly shut with the merged
+  space's door swinging, from in front of it (`UpdateMerged`).
 - **What closes a doorway** (a panel behind the door hiding the void: Belethor's, from a mod; the
   cap inside Solitude's Hall of the Dead's arch, `SMdDEntSol01.nif`) can be one shape with the
   frame and reveals round it, so culling shapes takes the frame too. Nothing culls them: beyond the

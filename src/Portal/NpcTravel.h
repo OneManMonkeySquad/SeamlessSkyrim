@@ -8,8 +8,8 @@
 // walking: its last position mapped through the door pair, like the player's crossing.
 namespace Portal::NpcTravel
 {
-	// At kDataLoaded, with the portal hooks: NPCs walk through the portal's doors without reaching
-	// for them.
+	// At kDataLoaded, with the portal hooks: NPCs walk through a door standing open without reaching
+	// for it, and reaching for a shut one opens it (DoorUse).
 	void Install();
 
 	// Main thread, every frame a portal is active. a_remoteCells: the cells behind the door.

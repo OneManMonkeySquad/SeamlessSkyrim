@@ -65,3 +65,29 @@
   Arcadia's and Belethor's doors stood open on the house's backing panel, with no portal activated
   again, even at the door; seven other doors stuck as open stand-ins since the walk out. Not
   reproduced with a console save after the same walk; how the user saved isn't known yet.
+- Riften's door to the docks (000422AD, portal switched off): walking back in from the docks, the
+  player stops 31 units short of the doorway at 000FE264, a reference without a model in
+  RiftenCityWest that `RemoteCell::ClearPassage` leaves in the passage (it goes by the 3D's bound;
+  not confirmed to be why).
+- Riften's north gate: with the small door beside it (00078EDA, portal switched off) on as well,
+  that door keeps the portal and the gate stays shut, even standing at the gate (both lead into
+  the same cell; `kSwitchMargin`).
+- A door swung open drawn without its leaves (the doorway open, no door in it): Jorrvaskr's left
+  front door from the street, Belethor's street door from inside, 3 times in about 15 tries; the
+  leaves' shapes were culled (`ref_3d`: flag bit 0). Not after a reload; cause not found.
+- NPCs opening a shut door (`DoorUse`, from NpcTravel's door idle hook) seen in the log only
+  (Whiterun's market with every door forced shut: they open, NPCs walk through), not watched.
+- Shutting a door by using it while standing in its doorway swings it shut onto the player.
+- A locked door opened with its key: the engine's own trip with its loading screen (only a picked
+  lock is caught: the door then opens). Not tried.
+- Solitude's gate from afar shows its doorway picture: blurred, the gatehouse's portcullis and an
+  amber haze rather than the street.
+- The game's memory grows by about 2.5 GB with each round trip through Riften's south gate
+  (private bytes 15 GB after loading, 31 GB after ten trips), also with the portals switched off
+  (the engine's own trip with its loading screen) and on the last commit; loading a save doesn't
+  give it back. Not yet tried without SeamlessSkyrim. The two crashes after many trips came with
+  the machine's memory nearly used up (one in a worker thread, SkyrimSE.exe+2CA107).
+- Crash in the portal pass (2026-11-23, after walking back and forth through Riften's south gate):
+  `BSEffectShader` setup (SkyrimSE.exe+155757A, ID 107527+0x4EA) reads a light of the pass whose
+  `NiLight` is gone (`BSLight::light` null), drawing the street behind the gate on the first frame
+  it was ready. Not reproduced in about 30 trips since.

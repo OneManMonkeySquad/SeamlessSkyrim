@@ -96,6 +96,13 @@ namespace Portal::Doors
 	void                                  SetAlwaysOpen(RE::FormID a_door, bool a_open);
 	[[nodiscard]] std::vector<RE::FormID> AlwaysOpenDoors();
 
+	// A city gate seen from beyond the live view's reach shows its doorway picture (the menu,
+	// stored with the correction). Without it the gateway shows the player's own worldspace,
+	// which in most cities holds a simple copy of the other side (Whiterun's, Riften's houses);
+	// Solitude's gatehouse is walled up behind its gate on both sides.
+	[[nodiscard]] bool PictureFromAfar(RE::FormID a_door);
+	void               SetPictureFromAfar(RE::FormID a_door, bool a_picture);
+
 	// A door standing open for a portal: its collision off (the collision objects sit on child
 	// nodes of the door's 3D, so each one is switched) and optionally not drawn.
 	// a_passable: its bodies out of the Havok world as well. The layer change leaves a city gate
@@ -110,13 +117,9 @@ namespace Portal::Doors
 	};
 	void Open(RE::TESObjectREFR* a_door, OpenState& a_state, bool a_hide, bool a_passable = false, bool a_solid = false);
 	void Close(OpenState& a_state);
-	// The flags an open door carries (no prompt, no ordinary trip through it) off or back on, for
-	// every door held open: they are stored with a reference, and must not go into a save made
-	// while doors stay open (walking in a room walked into, Manager::NoteRoomForSave).
-	void SetOpenFlags(bool a_set);
 
 	// Main thread: the door's leaves swung open around their hinges, a_amount from 0 (closed) to 1
-	// (open), towards a_room (a horizontal world direction: the side it opens into); its frame
+	// (open; a little more while it overshoots), towards a_room (a horizontal world direction: the side it opens into); its frame
 	// stays. Placement and everything derived from it keep using the closed door. a_settings: the
 	// pair's correction door, whose angle it takes.
 	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, RE::FormID a_settings);
@@ -129,13 +132,17 @@ namespace Portal::Doors
 
 	// Main thread: the door is held open by a portal right now.
 	[[nodiscard]] bool IsOpen(RE::FormID a_door);
+	// Main thread: the door's leaves are turned by Swing (not put back by Unswing).
+	[[nodiscard]] bool IsSwung(RE::FormID a_door);
 	// Main thread: the door is held open passable (Open), its collision out of the Havok world.
 	[[nodiscard]] bool BodiesHidden(RE::FormID a_door);
 
-	// Once at startup: an open doorway shows no "Open ..." prompt.
+	// Once at startup: an open doorway shows no "Open ..." prompt, or "Close ..." when it can be
+	// shut (Manager::Prompt).
 	void InstallPromptHook();
 
 	// Main thread, every frame: takes the "Open ..." prompt off the HUD while the crosshair is
-	// on a door a portal holds open. Returns how often the engine asked for a door's text.
+	// on a door a portal holds open that can't be shut. Returns how often the engine asked for a
+	// door's text.
 	std::uint32_t HidePrompt();
 }

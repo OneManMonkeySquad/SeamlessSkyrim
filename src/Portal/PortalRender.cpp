@@ -1540,15 +1540,19 @@ namespace
 		auto*                   d3dContext = reinterpret_cast<ID3D11DeviceContext*>(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().context);
 		const OwnTargetsInPlace targets(DrawingTargets());  // to the end of the function, past the restore below
 
-		// The linked door itself sits right at the clip distance; hide it for this pass.
+		// The linked door itself sits right at the clip distance; hide it for this pass. Not when it
+		// is the one swung open (Manager's OpenDoor): its leaves stand in the space behind, and a
+		// city gate's doorway stood empty.
 		auto*      linked3D = linked->Get3D();
 		const bool wasCulled = linked3D->GetAppCulled();
-		linked3D->SetAppCulled(true);
 		portalHiddenShapes.clear();
-		RE::BSVisit::TraverseScenegraphGeometries(linked3D, [](RE::BSGeometry* a_shape) {
-			portalHiddenShapes.insert(a_shape);
-			return RE::BSVisit::BSVisitControl::kContinue;
-		});
+		if (!Portal::Doors::IsSwung(linked->GetFormID())) {
+			linked3D->SetAppCulled(true);
+			RE::BSVisit::TraverseScenegraphGeometries(linked3D, [](RE::BSGeometry* a_shape) {
+				portalHiddenShapes.insert(a_shape);
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
 		// So are other doors standing in its doorway (see DoorsBesideFarDoor).
 		std::vector<std::pair<RE::NiAVObject*, bool>> besideCulled;
 		for (auto* object : DoorsBesideFarDoor(linked)) {

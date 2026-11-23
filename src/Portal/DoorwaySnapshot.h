@@ -84,6 +84,9 @@ namespace Portal::Snapshot
 	// doorway of a session.
 	void Prewarm();
 
+	// Main thread: the door has a picture (for some part of the day, for a door to the outdoors).
+	bool HasPicture(RE::FormID a_door, bool a_outdoors);
+
 	// Main thread: the door into a room has no picture taken with the capture camera at the
 	// current size. Such a picture is kept once taken: from its fixed place it comes out the same.
 	bool CameraPictureWanted(RE::FormID a_door);

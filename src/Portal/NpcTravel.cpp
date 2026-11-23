@@ -1,33 +1,26 @@
 #include "Portal/NpcTravel.h"
 
 #include "Portal/DoorPair.h"
+#include "Portal/DoorUse.h"
 
 #include "Hooks.h"
 
 namespace
 {
-	// The portal's two doors (source in the low half, linked in the high half), 0 without a portal.
-	// Read by AI on worker threads.
-	std::atomic<std::uint64_t> portalDoors{ 0 };
-
-	bool IsPortalDoor(const RE::TESObjectREFR* a_door)
-	{
-		const auto doors = portalDoors.load(std::memory_order_relaxed);
-		const auto id = a_door ? a_door->GetFormID() : 0;
-		return id != 0 && (id == static_cast<RE::FormID>(doors) || id == static_cast<RE::FormID>(doors >> 32));
-	}
-
 	// An NPC whose path reaches a door first plays the activate action aimed at it (stops, reaches
 	// for the handle) and opens the door only when that animation says so; when no such idle starts,
-	// the engine opens the door at once. Through an open doorway there is no handle to reach for, so
-	// for the portal's doors no idle starts.
+	// the engine opens the door at once. Through a doorway standing open there is no handle to reach
+	// for, so no idle starts; a shut one opens as the NPC reaches for it (DoorUse), as a door does.
 	struct DoorIdleHook
 	{
 		static bool Thunk(RE::AIProcess* a_process, RE::Actor* a_actor, std::uint32_t a_action, RE::TESBoundObject* a_object, RE::TESObjectREFR* a_door)
 		{
-			if (IsPortalDoor(a_door)) {
-				logger::info("portal: {} goes through the door without reaching for it", a_actor ? a_actor->GetDisplayFullName() : "?");
+			if (a_door && Portal::DoorUse::StandsOpen(a_door->GetFormID())) {
+				logger::info("portal: {} goes through the open door {:08X} without reaching for it", a_actor ? a_actor->GetDisplayFullName() : "?", a_door->GetFormID());
 				return false;
+			}
+			if (a_door) {
+				Portal::DoorUse::NoteActorUse(a_door->GetFormID());
 			}
 			return func(a_process, a_actor, a_action, a_object, a_door);
 		}
@@ -182,7 +175,6 @@ namespace Portal::NpcTravel
 
 	void Reset()
 	{
-		portalDoors.store(0, std::memory_order_relaxed);
 		UpdateWalks();
 		UpdateVisible();
 		lastFrame.clear();
@@ -196,7 +188,6 @@ namespace Portal::NpcTravel
 		}
 		const auto& mapping = *found;
 		const auto doors = a_portal.sourceDoor | (static_cast<std::uint64_t>(a_portal.linkedDoor) << 32);
-		portalDoors.store(doors, std::memory_order_relaxed);
 		if (std::exchange(lastFramePortal, doors) != doors) {
 			lastFrame.clear();
 		}

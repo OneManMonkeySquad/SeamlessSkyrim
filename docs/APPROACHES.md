@@ -13,6 +13,11 @@ Read this before proposing a new approach. The engine facts behind it are in ENG
 
 Crossing is always the engine's own door teleport without its loading screen (2).
 
+A door opens when it is used (the player, or an NPC reaching for it on its way through) and
+shuts 5 s after nobody stands in it; city gates and the doors set to stand open always stand
+open (`DoorUse`, `Wanted` in `PortalManager.cpp`). From afar a gate shows the player's own
+worldspace through its gateway, or its picture where set (Solitude's).
+
 ## Overview
 
 | # | Approach | Status | Where it fell short |
@@ -135,7 +140,7 @@ Worth knowing:
 - **Shared coordinates:** city worldspaces share Tamriel's coordinates. WhiterunWorld also holds
   4000+ DynDOLOD copies of Tamriel's land and objects for the view from inside.
 - **Twins:** the same piece in both worlds must be kept once, not disabled as a stand-in.
-- **Gates** have no opening animation.
+- **Gates** have opening animations (ENGINE.md) and swing open like doors.
 - **Pathing:** the city's navmesh must lose its door triangles, or the AI's pathing crashes on a
   gate that leads nowhere.
 

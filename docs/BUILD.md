@@ -150,7 +150,11 @@ Test suite (`run_suite`):
 - A route step `{"check": {"name": ..., "merged": true}}` calls bridge `scene_check`: still things
   (statics, trees, furniture, containers) around the player and around the door in the merged
   space must hang in the scene where their reference puts them, and a merged street's land and
-  distant LOD too. It also takes a picture.
+  distant LOD too. It also takes a picture. `"worldspace": "<form ID>"` also fails it when the
+  player is elsewhere: walked through a city gate without the crossing, they stand in the street
+  worldspace's low-detail copy of the city, and the scene check passes there.
+- `walk_to` stops at a door crossing ("travelled through a door"): a route walking on past it
+  needs a second walk step.
 - The pictures come back beside the last accepted ones (`accept=true` makes this run's the
   accepted ones; kept in `tools/skyrim-mcp/suite-reference/`, not in git). Look at them: the check
   can't see a wrong colour or a missing person.
@@ -169,6 +173,11 @@ town falls between screenshots):
   the burst's folder at full size.
 - `capture_frames` can fail with "Unable to serialize ... Image" after the frames are saved;
   `frames_sheet` on the burst's name then shows them (it works now).
+- A door's swing: bridge `capture_frames {frames, directory}` returns at once, so call it and
+  then `activate {ref}` on the door; the MCP `activate` returns too late for the start of the
+  swing. It also leaves the camera turned: `camera_view {firstPerson: true}` and
+  `player.setangle` before the next picture. Bridge `doors {force: 0|1|2}` sets the global door
+  setting for the session (2: every door shut until used).
 - The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
   a row (a weapon drawn black for four) has to be seen.
 - Not while measuring stutter: writing a burst out stalls the game for a moment.

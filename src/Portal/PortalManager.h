@@ -63,6 +63,15 @@ namespace Portal::Manager
 	[[nodiscard]] std::optional<Active> ActivePortal();
 	// The portal's door stands (at least partly) open; shut, the portal isn't drawn on it.
 	[[nodiscard]] bool DoorwayOpen();
+	// Main thread: what using the door does, for its prompt: nothing (it stands open), shut it
+	// (someone opened it, DoorUse), or what it does for any door (open it).
+	enum class DoorPrompt
+	{
+		kOpen,
+		kClose,
+		kNone,
+	};
+	[[nodiscard]] DoorPrompt Prompt(RE::FormID a_door);
 	// Diagnostics: the image-space blend across the doorway is on (UpdateTone).
 	[[nodiscard]] bool ToneBlendOn();
 	// The portal whose other side is ready, drawn by the portal pass or merged.
@@ -112,8 +121,8 @@ namespace Portal::Manager
 	// For the in-game menu (main thread).
 	void                SetStepExterior(bool a_step);
 	[[nodiscard]] bool  StepExterior();
-	// How close (game units) the player comes before a portal's door swings open; it swings shut
-	// again a little further out. [Portals] iDoorOpenDistance.
+	// How close (game units) the player comes before the space behind a door loads (300 units
+	// further out) and the door can be walked through. [Portals] iDoorOpenDistance.
 	[[nodiscard]] float DoorOpenDistance();
 	void                SetDoorOpenDistance(float a_distance);
 	// Outdoors, how many rooms behind doors are active at once, the nearest door's included

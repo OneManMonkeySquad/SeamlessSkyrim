@@ -1,6 +1,7 @@
 #include "UI/Menu.h"
 
 #include "Portal/DoorPair.h"
+#include "Portal/DoorUse.h"
 #include "Portal/DoorwaySnapshot.h"
 #include "Portal/PortalManager.h"
 #include "Portal/PortalRender.h"
@@ -59,6 +60,12 @@ namespace
 		return {};
 	}
 
+	bool Outdoors(RE::TESObjectREFR* a_door)
+	{
+		auto* cell = a_door->GetParentCell();
+		return cell ? !cell->IsInteriorCell() : a_door->GetWorldspace() != nullptr;
+	}
+
 	std::string Describe(RE::TESObjectREFR* a_door)
 	{
 		auto* cell = a_door ? a_door->GetParentCell() : nullptr;
@@ -113,12 +120,25 @@ namespace
 
 		ImGui::NewLine();
 
+		{
+			int                   force = static_cast<int>(Portal::DoorUse::GetForce());
+			constexpr const char* labels[]{ "As set for each door", "All open (locked ones too)", "All shut until used" };
+			if (ImGui::Combo("Doors", &force, labels, static_cast<int>(std::size(labels)))) {
+				Portal::DoorUse::SetForce(static_cast<Portal::DoorUse::Force>(force));
+				Save(L"iForceDoors", force);
+			}
+			ImGui::TextWrapped("A door opens when you or someone else uses it, and shuts a few seconds after nobody stands in it. "
+							   "City gates and doors set to always open stand open. All shut: those too stay shut until used.");
+		}
+
+		ImGui::NewLine();
+
 		float doorDistance = Portal::Manager::DoorOpenDistance();
-		if (ImGui::SliderFloat("Doors open within (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
+		if (ImGui::SliderFloat("Door reach (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
 			Portal::Manager::SetDoorOpenDistance(doorDistance);
 		}
 		SaveWhenReleased(L"iDoorOpenDistance", static_cast<int>(std::lround(doorDistance)));
-		ImGui::TextWrapped("The space behind a door starts loading 300 units further out and is let go 700 units further out.");
+		ImGui::TextWrapped("The space behind a door starts loading 300 units beyond this and is let go 700 units beyond it.");
 
 		ImGui::NewLine();
 
@@ -204,8 +224,14 @@ namespace
 			Portal::Doors::SetOpensInward(pair.key->GetFormID(), inward);
 		}
 		bool always = Portal::Doors::AlwaysOpen(pair.key->GetFormID());
-		if (ImGui::Checkbox("Always open (not only when you come near)", &always)) {
+		if (ImGui::Checkbox("Always open (not only when used; once its doorway has a picture)", &always)) {
 			Portal::Doors::SetAlwaysOpen(pair.key->GetFormID(), always);
+		}
+		if (Outdoors(pair.source) && Outdoors(pair.linked)) {
+			bool picture = Portal::Doors::PictureFromAfar(pair.key->GetFormID());
+			if (ImGui::Checkbox("Picture from afar (a gate walled up behind)", &picture)) {
+				Portal::Doors::SetPictureFromAfar(pair.key->GetFormID(), picture);
+			}
 		}
 		
 		ImGui::NewLine();

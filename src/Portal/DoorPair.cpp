@@ -435,7 +435,8 @@ namespace Portal::Doors
 			const RE::NiPoint3 hinge = wideX ? RE::NiPoint3{ hingeEnd, thinMiddle, 0.0f } : RE::NiPoint3{ thinMiddle, hingeEnd, 0.0f };
 			const RE::NiPoint3 free = wideX ? RE::NiPoint3{ span, 0.0f, 0.0f } : RE::NiPoint3{ 0.0f, span, 0.0f };
 			const float        sign = (-free.y * room.x + free.x * room.y) >= 0.0f ? 1.0f : -1.0f;  // the free end turns towards the room
-			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.0f) * RE::deg_to_rad(degrees);
+			// A little past 1: the swing's ease overshoots the stop (Manager's SwingEase).
+			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.1f) * RE::deg_to_rad(degrees);
 			const float        c = std::cos(angle), s = std::sin(angle);
 			RE::NiTransform    turn;  // in the door's space
 			turn.rotate = RE::NiMatrix3({ c, -s, 0.0f }, { s, c, 0.0f }, { 0.0f, 0.0f, 1.0f });
@@ -623,6 +624,7 @@ namespace Portal::Doors
 		std::unordered_set<RE::FormID>        portalsOff;   // under correctionsLock, keyed by CorrectionDoor
 		std::unordered_set<RE::FormID>        opensInward;  // under correctionsLock, keyed by CorrectionDoor
 		std::unordered_set<RE::FormID>        alwaysOpen;   // under correctionsLock, keyed by CorrectionDoor
+		std::unordered_set<RE::FormID>        farPicture;   // under correctionsLock, keyed by CorrectionDoor
 		std::unordered_map<RE::FormID, RE::NiPoint3> shifts;  // under correctionsLock
 		bool                                  correctionsLoaded = false;
 
@@ -724,8 +726,8 @@ namespace Portal::Doors
 					portalsOff.insert(a_door);
 				}
 			});
-			// [DoorOpensIn] and [DoorAlwaysOpen] =1.
-			for (const auto& [section, set] : { std::pair{ L"DoorOpensIn", &opensInward }, std::pair{ L"DoorAlwaysOpen", &alwaysOpen } }) {
+			// [DoorOpensIn], [DoorAlwaysOpen] and [DoorFarPicture] =1.
+			for (const auto& [section, set] : { std::pair{ L"DoorOpensIn", &opensInward }, std::pair{ L"DoorAlwaysOpen", &alwaysOpen }, std::pair{ L"DoorFarPicture", &farPicture } }) {
 				each(section, [set](RE::FormID a_door, const wchar_t* a_value) {
 					if (std::wcstol(a_value, nullptr, 10) != 0) {
 						set->insert(a_door);
@@ -739,8 +741,8 @@ namespace Portal::Doors
 					shifts[a_door] = shift;
 				}
 			});
-			logger::info("portal: {} door turn(s), {} door shift(s), {} swing angle(s), {} portal(s) off, {} opening inward, {} always open loaded", corrections.size(), shifts.size(),
-				swingDegrees.size(), portalsOff.size(), opensInward.size(), alwaysOpen.size());
+			logger::info("portal: {} door turn(s), {} door shift(s), {} swing angle(s), {} portal(s) off, {} opening inward, {} always open, {} gate(s) with a picture from afar loaded",
+				corrections.size(), shifts.size(), swingDegrees.size(), portalsOff.size(), opensInward.size(), alwaysOpen.size(), farPicture.size());
 		}
 
 		RE::NiTransform TurnAround(float a_radians, const RE::NiPoint3& a_center)
@@ -816,11 +818,13 @@ namespace Portal::Doors
 		const bool off = PortalOff(a_door);
 		const bool inward = OpensInward(a_door);
 		const bool open = AlwaysOpen(a_door);
+		const bool picture = PictureFromAfar(a_door);
 		::WritePrivateProfileStringW(L"DoorPortal", wkey.c_str(), off ? L"0" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorOpensIn", wkey.c_str(), inward ? L"1" : nullptr, CorrectionsFile().c_str());
 		::WritePrivateProfileStringW(L"DoorAlwaysOpen", wkey.c_str(), open ? L"1" : nullptr, CorrectionsFile().c_str());
-		logger::info("portal: door {} saved: turned {:.2f} degrees, opens by {:.0f} degrees{}{}{}", key, degrees, swing,
-			off ? ", portal off" : ", portal on", inward ? ", opens inward" : "", open ? ", always open" : "");
+		::WritePrivateProfileStringW(L"DoorFarPicture", wkey.c_str(), picture ? L"1" : nullptr, CorrectionsFile().c_str());
+		logger::info("portal: door {} saved: turned {:.2f} degrees, opens by {:.0f} degrees{}{}{}{}", key, degrees, swing,
+			off ? ", portal off" : ", portal on", inward ? ", opens inward" : "", open ? ", always open" : "", picture ? ", picture from afar" : "");
 	}
 
 	RE::NiPoint3 Shift(RE::FormID a_door)
@@ -897,6 +901,24 @@ namespace Portal::Doors
 		std::scoped_lock lock(correctionsLock);
 		LoadCorrections();
 		return { alwaysOpen.begin(), alwaysOpen.end() };
+	}
+
+	bool PictureFromAfar(RE::FormID a_door)
+	{
+		std::scoped_lock lock(correctionsLock);
+		LoadCorrections();
+		return farPicture.contains(a_door);
+	}
+
+	void SetPictureFromAfar(RE::FormID a_door, bool a_picture)
+	{
+		std::scoped_lock lock(correctionsLock);
+		LoadCorrections();
+		if (a_picture) {
+			farPicture.insert(a_door);
+		} else {
+			farPicture.erase(a_door);
+		}
 	}
 
 	float SwingDegrees(RE::FormID a_door)
@@ -1134,8 +1156,6 @@ namespace Portal::Doors
 			logger::info("portal: door {:08X}'s 3D was rebuilt while open: opened again", a_door->GetFormID());
 		}
 
-		constexpr auto kOpenDoorFlags = static_cast<RE::ExtraFlags::Flag>(
-			static_cast<std::uint32_t>(RE::ExtraFlags::Flag::kBlockPlayerActivate) | static_cast<std::uint32_t>(RE::ExtraFlags::Flag::kBlockActivateText));
 	}
 
 	bool IsOpen(RE::FormID a_door)
@@ -1143,11 +1163,16 @@ namespace Portal::Doors
 		return openDoors.contains(a_door);
 	}
 
-	// Held open walkable: its prompt and ordinary transition are off (Open).
+	bool IsSwung(RE::FormID a_door)
+	{
+		std::scoped_lock lock(geometryLock);
+		return swungClosed.contains(a_door);
+	}
+
+	// Standing open, not to be shut by using it: no prompt.
 	bool PromptOff(RE::FormID a_door)
 	{
-		const auto it = openDoors.find(a_door);
-		return it != openDoors.end() && it->second.walkables > 0;
+		return Manager::Prompt(a_door) == Manager::DoorPrompt::kNone;
 	}
 
 	bool BodiesHidden(RE::FormID a_door)
@@ -1157,8 +1182,8 @@ namespace Portal::Doors
 	}
 
 	// TESObjectDOOR::GetActivateText (vfunc 0x4C) builds the "Open <destination>" line for the door
-	// under the crosshair. The extra flags that block activation text didn't keep it off the
-	// screen for an open doorway; for a door held open by a portal the text is left empty here.
+	// under the crosshair. For a door held open by a portal the text is left empty here, or says
+	// "Close" for one the player opened (using it shuts it, Manager's door use).
 	struct ActivateTextHook
 	{
 		static inline std::uint32_t calls = 0;
@@ -1171,7 +1196,17 @@ namespace Portal::Doors
 				a_text = "";
 				return false;
 			}
-			return func(a_door, a_activator, a_text);
+			const bool result = func(a_door, a_activator, a_text);
+			if (target && Manager::Prompt(target->GetFormID()) == Manager::DoorPrompt::kClose) {
+				auto*             settings = RE::GameSettingCollection::GetSingleton();
+				auto*             open = settings->GetSetting("sOpen");
+				auto*             close = settings->GetSetting("sClose");
+				const std::string text = a_text.c_str();
+				if (const auto at = text.find(open->GetString()); at != std::string::npos) {
+					a_text = (text.substr(0, at) + close->GetString() + text.substr(at + std::strlen(open->GetString()))).c_str();
+				}
+			}
+			return result;
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
@@ -1224,11 +1259,8 @@ namespace Portal::Doors
 			CullBehindPanel(a_door, shared);
 		}
 		if (!a_solid && shared.walkables++ == 0) {
-			// The doorway can be walked through: no "E) Open ..." prompt on the panel that isn't
-			// there any more, and no ordinary door transition from it (it would end in a loading
-			// screen). A door only shown open (a stand-in's, solid) keeps both: its space isn't
-			// there to walk into, and blocked it was a door that couldn't be used at all.
-			a_door->extraList.SetExtraFlags(kOpenDoorFlags, true);
+			// The doorway can be walked through. Using the door is the manager's (DoorActivateHook):
+			// shut it, or nothing, never the ordinary transition with its loading screen.
 			MakeWalkable(a_door, door3D, shared);
 		}
 		if (a_hide) {
@@ -1245,18 +1277,6 @@ namespace Portal::Doors
 		}
 		logger::info("portal: door {:08X} open ({} collision objects, {} shape(s) behind the panel off, {} opener(s){}{})", a_state.door, shared.layers.size(), shared.behindShapes.size(), shared.opens, a_hide ? ", hidden" : "",
 			a_passable ? std::format(", passable: {} bodies out", shared.removedBodies.size()) : "");
-	}
-
-	void SetOpenFlags(bool a_set)
-	{
-		for (const auto& [id, shared] : openDoors) {
-			if (shared.walkables == 0) {
-				continue;
-			}
-			if (auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(id)) {
-				door->extraList.SetExtraFlags(kOpenDoorFlags, a_set);
-			}
-		}
 	}
 
 	void Close(OpenState& a_state)
@@ -1279,9 +1299,6 @@ namespace Portal::Doors
 				ShowBodies(door, shared);
 			}
 			if (!a_state.solid && --shared.walkables == 0) {
-				if (door) {
-					door->extraList.SetExtraFlags(kOpenDoorFlags, false);
-				}
 				for (auto& [object, layer] : shared.layers) {
 					object->SetCollisionLayer(layer);
 				}

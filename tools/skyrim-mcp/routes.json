@@ -95,6 +95,56 @@
       }
     ]
   },
+  "jorrvaskr-door-use": {
+    "note": "Whiterun, Jorrvaskr's left front door (0001A702, opens only when used): look at it shut while its room is merged, use it (swings open with a bounce), wait until it swings shut by itself. Was: shut while merged, the panel was cut away by the doorway mask and the sky showed.",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "place": "jorrvaskr-front-door"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "shut"
+        }
+      },
+      {
+        "activate": "0001A702"
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 2
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "open"
+        }
+      },
+      {
+        "wait": 5
+      },
+      {
+        "frames": 30
+      },
+      {
+        "wait": 1
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "shut-again"
+        }
+      }
+    ]
+  },
   "markarth-smelter-house-out-and-in": {
     "note": "Smelter Overseer's House (Markarth mines): load (a reload if the game ran already), walk out, walk back in, look out the door, walk out again. Was: the street's ground and rocks missing through the doorway after walking in; after a reload, missing outside after walking out (player in the water).",
     "steps": [
@@ -242,6 +292,66 @@
       },
       {
         "wait": 1
+      }
+    ]
+  },
+  "riften-south-gate-turn-back": {
+    "note": "Riften's south gate: walk out of the city, turn round at once and walk back in before the view back into the city is ready. Was: the door just come out of stayed walkable (Travel's arrival hold) until that view was ready, and the player walked through the open gate into the Tamriel worldspace's low-detail copy of Riften, with no crossing back.",
+    "steps": [
+      {
+        "load": "SeamlessTestRiftenSouthGate"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "walk": {
+          "pos": [
+            172215,
+            -101000
+          ],
+          "run": true,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            172215,
+            -99900
+          ],
+          "run": true,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "wait": 6
+      },
+      {
+        "walk": {
+          "pos": [
+            172215,
+            -99900
+          ],
+          "run": true,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            172215,
+            -99900
+          ],
+          "run": true,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "check": {
+          "name": "back-in-city",
+          "worldspace": "00016BB4"
+        }
       }
     ]
   },

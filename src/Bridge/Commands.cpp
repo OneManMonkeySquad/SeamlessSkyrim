@@ -5,6 +5,7 @@
 #include "Bridge/ReverseEngineering.h"
 #include "Bridge/Sampler.h"
 #include "Portal/DoorPair.h"
+#include "Portal/DoorUse.h"
 #include "Portal/LightScene.h"
 #include "Portal/MergedCull.h"
 #include "Portal/PortalManager.h"
@@ -900,6 +901,14 @@ namespace Bridge
 					 { "ref", ref ? std::format("{:08X} cell {:08X}", ref->GetFormID(), ref->GetParentCell() ? ref->GetParentCell()->GetFormID() : 0) : "" } };
 			 } } },
 			// Diagnostics: parts of the portal's work left out, and the doorway tinted red.
+			// Tests: the doors opened by a use and the global setting ({"force": 0 none, 1 all open, 2 all
+			// shut}, as the menu sets it, for the session).
+			{ "doors", { [](const json& a) {
+				 if (a.contains("force")) {
+					 Portal::DoorUse::SetForce(static_cast<Portal::DoorUse::Force>(std::clamp(a.at("force").get<int>(), 0, 2)));
+				 }
+				 return Portal::DoorUse::Status();
+			 } } },
 			{ "portal_switches", { [](const json& a) {
 				 auto s = Portal::Render::GetDebugSwitches();
 				 s.skipPortalPass = a.value("skipPortalPass", s.skipPortalPass);
