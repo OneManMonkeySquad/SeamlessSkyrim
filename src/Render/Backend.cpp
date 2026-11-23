@@ -26,6 +26,8 @@ namespace
 		void (*setInteriorSun)(bool) = nullptr;
 		void (*settleSkylighting)() = nullptr;
 		void (*setPortalClip)(const float*) = nullptr;
+		void (*setPortalShadows)(RE::BSShadowDirectionalLight*, void*, void*) = nullptr;
+		void (*setPortalWorldspace)(RE::TESWorldSpace*) = nullptr;
 		void (*beginPass)(RE::NiDirectionalLight*, bool) = nullptr;
 		void (*endPass)() = nullptr;
 		bool (*outdoorSunDirection)(float, const float*, float*) = nullptr;
@@ -50,6 +52,8 @@ namespace
 		Find(a_module, "SeamlessPortal_SetInteriorSun", fork.setInteriorSun);
 		Find(a_module, "SeamlessPortal_SettleSkylighting", fork.settleSkylighting);
 		Find(a_module, "SeamlessPortal_SetPortalClip", fork.setPortalClip);
+		Find(a_module, "SeamlessPortal_SetPortalShadows", fork.setPortalShadows);
+		Find(a_module, "SeamlessPortal_SetPortalWorldspace", fork.setPortalWorldspace);
 		Find(a_module, "SeamlessPortal_BeginPass", fork.beginPass);
 		Find(a_module, "SeamlessPortal_EndPass", fork.endPass);
 		Find(a_module, "SeamlessPortal_OutdoorSunDirection", fork.outdoorSunDirection);
@@ -240,6 +244,25 @@ namespace Render::Backend
 			}
 		} else if (kind == Kind::kNative) {
 			Render::Native::SetPortalClip(a_plane);
+		}
+	}
+
+	bool CanShadowPortal()
+	{
+		return kind == Kind::kCommunityShaders && fork.setPortalShadows;
+	}
+
+	void SetPortalShadows(RE::BSShadowDirectionalLight* a_light, void* a_shadowMaps, void* a_volumetricShadowMaps)
+	{
+		if (CanShadowPortal()) {
+			fork.setPortalShadows(a_light, a_shadowMaps, a_volumetricShadowMaps);
+		}
+	}
+
+	void SetPortalWorldspace(RE::TESWorldSpace* a_worldspace)
+	{
+		if (kind == Kind::kCommunityShaders && fork.setPortalWorldspace) {
+			fork.setPortalWorldspace(a_worldspace);
 		}
 	}
 

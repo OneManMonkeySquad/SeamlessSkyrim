@@ -47,7 +47,13 @@ light scene with the other cell's lights.
 Why it falls short: it isn't the game's world render.
 - **No deferred lighting:** the pass runs with `inWorld == false`, so Community Shaders' deferred
   path and its effects don't run.
-- **No sun shadows:** interiors don't draw the sun's shadow maps.
+- **Sun shadows of its own, soft:** an outdoor space's sun shadow light (its light scene's) is run
+  through the engine's sequence with the portal camera into shadow maps of ours
+  (`RenderPortalShadows`), and the fork lights the pass with their soft copy (Volumetric Shadows'
+  VSM, 512 texels a cascade), not the world's crisp shadow mask; terrain and cloud shadows as
+  outdoors (the other worldspace's heightmap). Community Shaders fork only.
+- **Drawn like the main view:** at its render resolution and with its jitter, so the upscaler
+  resolves the doorway with the scene (a doorway picture's capture is drawn at full size).
 - **No real sky:** a gradient is drawn instead (`DrawSky`).
 - **No distant LOD and no fog.**
 - **Rain and snow:** through a city gate, the main view's own rain is drawn into the picture

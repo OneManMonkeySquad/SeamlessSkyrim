@@ -44,6 +44,8 @@ Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = featur
 | Export | Purpose |
 |---|---|
 | `SeamlessPortal_BeginPass(NiDirectionalLight*, bool interior)` / `SeamlessPortal_EndPass()` | Around the separate portal pass: per-frame shared data (directional light, ambient SH, `InInterior`, no directional shadows) and the feature buffer describe the space behind the door, then the world's data is put back. Also starts precompiling the composite shaders. |
+| `SeamlessPortal_SetPortalShadows(BSShadowDirectionalLight*, ID3D11ShaderResourceView* shadowMaps, ID3D11ShaderResourceView* volumetricShadowMaps)` | The sun's shadows of the outdoor space the next portal passes draw: the plugin ran that space's own sun shadow light with the portal camera into shadow map arrays made like `kSHADOWMAPS_ESRAM` and `kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM` (`State::portalShadows`); `nullptr` = none. `BeginPortalSharedData` then sets `HasDirectionalShadows`, uploads the light to t98 (`Deferred::UploadShadowLight`, split out of `CopyShadowLightData`) and builds the VSM from those arrays (`VolumetricShadows::Build`, split out of `CopyShadowLightData`, into the same textures); `EndPortalSharedData` uploads the world's again and rebuilds the world's VSM from the view `CopyShadowLightData` last read (`VolumetricShadows::RestoreWorld`). Without it, the low sun's specular glinted on trees through a city gate that the other side's cliffs shade. |
+| `SeamlessPortal_SetPortalWorldspace(TESWorldSpace*)` | The outdoor worldspace the portal pass draws (behind a city gate), kept until changed; `nullptr` = none (`TerrainShadows::portalWorldspace`). Terrain Shadows loads and updates its heightmap's shadows when the player's worldspace has no heightmap of its own (a city's), and the portal pass's feature data describes it (`GetCommonBufferData` while `portalSharedDataActive`). The low sun behind Solitude's gate was shaded outside by the mountains to the west, not in the gate. |
 | `SeamlessPortal_SetMergedRoomDoor(int room, const float[12])` | Render-merge, one of up to four rooms merged at once (`State::seamlessRooms[room]`, 0..3): doorway centre, normal, horizontal axis, half width, half height (world coordinates), and 1 when the camera is in the merged space (room 0 only: `SeamlessDoor::cameraInside`, uploaded as `SeamlessParams.z`); or `nullptr` for "nothing merged behind this door". Room 0 is the one the player can walk into; 1..3 are only seen from the street. |
 | `SeamlessPortal_SetMergedDoor(const float[12])` | Room 0's door (as above): what a SeamlessSkyrim that merges one room calls. |
 | `SeamlessPortal_SetPortalClip(const float[4])` | Portal pass: the far door's plane in world coordinates (unit normal pointing away from the portal camera, offset), stored in `State::portalClip` and copied into `SharedData::SeamlessPortalClip` by `BeginPortalSharedData`; `nullptr` = none. Pixels with `dot(P, n) < offset` are discarded in a portal pass. |
@@ -129,6 +131,12 @@ Changes by file:
     (`raymarchLock` guards the getter and `ClearShaderCache`). Not at startup: its sample count
     follows the dynamic resolution, which an upscaler sets only once in game; compiled at startup
     it was compiled again on the first outdoor frame.
+- `src/Deferred.cpp/.h`: `UploadShadowLight(light)`, the t98 upload of `CopyShadowLightData` for
+  any shadow light. `src/Features/VolumetricShadows.cpp/.h`: `Build(shadowMaps, volumetricShadowMaps)`
+  and `RestoreWorld()`, `CopyShadowLightData`'s VSM build for given arrays (see
+  `SeamlessPortal_SetPortalShadows`).
+- `src/Features/TerrainShadows.cpp/.h`: `portalWorldspace`, `IsHeightMapReady(worldspace)` (see
+  `SeamlessPortal_SetPortalWorldspace`).
 - `src/Features/SkySync.cpp/.h`: `OutdoorSunDirection`, Sky Sync's sun direction for a given hour
   without a sky in exterior mode (fork commit `57fdbaa`).
 - `src/XSEPlugin.cpp`: the exports.
@@ -199,6 +207,12 @@ Changes by file:
   tested before `LOD_LANDSCAPE`. Distant land drawn inside an interior gets into a point light's
   paraboloid shadow map; in the original order that permutation left `positionCSPerspective`
   undeclared and failed to compile.
+- `Lighting.hlsl`: the world shadow (`ShadowSampling::GetWorldShadow`: terrain and cloud shadows)
+  also in a portal pass, not only in the world and reflections.
+- `Lighting.hlsl`: the Volumetric Shadows lookup (`ShadowSampling::GetLightingShadow`) also in a
+  portal pass (`SeamlessPortalClip` set), not only in the world; it has directional shadows only
+  with `SeamlessPortal_SetPortalShadows`. Forward, without the engine's shadow mask, its detailed
+  value becomes `dirDetailedShadow`, which scales the sun's diffuse and specular.
 - `Lighting.hlsl`: with `SeamlessParams.w` set (sun shadows on for the merged street), shapes that
   aren't the merged street get `dirSoftShadow = dirDetailedShadow = 1`: the interior keeps its
   unshadowed directional light.

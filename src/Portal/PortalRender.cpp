@@ -45,7 +45,28 @@ namespace
 	// post-accumulation stage (ID 106584) runs a world-only step under some conditions and then
 	// binds the world's main colour target for the rest of the pass, so the portal's blended and
 	// effect geometry was drawn straight into the main picture.
+	// 0x400: the viewport is the whole target. A picture for the doorway on screen leaves it out and
+	// adds 0x1 (the main view's jitter) instead: see LiveRenderFlags.
 	constexpr std::uint32_t kRenderFlags = 0x400 | 0x200 | 0x4;
+
+	// The picture shown in the doorway is drawn like the main view: at its render resolution (an
+	// upscaler or dynamic resolution draws the scene into the top-left part of its target) and with
+	// its subpixel jitter, so the upscaler resolves the doorway with the scene around it. Drawn at
+	// the full target size without jitter and point-sampled into the smaller scene, it showed
+	// staircased edges and shimmering foliage the upscaler couldn't smooth.
+	constexpr std::uint32_t LiveRenderFlags()
+	{
+		return (kRenderFlags & ~0x400u) | 0x1;
+	}
+
+	// The fraction of its target the main view is drawn into (1 without an upscaler or dynamic
+	// resolution).
+	std::array<float, 2> RenderScale()
+	{
+		const auto& state = RE::BSGraphics::State::GetSingleton()->GetRuntimeData();
+		return { state.dynamicResolutionWidthRatio > 0.0f ? state.dynamicResolutionWidthRatio : 1.0f,
+			state.dynamicResolutionHeightRatio > 0.0f ? state.dynamicResolutionHeightRatio : 1.0f };
+	}
 
 	RE::NiPointer<RE::NiCamera> portalCamera;
 	// Ref-counted owner: the culling context also holds a reference, and when it drops it the
@@ -161,28 +182,6 @@ namespace
 		return ReadPointer(&a_pass->shader, shader) && ValidShader(reinterpret_cast<const RE::BSShader*>(shader));
 	}
 
-	// Passes drawn per portal pass, against the recent usual number: a pass drawing next to nothing
-	// is a doorway blinking black on screen.
-	std::uint32_t passesDrawnThisSubmit = 0;
-	// Of the doorway being drawn only (RenderPortal starts both anew for another): measured against
-	// a city gate's passes, every picture of the next small room counted as next to empty, and the
-	// doorway showed the old one for half a second.
-	float         usualPassesDrawn = 0.0f;
-	int           heldFrames = 0;  // pictures in a row left off screen for drawing next to nothing
-
-	// True for a pass that drew far less than usual.
-	bool CheckPassesDrawn(std::uint32_t a_frame)
-	{
-		const auto drawn = static_cast<float>(passesDrawnThisSubmit);
-		static int reported = 0;
-		const bool low = usualPassesDrawn > 50.0f && drawn < 0.25f * usualPassesDrawn;
-		if (low && reported++ < 100) {
-			logger::warn("portal: portal frame {} drew {} pass(es), usually ~{:.0f}", a_frame, passesDrawnThisSubmit, usualPassesDrawn);
-		}
-		usualPassesDrawn = usualPassesDrawn == 0.0f ? drawn : usualPassesDrawn + (drawn - usualPassesDrawn) * 0.05f;
-		return low;
-	}
-
 	// The far door's shapes (see RenderPortal): never drawn by the portal pass, whatever brings
 	// them there, in case culling its root isn't enough.
 	std::unordered_set<const void*> portalHiddenShapes;
@@ -271,7 +270,6 @@ namespace
 			}
 			func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 			if (inPortalSubmit && a_pass) {
-				++passesDrawnThisSubmit;
 				CutBeforeFreed(a_pass);
 			}
 		}
@@ -328,6 +326,7 @@ namespace
 		float pointLightScale = 1.0f;
 		bool  communityShaders = true;
 		bool  precipitation = true;   // rain and snow in the portal pass of an outdoor space
+		bool  sunShadows = true;      // the sun's shadows in the portal pass of an outdoor space
 		bool  tintDoorway = false;    // the doorway's picture tinted red: tells which flashes are in it
 		// Switches for finding a whole-screen flash (the in-game menu): each leaves one part out.
 		bool  skipPortalPass = false;   // no portal pass, nothing in the doorway
@@ -383,7 +382,8 @@ namespace
 		}
 		SetDepthTarget(RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN, RE::BSGraphics::SRTM_NO_CLEAR, 0);
 		inPortalSubmit = true;
-		RE::BSGraphics::Renderer::SubmitAccumulator(camera, portalAccumulator.get(), kRenderFlags);
+		// In the live picture's viewport, pixel for pixel over the main view's depth.
+		RE::BSGraphics::Renderer::SubmitAccumulator(camera, portalAccumulator.get(), LiveRenderFlags());
 		inPortalSubmit = false;
 		SetDepthTarget(kDepthTarget, RE::BSGraphics::SRTM_NO_CLEAR, 0);
 	}
@@ -1013,13 +1013,9 @@ namespace
 		ps->Release();
 	}
 
-	void DrawSky(ID3D11DeviceContext* a_context, ID3D11RenderTargetView* a_target, const RE::NiCamera* a_camera, const SkyColors& a_colors)
+	// Into the top-left a_width x a_height of the target, where the picture is drawn.
+	void DrawSky(ID3D11DeviceContext* a_context, ID3D11RenderTargetView* a_target, const RE::NiCamera* a_camera, const SkyColors& a_colors, float a_width, float a_height)
 	{
-		ID3D11Resource* resource = nullptr;
-		a_target->GetResource(&resource);
-		D3D11_TEXTURE2D_DESC desc{};
-		static_cast<ID3D11Texture2D*>(resource)->GetDesc(&desc);
-		resource->Release();
 		ID3D11Device* device = nullptr;
 		a_context->GetDevice(&device);
 		EnsureSkyPipeline(device);
@@ -1042,8 +1038,8 @@ namespace
 		put(c.upper, a_colors.upper);
 		put(c.horizon, a_colors.horizon);
 		put(c.lower, a_colors.lower);
-		c.size[0] = static_cast<float>(desc.Width);
-		c.size[1] = static_cast<float>(desc.Height);
+		c.size[0] = a_width;
+		c.size[1] = a_height;
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		if (FAILED(a_context->Map(sky.constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
 			return;
@@ -1084,7 +1080,7 @@ namespace
 		a_context->IAGetPrimitiveTopology(&savedTopology);
 		a_context->PSGetConstantBuffers(0, 1, &savedConstants);
 
-		const D3D11_VIEWPORT viewport{ 0, 0, static_cast<float>(desc.Width), static_cast<float>(desc.Height), 0, 1 };
+		const D3D11_VIEWPORT viewport{ 0, 0, a_width, a_height, 0, 1 };
 		a_context->OMSetRenderTargets(1, &a_target, nullptr);
 		a_context->OMSetDepthStencilState(sky.depthState, 0);
 		a_context->OMSetBlendState(sky.blendState, nullptr, 0xFFFFFFFF);
@@ -1197,11 +1193,14 @@ namespace
 	{
 		RE::BSGraphics::RenderTargetData color{};  // texture, RTV, SRV, UAV (no copy texture)
 		RE::BSGraphics::DepthStencilData depth{};
+		// The top-left part of the targets the last picture was drawn into, in pixels.
+		float pictureWidth = 0.0f;
+		float pictureHeight = 0.0f;
 	};
 
 	// Two sets: the pass draws into the one not on screen, and the doorway shows the other until
-	// the new picture is known to be good (see RenderPortal). A pass that came out next to empty
-	// was a black flash in the doorway, often several frames in a row.
+	// the new picture is done (see RenderPortal). A doorway picture's capture draws into the
+	// hidden set while the doorway keeps showing the last live picture.
 	OwnTargets portalTargetSets[2];
 	int        shownTargets = 0;
 
@@ -1224,21 +1223,26 @@ namespace
 		}
 	}
 
+	void ReleaseDepth(RE::BSGraphics::DepthStencilData& a_depth)
+	{
+		for (auto& view : a_depth.views) {
+			ReleaseView(view);
+		}
+		for (auto& view : a_depth.readOnlyViews) {
+			ReleaseView(view);
+		}
+		ReleaseView(a_depth.depthSRV);
+		ReleaseView(a_depth.stencilSRV);
+		ReleaseView(a_depth.texture);
+	}
+
 	void ReleaseOwnTargets(OwnTargets& a_set)
 	{
 		ReleaseView(a_set.color.RTV);
 		ReleaseView(a_set.color.SRV);
 		ReleaseView(a_set.color.UAV);
 		ReleaseView(a_set.color.texture);
-		for (auto& view : a_set.depth.views) {
-			ReleaseView(view);
-		}
-		for (auto& view : a_set.depth.readOnlyViews) {
-			ReleaseView(view);
-		}
-		ReleaseView(a_set.depth.depthSRV);
-		ReleaseView(a_set.depth.stencilSRV);
-		ReleaseView(a_set.depth.texture);
+		ReleaseDepth(a_set.depth);
 	}
 
 	D3D11_TEXTURE2D_DESC DescOf(REX::W32::ID3D11Texture2D* a_texture)
@@ -1271,6 +1275,33 @@ namespace
 		a_out = reinterpret_cast<std::remove_reference_t<decltype(a_out)>>(view);
 	}
 
+	// A depth-stencil target of ours made like the engine's a_like: the same texture, the same views
+	// (one per slice of an array). Made anew when the engine's has changed.
+	void EnsureOwnDepth(RE::BSGraphics::DepthStencilData& a_ours, const RE::BSGraphics::DepthStencilData& a_like)
+	{
+		SEAMLESS_ASSERT(a_like.texture);
+		const auto desc = DescOf(a_like.texture);
+		if (a_ours.texture && SameTexture(DescOf(a_ours.texture), desc)) {
+			return;
+		}
+		ReleaseDepth(a_ours);
+		ID3D11Device* device = nullptr;
+		reinterpret_cast<ID3D11DeviceContext*>(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().context)->GetDevice(&device);
+		ID3D11Texture2D* texture = nullptr;
+		const HRESULT    created = device->CreateTexture2D(&desc, nullptr, &texture);
+		SEAMLESS_ASSERT(SUCCEEDED(created));
+		a_ours.texture = reinterpret_cast<REX::W32::ID3D11Texture2D*>(texture);
+		const auto srv = [&](ID3D11Texture2D* t, const D3D11_SHADER_RESOURCE_VIEW_DESC* d, ID3D11ShaderResourceView** v) { return device->CreateShaderResourceView(t, d, v); };
+		const auto dsv = [&](ID3D11Texture2D* t, const D3D11_DEPTH_STENCIL_VIEW_DESC* d, ID3D11DepthStencilView** v) { return device->CreateDepthStencilView(t, d, v); };
+		for (std::size_t i = 0; i < std::size(a_like.views); ++i) {
+			CloneView<ID3D11DepthStencilView, D3D11_DEPTH_STENCIL_VIEW_DESC>(a_ours.texture, a_like.views[i], a_ours.views[i], dsv);
+			CloneView<ID3D11DepthStencilView, D3D11_DEPTH_STENCIL_VIEW_DESC>(a_ours.texture, a_like.readOnlyViews[i], a_ours.readOnlyViews[i], dsv);
+		}
+		CloneView<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>(a_ours.texture, a_like.depthSRV, a_ours.depthSRV, srv);
+		CloneView<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>(a_ours.texture, a_like.stencilSRV, a_ours.stencilSRV, srv);
+		device->Release();
+	}
+
 	// Made anew whenever the engine's targets have changed (it recreates them on a resolution change).
 	void EnsureOwnTargets(OwnTargets& a_set)
 	{
@@ -1287,31 +1318,25 @@ namespace
 		if (a_set.color.texture && SameTexture(DescOf(a_set.color.texture), colorDesc) && a_set.depth.texture && SameTexture(DescOf(a_set.depth.texture), depthDesc)) {
 			return;
 		}
-		ReleaseOwnTargets(a_set);
+		ReleaseView(a_set.color.RTV);
+		ReleaseView(a_set.color.SRV);
+		ReleaseView(a_set.color.UAV);
+		ReleaseView(a_set.color.texture);
 		ID3D11Device* device = nullptr;
 		reinterpret_cast<ID3D11DeviceContext*>(renderer->GetRuntimeData().context)->GetDevice(&device);
 		ID3D11Texture2D* colorTexture = nullptr;
-		ID3D11Texture2D* depthTexture = nullptr;
-		const HRESULT colorCreated = device->CreateTexture2D(&colorDesc, nullptr, &colorTexture);
-		const HRESULT depthCreated = device->CreateTexture2D(&depthDesc, nullptr, &depthTexture);
-		SEAMLESS_ASSERT(SUCCEEDED(colorCreated) && SUCCEEDED(depthCreated));
+		const HRESULT    colorCreated = device->CreateTexture2D(&colorDesc, nullptr, &colorTexture);
+		SEAMLESS_ASSERT(SUCCEEDED(colorCreated));
 		a_set.color.texture = reinterpret_cast<REX::W32::ID3D11Texture2D*>(colorTexture);
-		a_set.depth.texture = reinterpret_cast<REX::W32::ID3D11Texture2D*>(depthTexture);
 
 		const auto rtv = [&](ID3D11Texture2D* t, const D3D11_RENDER_TARGET_VIEW_DESC* d, ID3D11RenderTargetView** v) { return device->CreateRenderTargetView(t, d, v); };
 		const auto srv = [&](ID3D11Texture2D* t, const D3D11_SHADER_RESOURCE_VIEW_DESC* d, ID3D11ShaderResourceView** v) { return device->CreateShaderResourceView(t, d, v); };
 		const auto uav = [&](ID3D11Texture2D* t, const D3D11_UNORDERED_ACCESS_VIEW_DESC* d, ID3D11UnorderedAccessView** v) { return device->CreateUnorderedAccessView(t, d, v); };
-		const auto dsv = [&](ID3D11Texture2D* t, const D3D11_DEPTH_STENCIL_VIEW_DESC* d, ID3D11DepthStencilView** v) { return device->CreateDepthStencilView(t, d, v); };
 		CloneView<ID3D11RenderTargetView, D3D11_RENDER_TARGET_VIEW_DESC>(a_set.color.texture, engineColor.RTV, a_set.color.RTV, rtv);
 		CloneView<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>(a_set.color.texture, engineColor.SRV, a_set.color.SRV, srv);
 		CloneView<ID3D11UnorderedAccessView, D3D11_UNORDERED_ACCESS_VIEW_DESC>(a_set.color.texture, engineColor.UAV, a_set.color.UAV, uav);
-		for (std::size_t i = 0; i < std::size(engineDepth.views); ++i) {
-			CloneView<ID3D11DepthStencilView, D3D11_DEPTH_STENCIL_VIEW_DESC>(a_set.depth.texture, engineDepth.views[i], a_set.depth.views[i], dsv);
-			CloneView<ID3D11DepthStencilView, D3D11_DEPTH_STENCIL_VIEW_DESC>(a_set.depth.texture, engineDepth.readOnlyViews[i], a_set.depth.readOnlyViews[i], dsv);
-		}
-		CloneView<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>(a_set.depth.texture, engineDepth.depthSRV, a_set.depth.depthSRV, srv);
-		CloneView<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>(a_set.depth.texture, engineDepth.stencilSRV, a_set.depth.stencilSRV, srv);
 		device->Release();
+		EnsureOwnDepth(a_set.depth, engineDepth);
 		logger::info("portal: own render targets made ({}x{} colour format {}, depth format {})", colorDesc.Width, colorDesc.Height, static_cast<int>(colorDesc.Format),
 			static_cast<int>(depthDesc.Format));
 	}
@@ -1358,6 +1383,69 @@ namespace
 		RE::BSGraphics::RenderTargetData  savedColor{};
 		RE::BSGraphics::DepthStencilData  savedDepth{};
 	};
+
+	// ---- the sun's shadows of an outdoor space behind a door -----------------------------------
+	// The portal pass had no sun shadows: through a city gate everything the other side's sun
+	// reaches was lit, also what its cliffs and walls shade, and a low sun's specular glinted on the
+	// needles of trees standing in a cliff's shadow. The other side's light scene has a sun shadow
+	// light of its own (made with the scene, ID 106320); it is run through the engine's sequence for
+	// the world's (ID 107132 aims and culls, ID 107137 accumulates, ID 107133 renders), with the
+	// portal camera and into shadow map arrays of our own: the world's are still read after the
+	// portal pass (Community Shaders keeps a soft copy of them for the rest of the frame).
+	RE::BSGraphics::DepthStencilData portalShadowMaps[2];
+	constexpr RE::RENDER_TARGETS_DEPTHSTENCIL::RENDER_TARGET_DEPTHSTENCIL kShadowMapTargets[2]{
+		RE::RENDER_TARGETS_DEPTHSTENCIL::kSHADOWMAPS_ESRAM,                   // the cascades (BSShadowDirectionalLight::Render)
+		RE::RENDER_TARGETS_DEPTHSTENCIL::kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM  // drawn too in the engine's usual shadow mode (ID 391108)
+	};
+
+	void RenderPortalShadows(RE::ShadowSceneNode* a_root, RE::NiCamera* a_camera)
+	{
+		auto* light = a_root->GetRuntimeData().sunShadowDirLight;
+		auto& table = RE::BSGraphics::Renderer::GetSingleton()->GetDepthStencilData().depthStencils;
+		for (std::size_t i = 0; i < std::size(kShadowMapTargets); ++i) {
+			EnsureOwnDepth(portalShadowMaps[i], table[kShadowMapTargets[i]]);
+		}
+		// Cascades fitted to the portal camera, along the sun ApplyRemoteLighting aimed.
+		light->UpdateCamera(a_camera);
+
+		// The culling jobs take the scene's top nodes, shared out over one list per job (the world's
+		// are made by ID 106323); a light has a culling process per job.
+		auto&                                                    lightData = light->GetRuntimeData();
+		RE::BSTArray<RE::BSTArray<RE::NiPointer<RE::NiAVObject>>> jobs;
+		jobs.resize(light->GetShadowDirectionalLightRuntimeData().fullFrustumCullingProcessArray.size());
+		std::uint32_t next = 0;
+		for (auto& child : a_root->GetChildren()) {
+			if (child) {
+				jobs[next++ % jobs.size()].push_back(child);
+			}
+		}
+		// The world's culls a last list on its own (from the main culling process); the scene has none.
+		RE::BSTArray<RE::NiPointer<RE::NiAVObject>> none;
+		for (auto& descriptor : lightData.shadowmapDescriptors) {
+			// As the portal's own accumulator (see RenderPortal): passes are made against a light scene.
+			descriptor.shaderAccumulator->GetRuntimeData().activeShadowSceneNode = a_root;
+		}
+		using Cull = void (*)(RE::BSShadowDirectionalLight*, RE::BSTArray<RE::BSTArray<RE::NiPointer<RE::NiAVObject>>>&, RE::BSTArray<RE::NiPointer<RE::NiAVObject>>&);
+		static REL::Relocation<Cull> cull{ REL::RelocationID(101498, 108492) };
+		cull(light, jobs, none);
+		std::uint32_t shadowLights = 0;
+		light->Accumulate(shadowLights, 0, nullptr);
+
+		RE::BSGraphics::DepthStencilData saved[std::size(kShadowMapTargets)];
+		for (std::size_t i = 0; i < std::size(kShadowMapTargets); ++i) {
+			saved[i] = table[kShadowMapTargets[i]];
+			table[kShadowMapTargets[i]] = portalShadowMaps[i];
+		}
+		std::uint32_t index = 0;
+		light->Render(index);
+		for (std::size_t i = 0; i < std::size(kShadowMapTargets); ++i) {
+			table[kShadowMapTargets[i]] = saved[i];
+		}
+		for (auto& descriptor : lightData.shadowmapDescriptors) {
+			ResetAccumulator(descriptor.shaderAccumulator.get());
+		}
+		::Render::Backend::SetPortalShadows(light, portalShadowMaps[0].depthSRV, portalShadowMaps[1].depthSRV);
+	}
 
 	// Doors standing in the far door's doorway besides the far door itself: a second, ordinary door
 	// in the same frame (Riverwood Trader has one; from outside, the merged room's
@@ -1469,7 +1557,9 @@ namespace
 	};
 	std::optional<CaptureDrawn> captureDrawn;
 
-	json RenderPortal(const Active& a_portal, const ScreenRect& a_doorway, const std::optional<Portal::Snapshot::CaptureCamera>& a_capture = std::nullopt)
+	// a_fullTarget: the whole target at its size, unjittered, as a doorway picture's capture is
+	// drawn (a diagnostic file wants that too); otherwise the picture for the doorway on screen.
+	json RenderPortal(const Active& a_portal, const ScreenRect& a_doorway, const std::optional<Portal::Snapshot::CaptureCamera>& a_capture, bool a_fullTarget)
 	{
 		auto* root = Portal::LightScene::Get();
 		auto* mainCamera = RE::Main::WorldRootCamera();
@@ -1498,13 +1588,6 @@ namespace
 			portalAccumulator.reset(RE::BSShaderAccumulator::Create(0x63));  // engine-wide ctor argument
 			generation = a_portal.generation;
 		}
-		static RE::FormID drawnDoor = 0;
-		if (portalFrame == 0 || drawnDoor != a_portal.sourceDoor) {
-			drawnDoor = a_portal.sourceDoor;
-			usualPassesDrawn = 0.0f;
-			heldFrames = 0;
-		}
-
 		const auto mapping = Portal::Doors::Compute(a_portal);
 		const bool capturing = a_capture.has_value();
 		portalCamera->local = mapping.toLinked * (capturing ? a_capture->transform : mainCamera->world);
@@ -1645,6 +1728,18 @@ namespace
 			}
 		}
 
+		// The other side's sun and ambient, before its shadows are drawn with that sun.
+		const auto background = ApplyRemoteLighting(root, a_portal.cell);
+		// Diagnostics switch: without the render backend the portal is lit and clipped as the world.
+		const bool useBackend = lightDebug.communityShaders;
+		const bool shadowed = useBackend && lightDebug.sunShadows && !a_portal.cell->IsInteriorCell() && ::Render::Backend::CanShadowPortal();
+		if (shadowed) {
+			RenderPortalShadows(root, portalCamera.get());
+		}
+		if (useBackend) {
+			::Render::Backend::SetPortalWorldspace(a_portal.cell->IsInteriorCell() ? nullptr : a_portal.cell->GetRuntimeData().worldSpace);
+		}
+
 		// Same sequence as the engine's menu-3D renderer (ID 52727): bind with clear, let the clear
 		// happen now (the engine clears lazily, when the binding is applied), then bind without.
 		SetColorTarget(0, kColorTarget, RE::BSGraphics::SRTM_CLEAR, true);
@@ -1657,6 +1752,16 @@ namespace
 		}
 		SetColorTarget(0, kColorTarget, RE::BSGraphics::SRTM_NO_CLEAR, true);
 		SetDepthTarget(kDepthTarget, RE::BSGraphics::SRTM_NO_CLEAR, 0);
+		// Binding the targets set the viewport the way the main view's is set, render scale included
+		// (ID 77240); the full target's comes with kRenderFlags at the submit.
+		const bool atRenderScale = !capturing && !a_fullTarget;
+		{
+			auto&      drawing = DrawingTargets();
+			const auto desc = DescOf(drawing.color.texture);
+			const auto scale = atRenderScale ? RenderScale() : std::array{ 1.0f, 1.0f };
+			drawing.pictureWidth = desc.Width * scale[0];
+			drawing.pictureHeight = desc.Height * scale[1];
+		}
 		// Start from the normal depth mode instead of whatever the previous pass ended in, and set
 		// the global ID 52727 sets around its own draw (the accumulator's draw routine, ID 106583,
 		// otherwise may switch to "test EQUAL").
@@ -1670,13 +1775,11 @@ namespace
 		const auto                             savedWaterMode = *waterMode;
 		*waterMode = 0;
 
-		if (const auto background = ApplyRemoteLighting(root, a_portal.cell)) {
+		if (background) {
 			if (auto* view = reinterpret_cast<ID3D11RenderTargetView*>(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[kColorTarget].RTV)) {
-				DrawSky(d3dContext, view, portalCamera.get(), *background);
+				DrawSky(d3dContext, view, portalCamera.get(), *background, DrawingTargets().pictureWidth, DrawingTargets().pictureHeight);
 			}
 		}
-		// Diagnostics switch: without the render backend the portal is lit and clipped as the world.
-		const bool useBackend = lightDebug.communityShaders;
 		{
 			// The far door's plane, facing away from the portal camera: nothing on the camera's side
 			// of it can be seen through the doorway (see SeamlessPortalClips in the fork). Its face
@@ -1711,28 +1814,27 @@ namespace
 
 		portalFrame += 1;
 		freedPassesThisSubmit = 0;
-		passesDrawnThisSubmit = 0;
 		drawnThisSubmit.clear();
 		inPortalSubmit = true;
-		RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), kRenderFlags);
+		RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), atRenderScale ? LiveRenderFlags() : kRenderFlags);
 		inPortalSubmit = false;
+		// Not for the main view's rain drawn into the picture next (its own pass, see
+		// DrawMainPrecipitation); EndPortalPass puts the world's shadows back.
+		if (shadowed) {
+			::Render::Backend::SetPortalShadows(nullptr, nullptr, nullptr);
+		}
 		// The weather's rain falls through a city gate too. Not in a doorway picture: it is kept,
 		// and would show its streaks standing still in any weather.
-		if (useBackend && lightDebug.precipitation && !capturing && !a_portal.cell->IsInteriorCell() &&
+		if (useBackend && lightDebug.precipitation && atRenderScale && !a_portal.cell->IsInteriorCell() &&
 			!RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell()) {
 			DrawMainPrecipitation(root);
 		}
-		// The new picture goes on screen, unless it came out next to empty: then the last good one
-		// stays, for a few frames at most (after that the view may really have changed). A capture
-		// isn't for the doorway: the last picture stays on screen this frame.
-		constexpr int kMaxHeldFrames = 15;
+		// A capture isn't for the doorway: the last picture stays on screen this frame. Otherwise the
+		// new one goes on screen at once; a picture held back for drawing fewer passes than usual
+		// stood still in the doorway while the view turned (the doorway's cull is narrowed to its
+		// size on screen, so turning away legitimately drew a quarter of the passes).
 		if (!capturing) {
-			if (CheckPassesDrawn(portalFrame) && heldFrames < kMaxHeldFrames) {
-				++heldFrames;
-			} else {
-				heldFrames = 0;
-				shownTargets = 1 - shownTargets;
-			}
+			shownTargets = 1 - shownTargets;
 		}
 		if (portalHiddenDrawn) {
 			static std::uint32_t reported = 0;
@@ -1893,7 +1995,8 @@ namespace
 				return lerp(color, lerp(FogNear.rgb, FogFar.rgb, f), f);
 			}
 			// The scene is drawn into the top-left part of its target when a render scale below 1 is
-			// in use (dynamic resolution, upscalers); the portal image always fills its target.
+			// in use (dynamic resolution, upscalers). The live picture is drawn the same way (scale
+			// 1); one drawn into its whole target (a diagnostic file) is spread over the scene's part.
 			Pixel PS(Vertex v)
 			{
 				Pixel p;
@@ -2020,17 +2123,15 @@ namespace
 		const auto  view = mainView.cameraData.getEye();
 		const auto* m = reinterpret_cast<const float*>(&view.viewProjMat);
 		const auto  corners = DoorwayQuad(a_portal, RE::Main::WorldRootCamera()->world.translate);
-		const auto& graphicsState = RE::BSGraphics::State::GetSingleton()->GetRuntimeData();
-		const float scaleX = graphicsState.dynamicResolutionWidthRatio > 0.0f ? graphicsState.dynamicResolutionWidthRatio : 1.0f;
-		const float scaleY = graphicsState.dynamicResolutionHeightRatio > 0.0f ? graphicsState.dynamicResolutionHeightRatio : 1.0f;
+		const auto [scaleX, scaleY] = RenderScale();
 		float       clip[4][6];
 		for (int i = 0; i < 4; ++i) {
 			const float v[3] = { corners[i].x - eye.x, corners[i].y - eye.y, corners[i].z - eye.z };
 			for (int column = 0; column < 4; ++column) {
 				clip[i][column] = v[0] * m[column] + v[1] * m[4 + column] + v[2] * m[8 + column] + m[12 + column];
 			}
-			clip[i][4] = static_cast<float>(portalDesc.Width) / (sceneDesc.Width * scaleX);
-			clip[i][5] = static_cast<float>(portalDesc.Height) / (sceneDesc.Height * scaleY);
+			clip[i][4] = ShownTargets().pictureWidth / (sceneDesc.Width * scaleX);
+			clip[i][5] = ShownTargets().pictureHeight / (sceneDesc.Height * scaleY);
 		}
 
 		// The engine tracks what it has bound; everything touched here goes back exactly as it was.
@@ -2560,7 +2661,7 @@ namespace
 					// The capture camera doesn't need the doorway on screen.
 					const auto doorway = file || capture ? std::optional(wholeScreen) : DoorwayOnScreen(*portal);
 					if (doorway) {
-						result = RenderPortal(*portal, *doorway, capture);
+						result = RenderPortal(*portal, *doorway, capture, file.has_value());
 						// Render passes found freed in the draw were left out (parts of the view
 						// missing for that frame: a flicker, seen right after walking in). The cull
 						// builds the passes again; drawn once more, the picture is whole.
@@ -2569,7 +2670,7 @@ namespace
 							if (redraws++ < 20) {
 								logger::info("portal: {} freed render pass(es) skipped; portal pass drawn again", freedPassesThisSubmit);
 							}
-							result = RenderPortal(*portal, *doorway, capture);
+							result = RenderPortal(*portal, *doorway, capture, file.has_value());
 							if (freedPassesThisSubmit > 0 && redraws < 20) {
 								logger::warn("portal: the second portal pass still met {} freed render pass(es)", freedPassesThisSubmit);
 							}
@@ -2770,6 +2871,7 @@ namespace Portal::Render
 		lightDebug.shadowLightScale = a_settings.value("shadowLightScale", lightDebug.shadowLightScale);
 		lightDebug.pointLightScale = a_settings.value("pointLightScale", lightDebug.pointLightScale);
 		lightDebug.precipitation = a_settings.value("precipitation", lightDebug.precipitation);
+		lightDebug.sunShadows = a_settings.value("sunShadows", lightDebug.sunShadows);
 		if (a_settings.value("logPasses", false)) {
 			logPassesNext = true;
 		}
@@ -2784,7 +2886,7 @@ namespace Portal::Render
 		}
 		return { { "ambientScale", lightDebug.ambientScale }, { "sunScale", lightDebug.sunScale }, { "communityShaders", lightDebug.communityShaders },
 			{ "shadowLightScale", lightDebug.shadowLightScale }, { "pointLightScale", lightDebug.pointLightScale }, { "pointLights", scene.activeLights.size() },
-			{ "shadowLights", shadowLights } };
+			{ "shadowLights", shadowLights }, { "sunShadows", lightDebug.sunShadows } };
 	}
 
 	std::optional<std::array<float, 19>> MergedLighting(RE::TESObjectCELL* a_cell, const RE::NiMatrix3& a_rotation)

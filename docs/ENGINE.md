@@ -162,6 +162,30 @@ Found porting the plugin; each was checked in the code of both.
   - It must be emptied after each submit, as `RenderPlayerView` does (ID 106597
     `ClearItemsList`, ID 106600 (acc, 6) and (acc, 5)), or stale passes crash the batch renderer.
   - ID 77386 (false) afterwards marks the engine's state cache dirty.
+  - Render flags (`BSShaderAccumulator::RENDER_FLAG`): 0x1 jitters the projection like the main
+    view's (`State::SetCameraData`, ID 77503: the cache entry is per camera and jitter); 0x400 calls
+    `Renderer::UpdateViewPort(0, 0, true)` (ID 77240), the whole target, without dynamic
+    resolution. Binding a target with "update viewport" (ID 77453) applies the render scale
+    (`BSGraphics::State` ratios), as for the main view, which is drawn into the target's top-left
+    part. The main view submits with 0x41.
+- **The sun's shadow maps** (`ShadowSceneNode::sunShadowDirLight`, a `BSShadowDirectionalLight`;
+  every scene made with ID 106320 has one, sharing the scene's sun `NiDirectionalLight`):
+  1. `UpdateCamera(camera)` (vtable +0x80) fits the cascades to the camera (ID 107132 passes the
+     world camera).
+  2. `DirShadowLightCulling` (ID 108492, SE 101498; Community Shaders detours it for Interior Sun)
+     culls job arrays (one `BSTArray` of top nodes per culling job, one job per entry of
+     `fullFrustumCullingProcessArray`; the world's come from ID 106323) into the cascades'
+     accumulators, then a last node list.
+  3. `Accumulate(count, 0, nullptr)` (vtable +0x48; ID 107137).
+  4. `Render(index)` (vtable +0x50; ID 107133) draws each cascade (ID 107604: binds the depth target
+     slice, submits the cascade's accumulator with its own camera) into
+     `kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM` when ID 391108 is 2 (it is in this game), then into
+     `kSHADOWMAPS_ESRAM`, and writes the cascades' `lightTransform`s.
+  Community Shaders builds its soft copy (Volumetric Shadows' VSM) from the shadow map bound at
+  PS t4 when the main view's shadow mask is drawn, and reads `lightTransform` for t98.
+- **Vanilla specular has no N·L:** `pow(N·H, shininess)` times the light, so a surface lit at a
+  grazing angle (a low sun on tree needles) glints at full strength. In the world the shadow maps
+  hide most of it; drawn without them, it shows.
 - **Rain and snow** are one particle shape per weather (`Sky::precip->currentPrecip` /
   `lastPrecip`, under the world scene's "Weather" node), a cube that follows the camera.
   - The precipitation update (ID 26179, SE 25638; from `Sky::Update` and ID 26222) gives the

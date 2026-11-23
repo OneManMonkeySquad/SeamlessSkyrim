@@ -126,3 +126,16 @@
 - Without Community Shaders (the native backend) water isn't masked at a merged room's doorway:
   the street's canal shows in the Ratway's doorway over the steps down. `NativeMask` hooks the
   lighting, utility and effect shaders only; the water shader isn't tried.
+- Through Solitude's gate near sunset (18:24 to 18:36) the tops of the trees beside the cliff and
+  behind the ruined fort catch the sun in the gateway and not outside (their lower parts, the
+  ground and the cliff tree's needles are shaded in both). Not known what shades them outside: a
+  caster beyond the portal's nine cells, distant LOD (not in the portal pass), or the gateway's
+  shadows being the soft copy (Volumetric Shadows' VSM, 512 texels a cascade) where the world has
+  its crisp shadow mask. The portal's own shadow pass costs about 1 ms of the main thread.
+- Walking out of Solitude's gate and looking back, the doorway's picture of the city was once only
+  the evening sky (peach, faint cloud shapes) for the 4 s before the view back was ready; taken
+  while Community Shaders was still compiling its lighting shaders after a shader change. Not
+  seen in the next two runs.
+- College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
+  open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
+  the route predates doors opening only when used and doesn't use the door.

@@ -71,6 +71,14 @@ namespace Render::Backend
 	// light. The clip plane (unit normal, offset; pixels with dot(P, n) < offset are cut) is set
 	// before Begin and cleared (nullptr) after End.
 	void SetPortalClip(const float* a_plane);
+	// The sun's shadows of an outdoor space the portal pass draws, rendered with its own shadow light
+	// into shadow map arrays made like the engine's (Community Shaders fork only); set before Begin,
+	// cleared (nullptr) after End.
+	bool CanShadowPortal();
+	// The outdoor worldspace the portal pass draws, or nullptr: the fork keeps its terrain's shadows
+	// (Terrain Shadows) for it while the player's worldspace (a city's) has none of its own.
+	void SetPortalWorldspace(RE::TESWorldSpace* a_worldspace);
+	void SetPortalShadows(RE::BSShadowDirectionalLight* a_light, void* a_shadowMaps, void* a_volumetricShadowMaps);
 	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior);
 	void EndPortalPass();
 
