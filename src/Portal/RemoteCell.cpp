@@ -657,7 +657,10 @@ namespace Portal
 			}
 			// A reference's own 3D, not a node of the engine's that holds several: one we loaded
 			// (PersistentIn), which the engine's attach of its cell on walking out leaves where it is.
-			if (auto* ref = handOver ? RE::TESObjectREFR::FindReferenceFor3D(object.get()) : nullptr; ref && ref->Get3D() == object.get()) {
+			// Not only when handed over: let go first and then walked out the engine's way (the door
+			// walked into before the street was there, or shut and opened again quickly), Riften's
+			// canal walk and houses outside Beggar's Row were gone and the player fell into the canal.
+			if (auto* ref = RE::TESObjectREFR::FindReferenceFor3D(object.get()); ref && ref->Get3D() == object.get()) {
 				handedPersistent.push_back(ref->GetFormID());
 			}
 		}
@@ -701,24 +704,25 @@ namespace Portal
 		// ground and rocks outside the Smelter Overseer's House were gone, only their collision left.
 		// ID 19165 is what the engine's cell attach (ID 18976, through ID 19187) puts each one in with.
 		REL::Relocation<void (*)(RE::TESObjectCELL*, RE::TESObjectREFR*, bool, bool)> attachRef3D{ REL::RelocationID(18683, 19165) };
-		int hung = 0, notAttached = 0;
-		for (const auto id : std::exchange(handedPersistent, {})) {
-			auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
+		int hung = 0;
+		std::erase_if(handedPersistent, [&](RE::FormID a_id) {
+			auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_id);
 			auto* object = ref ? ref->Get3D() : nullptr;
 			if (!object || object->parent) {
-				continue;
+				return true;
 			}
+			// Kept for when the engine has attached it (after its loading screen, some frames on).
 			// (ID 19165 crashed on a cell without 3D.)
 			auto* cell = ref->GetParentCell();
 			if (!Cell3D(cell) || cell->cellState.get() != CellState::kAttached) {
-				++notAttached;
-				continue;
+				return false;
 			}
 			attachRef3D(cell, ref, true, false);
 			++hung;
-		}
-		if (hung || notAttached) {
-			logger::info("portal: {} persistent reference(s) hung into their cells after walking out, {} left (cell not attached)", hung, notAttached);
+			return true;
+		});
+		if (hung) {
+			logger::info("portal: {} persistent reference(s) hung into their cells after walking out, {} waiting for their cell", hung, handedPersistent.size());
 		}
 	}
 
@@ -1309,11 +1313,13 @@ namespace Portal
 				continue;
 			}
 			box->center = a_move * saved.center;
+			// Scaled too: a street merged into an interior is drawn larger (PlacementOf).
+			const auto sz = saved.size * a_move.scale;
 			if (saved.shape->GetType() == 2) {
 				static_cast<RE::BSMultiBoundOBB*>(saved.shape.get())->rotation = r * saved.rotation;
+				box->size = sz;
 			} else {
 				// An axis-aligned box can't turn: the one around the turned box.
-				const auto& sz = saved.size;
 				for (int k = 0; k < 3; ++k) {
 					box->size[k] = std::abs(r.entry[k][0]) * sz.x + std::abs(r.entry[k][1]) * sz.y + std::abs(r.entry[k][2]) * sz.z;
 				}

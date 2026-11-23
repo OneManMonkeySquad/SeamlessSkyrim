@@ -285,6 +285,11 @@ namespace Render::Backend
 		}
 	}
 
+	bool MasksPrecipitation()
+	{
+		return kind == Kind::kCommunityShaders;
+	}
+
 	json Describe()
 	{
 		json out = {

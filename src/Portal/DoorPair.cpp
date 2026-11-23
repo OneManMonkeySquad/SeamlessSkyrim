@@ -436,7 +436,7 @@ namespace Portal::Doors
 			const RE::NiPoint3 free = wideX ? RE::NiPoint3{ span, 0.0f, 0.0f } : RE::NiPoint3{ 0.0f, span, 0.0f };
 			const float        sign = (-free.y * room.x + free.x * room.y) >= 0.0f ? 1.0f : -1.0f;  // the free end turns towards the room
 			// A little past 1: the swing's ease overshoots the stop (Manager's SwingEase).
-			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.1f) * RE::deg_to_rad(degrees);
+			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.2f) * RE::deg_to_rad(degrees);
 			const float        c = std::cos(angle), s = std::sin(angle);
 			RE::NiTransform    turn;  // in the door's space
 			turn.rotate = RE::NiMatrix3({ c, -s, 0.0f }, { s, c, 0.0f }, { 0.0f, 0.0f, 1.0f });
@@ -577,7 +577,9 @@ namespace Portal::Doors
 			box = geometry.panel;
 			thinX = geometry.thinX;
 		}
-		const float scale = a_door->Get3D()->world.scale;
+		// In its cell's own coordinates: a street merged into an interior is drawn scaled
+		// (PlacementOf), and its door with it.
+		const float scale = Placement(a_door).scale;
 		const float x = box.max.x - box.min.x, y = box.max.y - box.min.y;
 		return { 0.5f * scale * (thinX ? y : x), 0.5f * scale * (thinX ? x : y), 0.5f * scale * (box.max.z - box.min.z) };
 	}
@@ -628,9 +630,17 @@ namespace Portal::Doors
 		std::unordered_map<RE::FormID, RE::NiPoint3> shifts;  // under correctionsLock
 		bool                                  correctionsLoaded = false;
 
-		std::filesystem::path CorrectionsFile()
+		// The doors the mod ships with. Never written: an update replaces it, which would take the
+		// player's own tunings with it if they were kept here too.
+		std::filesystem::path DefaultsFile()
 		{
 			return Paths::PluginDirectory() / "SeamlessSkyrim_Doors.ini";
+		}
+
+		// The doors tuned in game. No release ships it, so no update replaces it.
+		std::filesystem::path TuningsFile()
+		{
+			return Paths::PluginDirectory() / "SeamlessSkyrim_Doors_User.ini";
 		}
 
 		// "Skyrim.esm|01A6F5": the same door whatever the load order.
@@ -683,32 +693,35 @@ namespace Portal::Doors
 			return sections;
 		}
 
-		void LoadCorrections()
+		// Every section's entries are Plugin.esp|localID=value; a_use gets the door and the value. An
+		// empty a_section: the entries of every section.
+		void ForEachEntry(const Sections& a_sections, std::wstring_view a_section, const std::function<void(RE::FormID, const wchar_t*)>& a_use)
 		{
-			if (std::exchange(correctionsLoaded, true)) {
-				return;
-			}
-			const auto sections = ReadSections(CorrectionsFile());
-			auto*      handler = RE::TESDataHandler::GetSingleton();
-			// Every section's entries are Plugin.esp|localID=value; a_use gets the door and the value.
-			const auto each = [&](std::wstring_view a_section, const std::function<void(RE::FormID, const wchar_t*)>& a_use) {
-				for (const auto& [name, entries] : sections) {
-					if (::_wcsnicmp(name.c_str(), a_section.data(), std::max(name.size(), a_section.size())) != 0) {
+			auto* handler = RE::TESDataHandler::GetSingleton();
+			for (const auto& [name, entries] : a_sections) {
+				if (!a_section.empty() && ::_wcsnicmp(name.c_str(), a_section.data(), std::max(name.size(), a_section.size())) != 0) {
+					continue;
+				}
+				for (const auto& entry : entries) {
+					const auto equals = entry.find(L'=');
+					const auto bar = entry.find(L'|');
+					if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals) {
 						continue;
 					}
-					for (const auto& entry : entries) {
-						const auto equals = entry.find(L'=');
-						const auto bar = entry.find(L'|');
-						if (equals == std::wstring::npos || bar == std::wstring::npos || bar > equals) {
-							continue;
-						}
-						const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
-						const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
-						if (const auto id = handler->LookupFormID(local, file)) {
-							a_use(id, entry.c_str() + equals + 1);
-						}
+					const std::string file = Paths::Narrow(std::wstring_view(entry).substr(0, bar));
+					const auto        local = static_cast<RE::FormID>(std::wcstoul(entry.substr(bar + 1, equals - bar - 1).c_str(), nullptr, 16));
+					if (const auto id = handler->LookupFormID(local, file)) {
+						a_use(id, entry.c_str() + equals + 1);
 					}
 				}
+			}
+		}
+
+		// Under correctionsLock.
+		void Apply(const Sections& a_sections)
+		{
+			const auto each = [&](std::wstring_view a_section, const std::function<void(RE::FormID, const wchar_t*)>& a_use) {
+				ForEachEntry(a_sections, a_section, a_use);
 			};
 			each(L"DoorTurn", [](RE::FormID a_door, const wchar_t* a_value) {
 				if (const float degrees = std::wcstof(a_value, nullptr); degrees != 0.0f) {
@@ -741,8 +754,37 @@ namespace Portal::Doors
 					shifts[a_door] = shift;
 				}
 			});
-			logger::info("portal: {} door turn(s), {} door shift(s), {} swing angle(s), {} portal(s) off, {} opening inward, {} always open, {} gate(s) with a picture from afar loaded",
-				corrections.size(), shifts.size(), swingDegrees.size(), portalsOff.size(), opensInward.size(), alwaysOpen.size(), farPicture.size());
+		}
+
+		void LoadCorrections()
+		{
+			if (std::exchange(correctionsLoaded, true)) {
+				return;
+			}
+			Apply(ReadSections(DefaultsFile()));
+			// A door the player tuned takes none of the shipped settings: an entry missing from the
+			// tunings means the built-in default (a portal switched back on, a door no longer shifted),
+			// not the shipped value. SaveCorrection always writes [DoorPortal], so a tuned door is in
+			// the file even when all its settings are the built-in ones.
+			const auto              tunings = ReadSections(TuningsFile());
+			std::vector<RE::FormID> tuned;
+			ForEachEntry(tunings, {}, [&](RE::FormID a_door, const wchar_t*) {
+				if (std::ranges::find(tuned, a_door) == tuned.end()) {
+					tuned.push_back(a_door);
+				}
+			});
+			for (const auto door : tuned) {
+				corrections.erase(door);
+				swingDegrees.erase(door);
+				portalsOff.erase(door);
+				opensInward.erase(door);
+				alwaysOpen.erase(door);
+				farPicture.erase(door);
+				shifts.erase(door);
+			}
+			Apply(tunings);
+			logger::info("portal: {} door turn(s), {} door shift(s), {} swing angle(s), {} portal(s) off, {} opening inward, {} always open, {} gate(s) with a picture from afar loaded; {} door(s) tuned by the player",
+				corrections.size(), shifts.size(), swingDegrees.size(), portalsOff.size(), opensInward.size(), alwaysOpen.size(), farPicture.size(), tuned.size());
 		}
 
 		RE::NiTransform TurnAround(float a_radians, const RE::NiPoint3& a_center)
@@ -803,26 +845,26 @@ namespace Portal::Doors
 		const float degrees = Correction(a_door);
 		const auto  key = CorrectionKey(a_door);
 		const std::wstring wkey = Paths::Widen(key);
+		const auto         file = TuningsFile();
 		const auto         value = std::format(L"{:.2f}", degrees);
-		::WritePrivateProfileStringW(L"DoorTurn", wkey.c_str(), degrees != 0.0f ? value.c_str() : nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorHinge", wkey.c_str(), nullptr, CorrectionsFile().c_str());
+		::WritePrivateProfileStringW(L"DoorTurn", wkey.c_str(), degrees != 0.0f ? value.c_str() : nullptr, file.c_str());
 		const float swing = SwingDegrees(a_door);
 		const auto  swingValue = std::format(L"{:.0f}", swing);
-		::WritePrivateProfileStringW(L"DoorSwing", wkey.c_str(), swing != kSwingDegrees ? swingValue.c_str() : nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorOpen", wkey.c_str(), nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorShift", wkey.c_str(), nullptr, CorrectionsFile().c_str());
+		::WritePrivateProfileStringW(L"DoorSwing", wkey.c_str(), swing != kSwingDegrees ? swingValue.c_str() : nullptr, file.c_str());
 		const auto shift = Shift(a_door);
 		const auto shiftValue = std::format(L"{:.1f},{:.1f},{:.1f}", shift.x, shift.y, shift.z);
 		const bool shifted = shift.x != 0.0f || shift.y != 0.0f || shift.z != 0.0f;
-		::WritePrivateProfileStringW(L"DoorOffset", wkey.c_str(), shifted ? shiftValue.c_str() : nullptr, CorrectionsFile().c_str());
+		::WritePrivateProfileStringW(L"DoorOffset", wkey.c_str(), shifted ? shiftValue.c_str() : nullptr, file.c_str());
 		const bool off = PortalOff(a_door);
 		const bool inward = OpensInward(a_door);
 		const bool open = AlwaysOpen(a_door);
 		const bool picture = PictureFromAfar(a_door);
-		::WritePrivateProfileStringW(L"DoorPortal", wkey.c_str(), off ? L"0" : nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorOpensIn", wkey.c_str(), inward ? L"1" : nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorAlwaysOpen", wkey.c_str(), open ? L"1" : nullptr, CorrectionsFile().c_str());
-		::WritePrivateProfileStringW(L"DoorFarPicture", wkey.c_str(), picture ? L"1" : nullptr, CorrectionsFile().c_str());
+		// Written even when on: it keeps the door in the file, so LoadCorrections lets none of the
+		// shipped settings back in.
+		::WritePrivateProfileStringW(L"DoorPortal", wkey.c_str(), off ? L"0" : L"1", file.c_str());
+		::WritePrivateProfileStringW(L"DoorOpensIn", wkey.c_str(), inward ? L"1" : nullptr, file.c_str());
+		::WritePrivateProfileStringW(L"DoorAlwaysOpen", wkey.c_str(), open ? L"1" : nullptr, file.c_str());
+		::WritePrivateProfileStringW(L"DoorFarPicture", wkey.c_str(), picture ? L"1" : nullptr, file.c_str());
 		logger::info("portal: door {} saved: turned {:.2f} degrees, opens by {:.0f} degrees{}{}{}{}", key, degrees, swing,
 			off ? ", portal off" : ", portal on", inward ? ", opens inward" : "", open ? ", always open" : "", picture ? ", picture from afar" : "");
 	}
@@ -1117,18 +1159,23 @@ namespace Portal::Doors
 			});
 		}
 
-		// Culling the root alone left the panel on screen while merged; the shapes are culled one by
-		// one, as for the player's body (CameraLimit).
-		void HideShapes(RE::NiAVObject* a_door3D, Shared& a_shared)
+		// The leaves only: a frame in the door's mesh fills the wall around the panel (Riften's
+		// RiftenRWDoorLoad01), and the other door's frame, standing in the same place, is drawn only
+		// beyond the door plane and within the panel's rectangle. Hidden too, the doorway was a hole
+		// in the wall wider than the opening. Culling a node alone left the panel on screen while
+		// merged; the shapes are culled one by one, as for the player's body (CameraLimit).
+		void HideShapes(RE::TESObjectREFR* a_door, Shared& a_shared)
 		{
-			a_door3D->SetAppCulled(true);
-			RE::BSVisit::TraverseScenegraphGeometries(a_door3D, [&](RE::BSGeometry* a_shape) {
-				if (!a_shape->GetAppCulled()) {
-					a_shape->SetAppCulled(true);
-					a_shared.hiddenShapes.emplace_back(a_shape);
-				}
-				return RE::BSVisit::BSVisitControl::kContinue;
-			});
+			std::scoped_lock lock(geometryLock);
+			for (const auto& leaf : GeometryOf(a_door).leaves) {
+				RE::BSVisit::TraverseScenegraphGeometries(leaf.node.get(), [&](RE::BSGeometry* a_shape) {
+					if (!a_shape->GetAppCulled()) {
+						a_shape->SetAppCulled(true);
+						a_shared.hiddenShapes.emplace_back(a_shape);
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				});
+			}
 		}
 
 		// The engine built the door's 3D anew while it was held open (disabled and enabled by a
@@ -1148,7 +1195,7 @@ namespace Portal::Doors
 				MakeWalkable(a_door, a_door3D, a_shared);
 			}
 			if (a_shared.hides > 0) {
-				HideShapes(a_door3D, a_shared);
+				HideShapes(a_door, a_shared);
 			}
 			if (a_shared.passables > 0) {
 				HideBodies(a_door3D, a_shared);
@@ -1265,7 +1312,7 @@ namespace Portal::Doors
 		}
 		if (a_hide) {
 			if (shared.hides++ == 0) {
-				HideShapes(door3D, shared);
+				HideShapes(a_door, shared);
 			}
 			a_state.hidden = true;
 		}
@@ -1285,11 +1332,7 @@ namespace Portal::Doors
 		if (it != openDoors.end()) {
 			auto& shared = it->second;
 			auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_state.door);
-			auto* door3D = door ? door->Get3D() : nullptr;
 			if (a_state.hidden && --shared.hides == 0) {
-				if (door3D) {
-					door3D->SetAppCulled(false);
-				}
 				for (auto& shape : shared.hiddenShapes) {
 					shape->SetAppCulled(false);
 				}

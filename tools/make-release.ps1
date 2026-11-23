@@ -8,7 +8,7 @@ The archive holds:
   fomod\info.xml, fomod\ModuleConfig.xml   package\fomod\, the version taken from CMakeLists.txt
   Core\SKSE\Plugins\SeamlessSkyrim.dll     Release build, without its PDB
   Core\SKSE\Plugins\SeamlessSkyrim.ini     package\, as a player gets it
-  Core\SKSE\Plugins\SeamlessSkyrim_Doors.ini   the game's copy, the doors tuned so far
+  Core\SKSE\Plugins\SeamlessSkyrim_Doors.ini   package\, with the doors tuned in game moved in
   CommunityShaders\SKSE\Plugins\CommunityShaders.dll   the fork's build
   CommunityShaders\...                     every file the fork changed or added under package\
                                            and features\*\ since -CsBase
@@ -19,8 +19,9 @@ The Community Shaders part is a separate option because it is only a patch: inst
 Community Shaders, its DLL runs with none of the shaders and data it expects and rendering breaks.
 The installer preselects it when CommunityShaders.dll is already installed.
 
-The game's SeamlessSkyrim_Doors.ini is copied into package\ first (commit it there), since door
-tunings made in game land in the game's copy.
+Door tunings made in game (the game's SeamlessSkyrim_Doors_User.ini) are moved into package\'s
+SeamlessSkyrim_Doors.ini first (tools\fold-door-tunings.ps1; commit them there). The user file is
+never shipped: it is where a player's own tunings live, safe from updates.
 
 .EXAMPLE
 tools\make-release.ps1 -Build
@@ -34,9 +35,6 @@ param(
 	[string]$CsBase = 'v1.9.1',
 	# Build SeamlessSkyrim (Release) and the fork's CommunityShaders target first.
 	[switch]$Build,
-	# Ship package\'s doors as they are, when the game has no SeamlessSkyrim_Doors.ini (the mod
-	# isn't deployed).
-	[switch]$KeepPackageDoors,
 	# Written into the archive's SOURCE.txt.
 	[string]$SourceUrl = 'https://github.com/OneManMonkeySquad/SeamlessSkyrim',
 	[string]$CsSourceUrl = 'https://github.com/OneManMonkeySquad/CommunityShaders-Seamless',
@@ -84,17 +82,8 @@ if ($Build) {
 }
 
 # ---- doors -----------------------------------------------------------------------------------
+& (Join-Path $PSScriptRoot 'fold-door-tunings.ps1') -GameData $GameData
 $doors = Join-Path $repo "package\$plugins\SeamlessSkyrim_Doors.ini"
-$liveDoors = Join-Path $GameData "$plugins\SeamlessSkyrim_Doors.ini"
-if (Test-Path -LiteralPath $liveDoors) {
-	if (-not (Test-Path -LiteralPath $doors) -or (Get-FileHash -LiteralPath $liveDoors).Hash -ne (Get-FileHash -LiteralPath $doors).Hash) {
-		Copy-Item -LiteralPath $liveDoors -Destination $doors
-		Write-Host "Door tunings from the game copied into package\$plugins\SeamlessSkyrim_Doors.ini; commit them." -ForegroundColor Yellow
-	}
-}
-elseif (-not $KeepPackageDoors) {
-	throw "$liveDoors is missing (mod not deployed?); deploy it, or pass -KeepPackageDoors to ship package\'s doors."
-}
 
 # ---- what goes into the archive: path in the archive -> source file --------------------------
 $files = [ordered]@{}

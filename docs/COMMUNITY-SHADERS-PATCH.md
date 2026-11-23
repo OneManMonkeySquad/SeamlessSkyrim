@@ -27,6 +27,8 @@ Installed files that differ from stock 1.9.1:
 - `Data/Shaders/Common/Permutation.hlsli`
 - `Data/Shaders/Utility.hlsl`
 - `Data/Shaders/ISSAOComposite.hlsl`
+- `Data/Shaders/Water.hlsl`
+- `Data/Shaders/Particle.hlsl`
 
 Community Shaders keeps compiled shaders in `Data/ShaderCache/<shader>/` and only notices a
 change to the shader's *own* file. After changing an include (`Common/*.hlsli`), delete the cache
@@ -91,8 +93,10 @@ Changes by file:
   - `ExtraShaderDescriptors::SeamlessRemote` (bit 7); `UpdateLightingShaderPermutation` sets it
     for shapes `SeamlessPortal_MergedRoomOf` (or `SeamlessPortal_IsMergedShape`) places in a
     merged room while any door is merged, and the room's index in `SeamlessRoom` (bits 11-12,
-    `kSeamlessRoomShift`; the word had bits 11 and up free). The utility and effect shaders'
-    permutations are set the same way from `SetupGeometry` hooks in `src/Hooks.cpp`.
+    `kSeamlessRoomShift`; the word had bits 11 and up free). The utility, effect and water shaders'
+    permutations are set the same way from `SetupGeometry` hooks in `src/Hooks.cpp`
+    (`WaterExtensions::BSWaterShader_SetupGeometry`: water had no hook, and drew with whatever the
+    last lighting pass had set).
   - `SeamlessDoor seamlessRooms[kSeamlessRooms]` (4, `SeamlessAnyRoom()`); `SharedDataCB` gains
     per-room arrays `SeamlessDoorPlane/Center/Right[4]`, `SeamlessRemoteDirColor/DirDirection[4]`,
     `SeamlessRemoteAmbient[12]` and one `SeamlessParams` (filled in `UpdateSharedData`, centres in
@@ -199,4 +203,22 @@ Changes by file:
   aren't the merged street get `dirSoftShadow = dirDetailedShadow = 1`: the interior keeps its
   unshadowed directional light.
 
-Not patched yet (so not masked in a merge): grass, effects/particles, water, distant trees, sky.
+- `Water.hlsl` pixel shader: the same `discard` (`SeamlessDoorClips`, the water's space from its
+  permutation), by the water's own position (`WPosition`, the stencil variant's `WorldPosition`):
+  the vertex shader pushes the water's depth (`heightMult`, `HorizonFix`), so the one rebuilt
+  from `SV_Position` isn't where the water is. The street's canal, a plane running under the
+  houses, showed in the Ratway's doorway over the steps down behind it. SeamlessSkyrim places
+  water in room 0 while the street is merged into an interior (the water then is the street's).
+
+- `Particle.hlsl` pixel shader, precipitation (`ENVCUBE`) only: the same `discard`
+  (`SeamlessDoorClips`, by `SeamlessPixelPosition`), its space from its permutation, which the
+  particle shader's `SetupGeometry` hook in `src/Hooks.cpp` now sets
+  (`UpdateLightingShaderPermutation`). SeamlessSkyrim places the weather's rain and snow in room 0
+  while the street is merged into an interior: they fall only beyond the doorway. Seen from the
+  street they are the world's and don't fall in the merged rooms. Through a city gate (room 0
+  with `SeamlessParams.y`) they aren't masked: SeamlessSkyrim draws them into the gate's picture
+  too, and where the picture has no far side the world's sky, rain included, shows through. Rain in room 0 with lighting is
+  lit by `SeamlessRemoteDirColor` and `SeamlessRemoteAmbientFor`, without IBL and the clustered
+  lights (the interior's): lit as the interior it was dark.
+
+Not patched yet (so not masked in a merge): grass, effects and other particles, distant trees, sky.

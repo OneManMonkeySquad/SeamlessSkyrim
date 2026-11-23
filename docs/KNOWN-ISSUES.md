@@ -1,9 +1,18 @@
 - SE 1.5.97: `coc MarkarthUnderstoneKeep` from Markarth's street, with the keep merged into the
   street (walked in and out just before), hung the game during the load (once; log ends at the
   `coc`). Not tried on AE.
+- AE: `place_go` (`coc RiftenBeggarsRow`) from Riften's street just after walking out of Beggar's
+  Row hung the game during the load: no CPU, every thread waiting; the log ends with the room's
+  door opened again (`Doors::Open`) after the release. Once.
 - SE 1.5.97 with the Community Shaders fork: not tried (the fork builds for SE; Community Shaders
   isn't installed in the 1.5.97 test game).
 - The skylight (the indoor stand-in for the sun) in The Drunken Huntsman turns off when seen from outside (jarring).
+- Settings changed in the in-game menu are written into the shipped `SeamlessSkyrim.ini`
+  (`Menu.cpp`, `Save`): an update replaces them with the new defaults. The door tunings had the
+  same problem and now have their own file (`SeamlessSkyrim_Doors_User.ini`).
+- A doorway's stand-in picture (a city gate seen before the city behind it is there) has no rain,
+  and covers the main view's rain in front of it too (rain writes no depth, ENGINE.md): the rain
+  stops at the picture's outline. Reasoned from the live gate's case, not seen yet.
 - Physics objects and arrows are not carried through a doorway.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
@@ -78,15 +87,33 @@
 - NPCs opening a shut door (`DoorUse`, from NpcTravel's door idle hook) seen in the log only
   (Whiterun's market with every door forced shut: they open, NPCs walk through), not watched.
 - Shutting a door by using it while standing in its doorway swings it shut onto the player.
+- A door pair placed at two sizes is evened out only for the street seen from inside (drawn
+  larger, `PlacementOf`). Between two interiors (the portal pass) the far side's wall still shows
+  in a band inside the larger doorway.
+- Walking out of Understone Keep (`markarth-understone-walk-out`): in the last frame before the
+  crossing the guard beside the door was drawn without his head, and the banners on the pillars
+  were missing from inside throughout. Not compared with a build before the street was scaled.
+- Beggar's Row's street door in Riften, opened and shut quickly many times (the user): then the
+  doorway couldn't be walked into, three tries. Not reproduced by the user afterwards, nor in
+  ~10 tries of 8–10 uses 0.05–0.6 s apart, from 100 units off or standing in the doorway.
+- A door opened for the first time, the space behind it loaded: the user saw it swing open twice.
+  Not seen in frame captures at Beggar's Row's street door, opened before its room was there
+  (stand-in, merged 4 s later) or after; nor at Elgrim's Elixirs' door.
 - A locked door opened with its key: the engine's own trip with its loading screen (only a picked
   lock is caught: the door then opens). Not tried.
 - Solitude's gate from afar shows its doorway picture: blurred, the gatehouse's portcullis and an
   amber haze rather than the street.
 - The game's memory grows by about 2.5 GB with each round trip through Riften's south gate
-  (private bytes 15 GB after loading, 31 GB after ten trips), also with the portals switched off
-  (the engine's own trip with its loading screen) and on the last commit; loading a save doesn't
-  give it back. Not yet tried without SeamlessSkyrim. The two crashes after many trips came with
-  the machine's memory nearly used up (one in a worker thread, SkyrimSE.exe+2CA107).
+  (private bytes 15 GB after loading, 31 GB after ten trips; the crashes after many trips came
+  with the machine's memory nearly used up). Not SeamlessSkyrim's portals: the same with the
+  engine's own trip and its loading screen, the portal hooks not installed, and with Community
+  Shaders, Faster Textures, Engine Fixes' texture patch and 88 of the 91 SKSE plugins removed
+  (left: SeamlessSkyrim for the bridge, trainwreck, HDT-SMP; without HDT-SMP this load order
+  crashes on faces at load, ID 69192). What grows are GPU textures (bridge `gpu_live`): ones the
+  engine still holds through materials after leaving for an empty cell and `pcb`, and ones whose
+  `NiSourceTexture` and renderer texture are already freed but whose D3D texture and view stay
+  alive with no outside reference, also after `ClearState` and `Flush`. Not yet tried: the game
+  without SKSE.
 - Crash in the portal pass (2026-11-23, after walking back and forth through Riften's south gate):
   `BSEffectShader` setup (SkyrimSE.exe+155757A, ID 107527+0x4EA) reads a light of the pass whose
   `NiLight` is gone (`BSLight::light` null), drawing the street behind the gate on the first frame
@@ -96,3 +123,6 @@
 - Riften's south gate's picture (seen from outside before the city is there): a pale smeared band
   along the bottom of the gateway and its right edge, where the gate passage's floor and wall
   right behind the plane are drawn from the picture's depth.
+- Without Community Shaders (the native backend) water isn't masked at a merged room's doorway:
+  the street's canal shows in the Ratway's doorway over the steps down. `NativeMask` hooks the
+  lighting, utility and effect shaders only; the water shader isn't tried.

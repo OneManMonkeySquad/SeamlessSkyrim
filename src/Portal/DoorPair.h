@@ -56,7 +56,8 @@ namespace Portal::Doors
 	// Some interiors are a little turned against the outside they belong to (the doors' markers
 	// don't quite agree); the player can correct that by hand (the in-game menu). The correction
 	// belongs to the pair and is stored under one of its doors, the outdoor one where there is
-	// one: degrees the inside is turned around its door, saved in SeamlessSkyrim_Doors.ini.
+	// one: degrees the inside is turned around its door. The mod's own in SeamlessSkyrim_Doors.ini,
+	// the player's in SeamlessSkyrim_Doors_User.ini, which replaces all of a door's shipped settings.
 	[[nodiscard]] RE::TESObjectREFR* CorrectionDoor(RE::TESObjectREFR* a_source, RE::TESObjectREFR* a_linked);
 	// The same by IDs and the sides' kinds: the linked door needn't be loaded.
 	[[nodiscard]] RE::FormID CorrectionDoor(RE::FormID a_source, bool a_sourceOutdoors, RE::FormID a_linked, bool a_linkedOutdoors);
@@ -105,7 +106,7 @@ namespace Portal::Doors
 	void               SetPictureFromAfar(RE::FormID a_door, bool a_picture);
 
 	// A door standing open for a portal: its collision off (the collision objects sit on child
-	// nodes of the door's 3D, so each one is switched) and optionally not drawn.
+	// nodes of the door's 3D, so each one is switched) and optionally its panel not drawn.
 	// a_passable: its bodies out of the Havok world as well. The layer change leaves a city gate
 	// solid, which is right only while there is nothing to walk through to.
 	// a_solid: its collision kept (a doorway shown open before the space behind it is there).

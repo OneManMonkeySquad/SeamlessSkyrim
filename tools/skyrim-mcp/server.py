@@ -1033,15 +1033,22 @@ def run_route(name: str = "", steps: list[dict[str, Any]] | None = None, grep: s
 
 
 @mcp.tool()
-def press_key(key: str, hold_ms: int = 80, repeat: int = 1) -> dict[str, Any]:
-    """Press a key in the game window (OS-level input; focuses the game first).
+def press_key(key: str, hold_ms: int = 80, repeat: int = 1, os_input: bool = False) -> dict[str, Any]:
+    """Press a key in the game: handed to the game's own input through the bridge (no focus,
+    works on the background desktop). In menus the keys act through the menu-mode control map:
+    "e" accepts a message box (Enter isn't mapped there), "esc" or "tab" cancels.
 
     key: a name from the scan-code table (letters, digits, f1-f12, esc, enter, space, tab, shift,
     ctrl, alt, console, up/down/left/right) or a hex DirectInput scan code like "0x29".
+    os_input: OS-level input instead (focuses the game window first); hold_ms applies to it only.
     """
     code = int(key, 16) if key.lower().startswith("0x") else SCAN_CODES.get(key.lower())
     if code is None:
         raise ValueError(f"unknown key '{key}'; known: {', '.join(SCAN_CODES)}")
+    if not os_input:
+        bridge.call("key", code=code, repeat=repeat)
+        time.sleep(0.1 * repeat)
+        return {"pressed": key, "repeat": repeat, "via": "bridge"}
     if not focus_game():
         raise BridgeError("could not bring the Skyrim window to the foreground")
     for _ in range(repeat):

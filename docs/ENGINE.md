@@ -73,7 +73,9 @@ Found porting the plugin; each was checked in the code of both.
   - 3D loaded while its cell isn't attached (`Load3D`, also `Set3D` again) hangs nowhere, and the
     engine's later attach of the cell leaves it so: it hangs only the 3D it loads itself. ID 19165
     (cell, ref, true, false) hangs one reference's 3D into its cell, as the cell attach does for
-    each (ID 18976 → ID 19187); the cell must have its 3D.
+    each (ID 18976 → ID 19187); the cell must have its 3D. Also after the engine's own trip with
+    its loading screen: a street let go just before it came back without them (Riften's canal
+    walk outside Beggar's Row, the player in the canal).
   - Walking out once, Markarth's ground statics (`MrkDocksideLand01`, temporary references of
     MarkarthMines) became persistent references of a runtime cell `FF000A96 'Wilderness'`, whose 3D
     hangs under `TES::objRoot` outdoors. Why isn't known.
@@ -86,6 +88,10 @@ Found porting the plugin; each was checked in the code of both.
   `NiMultiTargetTransformController`, like a house door: Whiterun's `WRDoorMainGate01.nif`
   (`FrontGateDoor06`/`08`), Riften's `RTMainGate01.nif` (`DoorL`/`DoorR`), Solitude's
   `SGateDoor.nif` (`SGateDoorLeft`/`Right`).
+- **A door's mesh can hold the wall around its panel.** Riften's `RiftenRWDoorLoad01` (base
+  0006F267, e.g. Elgrim's Elixirs) carries the stone frame filling the room's arch, wider than the
+  panel; the room's own wall has an arch-shaped hole. Hiding a door means hiding its leaves (the
+  animated nodes), not its whole 3D: hidden whole, the doorway was a hole into the void.
 - **Behind a city gate the player's own worldspace has a stand-in** for the other side, seen
   through the gateway once the gate is gone: Tamriel holds simple copies of Whiterun's and
   Riften's houses behind their gates, and Whiterun's worldspace its land beyond. Solitude's
@@ -156,6 +162,15 @@ Found porting the plugin; each was checked in the code of both.
   - It must be emptied after each submit, as `RenderPlayerView` does (ID 106597
     `ClearItemsList`, ID 106600 (acc, 6) and (acc, 5)), or stale passes crash the batch renderer.
   - ID 77386 (false) afterwards marks the engine's state cache dirty.
+- **Rain and snow** are one particle shape per weather (`Sky::precip->currentPrecip` /
+  `lastPrecip`, under the world scene's "Weather" node), a cube that follows the camera.
+  - The precipitation update (ID 26179, SE 25638; from `Sky::Update` and ID 26222) gives the
+    emitter (`BSParticleShaderCubeEmitter`, the shader property's `particleEmitter`) density 0 and
+    culls the shape unless `Sky::mode` is full: indoors nothing falls, shown or not.
+  - The occlusion map (ID 26175, from `RenderPlayerView` after the shadow masks) is drawn every
+    frame indoors too, from the main view's cull roots, as long as the weather has rain or snow.
+    ID 26176 switches it (and clears it once).
+  - Rain writes no depth: a picture put over the main view later covers the rain in front of it.
 - **Two-sided at runtime:** setting `kTwoSided` on a shape's `BSShaderProperty` takes effect at its
   next draw. Community Shaders' lighting shader turns the normals of faces seen from behind (fading
   out past ~10000 units), so they are lit as their own side. Load doors' leaves are often modelled

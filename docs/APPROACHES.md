@@ -50,7 +50,9 @@ Why it falls short: it isn't the game's world render.
 - **No sun shadows:** interiors don't draw the sun's shadow maps.
 - **No real sky:** a gradient is drawn instead (`DrawSky`).
 - **No distant LOD and no fog.**
-- **Rain and snow:** experimental, off.
+- **Rain and snow:** through a city gate, the main view's own rain is drawn into the picture
+  with the main camera (`DrawMainPrecipitation`): the picture covers it on screen. Rain drawn from
+  the portal camera was only the far, thin streaks (its near plane stands at the far gate).
 - **Workarounds needed:** freed render passes (a crash, now caught), motion vectors for the
   upscaler, and borrowed engine state that has to be saved and put back.
 
@@ -181,6 +183,9 @@ The game's own renderer draws the view out at full quality.
   and the engine's sun shadow light gets a directional light of its own pointed at the outdoor
   sun. Its shadows fall on the street only; the room keeps its own unshadowed directional light.
 - **Fog:** the street's own fog.
+- **Rain and snow:** the engine's precipitation update runs as outdoors while the street is
+  merged (`PrecipitationUpdateHook`); the fork's particle shader keeps the rain to the street's
+  side of the doorway and lights it with the street's light. Community Shaders fork only.
 - **Doors:** both door panels are hidden. The interior's shapes standing just beyond the door
   plane are culled (Belethor's backing panel).
 - **Culling:** the street hangs in the interior's statics branch, or in the door's room for an

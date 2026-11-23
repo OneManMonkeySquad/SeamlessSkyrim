@@ -1,6 +1,7 @@
 #include "Bridge/AgentMode.h"
 
 #include <Windows.h>
+#include <deque>
 
 namespace
 {
@@ -125,24 +126,72 @@ namespace AgentMode
 			return process == ::GetCurrentProcessId();
 		}
 
+		// Keys from the bridge: each entry a key going down or up, one per keyboard read, so the
+		// game sees the press and the release in different frames.
+		std::mutex                                    keysLock;
+		std::deque<std::pair<std::uint32_t, bool>>    keys;  // under keysLock
+
+		void InjectKey()
+		{
+			std::pair<std::uint32_t, bool> key;
+			{
+				std::scoped_lock guard(keysLock);
+				if (keys.empty()) {
+					return;
+				}
+				key = keys.front();
+				keys.pop_front();
+			}
+			// The user event the key stands for where input goes now (a message box's "Accept" for
+			// E): the topmost input context that maps it. The topmost alone (the cursor's, over a
+			// message box) maps no keys at all, and without a user event menus ignore the key.
+			auto*            controls = RE::ControlMap::GetSingleton();
+			const auto&      stack = controls->GetRuntimeData().contextPriorityStack;
+			std::string_view name;
+			// Not ControlMap::GetUserEventName: it gives nothing for a key mapped twice in a context.
+			for (auto i = stack.size(); i > 0 && name.empty(); --i) {
+				const auto* context = controls->controlMap[stack[i - 1]];
+				if (!context) {
+					continue;
+				}
+				for (const auto& mapping : context->deviceMappings[RE::INPUT_DEVICE::kKeyboard]) {
+					if (mapping.inputKey == key.first) {
+						name = mapping.eventID;
+						break;
+					}
+				}
+			}
+			const RE::BSFixedString userEvent(name);
+			RE::BSInputEventQueue::GetSingleton()->AddButtonEvent(RE::INPUT_DEVICE::kKeyboard, static_cast<std::int32_t>(key.first), key.second ? 1.0f : 0.0f, key.second ? 0.0f : 0.1f, userEvent);
+		}
+
 		template <class Device>
 		struct PollHook
 		{
 			static void Thunk(Device* a_device, float a_delta)
 			{
-				if (GameHasFocus()) {
+				if (!Background() || GameHasFocus()) {
 					func(a_device, a_delta);
+				}
+				if constexpr (std::is_same_v<Device, RE::BSWin32KeyboardDevice>) {
+					InjectKey();
 				}
 			}
 			static inline REL::Relocation<decltype(Thunk)> func;
 		};
 	}
 
+	void QueueKey(std::uint32_t a_scanCode, int a_repeat)
+	{
+		std::scoped_lock guard(keysLock);
+		for (int i = 0; i < a_repeat; ++i) {
+			keys.emplace_back(a_scanCode, true);
+			keys.emplace_back(a_scanCode, false);
+		}
+	}
+
 	void InstallInputGuards()
 	{
-		if (!Background()) {
-			return;
-		}
 		// With bAlwaysActive the game keeps reading keyboard and mouse while it sits unfocused on
 		// its own desktop: whatever the user typed elsewhere opened the inventory and the map,
 		// walked the player into doors and paused test runs. Only read input while the game window
@@ -151,7 +200,7 @@ namespace AgentMode
 		PollHook<RE::BSWin32KeyboardDevice>::func = keyboard.write_vfunc(0x2, PollHook<RE::BSWin32KeyboardDevice>::Thunk);
 		REL::Relocation<std::uintptr_t> mouse{ RE::VTABLE_BSWin32MouseDevice[0] };
 		PollHook<RE::BSWin32MouseDevice>::func = mouse.write_vfunc(0x2, PollHook<RE::BSWin32MouseDevice>::Thunk);
-		logger::info("agent mode: input only while focused");
+		logger::info("agent mode: bridge keys injected{}", Background() ? "; other input only while focused" : "");
 	}
 
 	namespace

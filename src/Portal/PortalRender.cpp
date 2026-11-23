@@ -327,7 +327,7 @@ namespace
 		float shadowLightScale = 1.0f;
 		float pointLightScale = 1.0f;
 		bool  communityShaders = true;
-		bool  precipitation = false;  // rain and snow in the view out of an interior (untested: off)
+		bool  precipitation = true;   // rain and snow in the portal pass of an outdoor space
 		bool  tintDoorway = false;    // the doorway's picture tinted red: tells which flashes are in it
 		// Switches for finding a whole-screen flash (the in-game menu): each leaves one part out.
 		bool  skipPortalPass = false;   // no portal pass, nothing in the doorway
@@ -350,55 +350,89 @@ namespace
 	};
 	MainView mainView;
 
-	// ---- rain and snow seen from indoors ----------------------------------------------------
+	// ---- rain and snow behind a door ----------------------------------------------------------
 	// The weather's precipitation is one particle shape (Sky::precip, under the world scene's
-	// "Weather" node) that the engine keeps centred on the camera. Indoors the sky is in interior
-	// mode and the shape is culled, but it is still there and still follows the camera. For the
-	// portal pass it is shown, moved to the portal camera and culled into the portal's
-	// accumulator, and put back afterwards.
-	struct ShownPrecipitation
+	// "Weather" node) that the engine keeps centred on the camera. Rain writes no depth, so the
+	// doorway's picture, put over the main view after the world is drawn, covered the rain in front
+	// of a city gate too: it rained up to the gateway's outline and not in it. Both sides of a gate
+	// share the weather and the coordinates, so the main view's own rain is drawn into the picture,
+	// with the main camera and against the main view's depth: in the doorway it is then exactly the
+	// rain the picture covers. (The far side's rain drawn from the portal camera was only the far,
+	// thin streaks: its near plane stands at the far gate.)
+	void DrawMainPrecipitation(RE::ShadowSceneNode* a_root)
 	{
-		RE::NiPointer<RE::BSGeometry> shape;
-		bool                          wasCulled;
-		RE::NiTransform               local;
-	};
-
-	std::vector<ShownPrecipitation> ShowPrecipitation(RE::BSCullingProcess::CullingContext& a_context, const RE::NiPoint3& a_eye)
-	{
-		std::vector<ShownPrecipitation> shown;
-		auto* sky = RE::Sky::GetSingleton();
-		auto* precip = sky ? sky->precip : nullptr;
-		if (!precip) {
-			return shown;
-		}
+		// Not cut at the far door: this rain is the main view's, in the main view's coordinates.
+		::Render::Backend::EndPortalPass();
+		::Render::Backend::SetPortalClip(nullptr);
+		auto* sun = a_root->GetRuntimeData().sunLight;
+		::Render::Backend::BeginPortalPass(sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr, false);
+		auto* precip = RE::Sky::GetSingleton()->precip;
+		auto* camera = RE::Main::WorldRootCamera();
+		ResetAccumulator(portalAccumulator.get());
+		auto& data = portalAccumulator->GetRuntimeData();
+		data.activeShadowSceneNode = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		data.eyePosition = camera->world.translate;
 		for (auto* shape : { precip->currentPrecip.get(), precip->lastPrecip.get() }) {
-			if (!shape) {
-				continue;
+			if (shape && !shape->GetAppCulled()) {
+				RE::BSCullingProcess::CullingContext context;
+				context.accumulator.reset(portalAccumulator.get());
+				context.camera.reset(camera);
+				context.scene.reset(shape);
+				RE::BSCullingProcess::Process(context);
 			}
-			shown.push_back({ RE::NiPointer<RE::BSGeometry>(shape), shape->GetAppCulled(), shape->local });
-			shape->SetAppCulled(false);
-			shape->local.translate = shape->parent ? shape->parent->world.Invert() * a_eye : a_eye;
-			RE::NiUpdateData update;
-			shape->Update(update);
-			RE::BSCullingProcess::CullingContext context;
-			context.accumulator.reset(a_context.accumulator.get());
-			context.camera.reset(a_context.camera.get());
-			context.scene.reset(shape);
-			RE::BSCullingProcess::Process(context);
 		}
-		return shown;
+		SetDepthTarget(RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN, RE::BSGraphics::SRTM_NO_CLEAR, 0);
+		inPortalSubmit = true;
+		RE::BSGraphics::Renderer::SubmitAccumulator(camera, portalAccumulator.get(), kRenderFlags);
+		inPortalSubmit = false;
+		SetDepthTarget(kDepthTarget, RE::BSGraphics::SRTM_NO_CLEAR, 0);
 	}
 
-	void HidePrecipitation(std::vector<ShownPrecipitation>& a_shown)
+	// The sky's precipitation update (ID 26179, from Sky::Update) gives the rain and snow no
+	// particles unless the sky is in full mode (the emitter's density 0, the shape culled), and
+	// indoors it is in dome-only mode. While the street is merged in, the update runs as outdoors:
+	// the street through the doorway has the weather's rain, fading in and out with the weather as
+	// it does outdoors. The shape follows the camera into the room; the doorway mask keeps it to the
+	// street (Manager::MergedRoomOf).
+	struct PrecipitationUpdateHook
 	{
-		for (auto& [shape, wasCulled, local] : a_shown) {
-			shape->local = local;
-			shape->SetAppCulled(wasCulled);
-			RE::NiUpdateData update;
-			shape->Update(update);
+		static void Thunk(RE::Precipitation* a_precip, float a_delta)
+		{
+			auto*      sky = RE::Sky::GetSingleton();
+			const auto mode = sky->mode;
+			if (Portal::Manager::StreetMerged() && ::Render::Backend::MasksPrecipitation()) {
+				sky->mode = RE::Sky::Mode::kFull;
+			}
+			original(a_precip, a_delta);
+			sky->mode = mode;
 		}
-		a_shown.clear();
-	}
+
+		// Called from two places (Sky::Update and ID 26222), so the function itself is redirected:
+		// its first instructions (mov rax, rsp; push rbx; sub rsp, imm32: 11 bytes, position
+		// independent, the frame size differing between builds) are moved to a stub that continues
+		// behind them.
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> target{ REL::RelocationID(25638, 26179) };
+			constexpr std::size_t           kMoved = 11;
+			const auto*                     code = reinterpret_cast<const std::uint8_t*>(target.address());
+			static constexpr std::uint8_t   expected[7] = { 0x48, 0x8B, 0xC4, 0x53, 0x48, 0x81, 0xEC };
+			if (std::memcmp(code, expected, sizeof(expected)) != 0 || code[9] != 0 || code[10] != 0) {
+				logger::warn("portal: precipitation update not as expected; no rain or snow through a doorway seen from indoors");
+				return;
+			}
+			auto& trampoline = SKSE::GetTrampoline();
+			auto* stub = static_cast<std::uint8_t*>(trampoline.allocate(kMoved + 14));
+			std::memcpy(stub, code, kMoved);
+			const std::uint8_t jump[6] = { 0xFF, 0x25, 0x00, 0x00, 0x00, 0x00 };  // jmp [rip+0]
+			std::memcpy(stub + kMoved, jump, sizeof(jump));
+			const std::uintptr_t resume = target.address() + kMoved;
+			std::memcpy(stub + kMoved + sizeof(jump), &resume, sizeof(resume));
+			original = reinterpret_cast<decltype(original)>(stub);
+			trampoline.write_branch<5>(target.address(), Thunk);
+		}
+		static inline void (*original)(RE::Precipitation*, float) = nullptr;
+	};
 
 	// ---- the remote cell's lighting environment ----------------------------------------------
 	// Lighting shaders read one global directional ambient, set each frame for the current space
@@ -1610,10 +1644,6 @@ namespace
 				HideActorsAgain(actors);
 			}
 		}
-		std::vector<ShownPrecipitation> precipitation;
-		if (lightDebug.precipitation && !a_portal.cell->IsInteriorCell()) {
-			precipitation = ShowPrecipitation(context, portalCamera->world.translate);
-		}
 
 		// Same sequence as the engine's menu-3D renderer (ID 52727): bind with clear, let the clear
 		// happen now (the engine clears lazily, when the binding is applied), then bind without.
@@ -1686,6 +1716,12 @@ namespace
 		inPortalSubmit = true;
 		RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), kRenderFlags);
 		inPortalSubmit = false;
+		// The weather's rain falls through a city gate too. Not in a doorway picture: it is kept,
+		// and would show its streaks standing still in any weather.
+		if (useBackend && lightDebug.precipitation && !capturing && !a_portal.cell->IsInteriorCell() &&
+			!RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell()) {
+			DrawMainPrecipitation(root);
+		}
 		// The new picture goes on screen, unless it came out next to empty: then the last good one
 		// stays, for a few frames at most (after that the view may really have changed). A capture
 		// isn't for the doorway: the last picture stays on screen this frame.
@@ -1734,7 +1770,6 @@ namespace
 		*dirtyStates |= 0x4;
 		RestoreAmbient(mainAmbient);
 		ResetAccumulator(portalAccumulator.get());
-		HidePrecipitation(precipitation);
 		linked3D->SetAppCulled(wasCulled);
 		for (auto& [object, culled] : besideCulled) {
 			object->SetAppCulled(culled);
@@ -2631,6 +2666,7 @@ namespace Portal::Render
 		}
 		RenderWorldHook::func = trampoline.write_call<5>(renderWorld.address(), RenderWorldHook::Thunk);
 		ActorCullHook::Install();
+		PrecipitationUpdateHook::Install();
 		REL::Relocation<std::uintptr_t> playerView{ REL::RelocationID(35559, 36558), REL::Relocate(0x11D, 0x11D) };
 		if (Hooks::CallsTo(playerView.address(), REL::RelocationID(35560, 36559), "portal: Main::RenderPlayerView")) {
 			RenderPlayerViewHook::func = trampoline.write_call<5>(playerView.address(), RenderPlayerViewHook::Thunk);
@@ -2696,6 +2732,7 @@ namespace Portal::Render
 	{
 		return lightDebug.precipitation;
 	}
+
 
 	void SetPrecipitation(bool a_shown)
 	{

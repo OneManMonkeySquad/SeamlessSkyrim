@@ -31,7 +31,7 @@ namespace Portal::Render
 	// (ID 40335) decided. That test fails every actor of a space shown behind a door.
 	void ShowActor(RE::Actor* a_actor);
 
-	// Rain and snow drawn in the view out of an interior (experimental, off by default).
+	// Rain and snow drawn in the portal pass of an outdoor space (a city gate's), on by default.
 	[[nodiscard]] bool Precipitation();
 	void               SetPrecipitation(bool a_shown);
 

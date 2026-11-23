@@ -19,8 +19,12 @@ namespace AgentMode
 	// window. Must run before the game creates its window: call from SKSEPluginLoad.
 	void InstallFocusGuards();
 
-	// Background mode only: the game ignores keyboard and mouse unless its window is in front.
+	// Agent mode: keys from the bridge reach the game (QueueKey); in background mode it also
+	// ignores keyboard and mouse unless its window is in front.
 	void InstallInputGuards();
+	// Any thread: a key press (DirectInput scan code) handed to the game with its next keyboard
+	// reads, down then up, as if typed: no window focus, no OS input.
+	void QueueKey(std::uint32_t a_scanCode, int a_repeat);
 
 	// SEAMLESS_AGENT_LOAD: the save is loaded the moment the main menu opens, from inside the game,
 	// instead of by the MCP server polling for the menu and then asking over the bridge. Call at

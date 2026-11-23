@@ -1,4 +1,27 @@
 {
+  "bannered-mare-rain-look-out": {
+    "note": "Inside the Bannered Mare in a storm (weather 0010A241), its front door (00016072) opened, looking out at the market. Was: no rain through the doorway (the engine gives precipitation no particles indoors); rain must fall in the street only, not in the room.",
+    "steps": [
+      {
+        "load": "SeamlessTestRainBanneredMare"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "activate": "00016072"
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 12
+      }
+    ]
+  },
   "bannered-mare-walk-in": {
     "note": "Loaded in Belethor's, walked out and into the Bannered Mare through portals, standing at its door looking out at the market (low LOD town, ground culling).",
     "steps": [
@@ -230,6 +253,121 @@
       }
     ]
   },
+  "markarth-understone-walk-in-look-back": {
+    "note": "Walk into Understone Keep through its always-open doors and look back: the doors must stand open, the street seen through them",
+    "steps": [
+      {
+        "load": "Quicksave0_00000000_0_507269736F6E6572_MarkarthWorld_000048_20261123161230_1_1"
+      },
+      {
+        "move": [
+          -178747,
+          3410,
+          -2182
+        ]
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "ref": "00016E47",
+          "stop_distance": 10,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -179500,
+            3180
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 6
+        }
+      },
+      {
+        "wait": 1
+      },
+      {
+        "move": [
+          -1982,
+          -2520,
+          6440
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 2
+      }
+    ]
+  },
+  "markarth-understone-walk-out": {
+    "note": "From inside Understone Keep walk out through its open front doors onto the street (the street drawn scaled from inside: watch the crossing)",
+    "steps": [
+      {
+        "load": "Quicksave0_00000000_0_507269736F6E6572_MarkarthWorld_000048_20261123161230_1_1"
+      },
+      {
+        "move": [
+          -178747,
+          3410,
+          -2182
+        ]
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "ref": "00016E47",
+          "stop_distance": 10,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -179500,
+            3180
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 6
+        }
+      },
+      {
+        "wait": 1
+      },
+      {
+        "move": [
+          -1982,
+          -2520,
+          6440
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 4
+      },
+      {
+        "walk": {
+          "pos": [
+            -1982,
+            -3100
+          ],
+          "stop_distance": 20,
+          "timeout_seconds": 8
+        }
+      },
+      {
+        "wait": 1
+      }
+    ]
+  },
   "mistveil-keep-walk-in": {
     "note": "Riften, Mistveil Keep (an interior built of room bounds): loaded at its door, wait for the merge, look in, then walk in. Before the fix the merged room was not drawn (land and sky behind the keep showed through the doorway).",
     "steps": [
@@ -265,6 +403,66 @@
         "check": {
           "name": "walked-in"
         }
+      }
+    ]
+  },
+  "riften-beggars-row-out": {
+    "note": "Walk out of Beggar's Row onto Riften's street (user report: fell out of the map crossing)",
+    "steps": [
+      {
+        "load": "Quicksave0_00000000_0_507269736F6E6572_RiftenBeggarsRow_000035_20261123153044_1_1"
+      },
+      {
+        "activate": "00089D5F"
+      },
+      {
+        "wait": 1
+      },
+      {
+        "walk": {
+          "pos": [
+            550,
+            -208
+          ],
+          "run": true,
+          "stop_distance": 30,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      }
+    ]
+  },
+  "riften-beggars-row-out-early": {
+    "note": "Run out of Beggar's Row right after loading, before the street is there: taken the engine's way. Broken: the street's persistent references (canal walk 0005DB62, houses) not drawn after",
+    "steps": [
+      {
+        "load": "Quicksave0_00000000_0_507269736F6E6572_RiftenBeggarsRow_000035_20261123153044_1_1"
+      },
+      {
+        "walk": {
+          "pos": [
+            650,
+            -208
+          ],
+          "run": true,
+          "stop_distance": 10,
+          "timeout_seconds": 15,
+          "wait": false
+        }
+      },
+      {
+        "activate": "00089D5F"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "heading": 160
+      },
+      {
+        "wait": 0.5
       }
     ]
   },
@@ -399,6 +597,23 @@
         "check": {
           "name": "inside"
         }
+      }
+    ]
+  },
+  "solitude-gate-rain": {
+    "note": "Solitude in a storm (weather 0010A241), in the open street in front of the city gate, looking out through it. Was: the rain in front stopped at the gateway's outline (the picture covered it) and the far side had none. From inside the gate's passage little rain shows ahead anyway: its roof keeps it off.",
+    "steps": [
+      {
+        "load": "SeamlessTestRainSolitudeGate"
+      },
+      {
+        "place": "solitude-gate-street"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "frames": 12
       }
     ]
   },

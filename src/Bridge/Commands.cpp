@@ -2,10 +2,12 @@
 
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
+#include "Bridge/GpuTrack.h"
 #include "Bridge/ReverseEngineering.h"
 #include "Bridge/Sampler.h"
 #include "Portal/DoorPair.h"
 #include "Portal/DoorUse.h"
+#include "Portal/DoorwaySnapshot.h"
 #include "Portal/LightScene.h"
 #include "Portal/MergedCull.h"
 #include "Portal/PortalManager.h"
@@ -903,11 +905,50 @@ namespace Bridge
 			// Diagnostics: parts of the portal's work left out, and the doorway tinted red.
 			// Tests: the doors opened by a use and the global setting ({"force": 0 none, 1 all open, 2 all
 			// shut}, as the menu sets it, for the session).
+			// Tests: GPU textures and buffers still alive, grouped by the code that made them. The
+			// first call starts tracking ({"start": true}); "since": a mark from an earlier call, to
+			// list only what was made after it (what a trip left behind); "groups", "frames".
+			{ "gpu_live", { [](const json& a) {
+				 Bridge::GpuTrack::Start();
+				 return Bridge::GpuTrack::Live(a.value("since", 0ull), a.value("groups", 15), a.value("frames", 8));
+			 } } },
+			{ "gpu_holders", { [](const json& a) {
+				 Bridge::GpuTrack::Start();
+				 if (a.value("orphans", false)) {
+					 return json{ { "resources", Bridge::GpuTrack::OrphanHolders(a.value("since", 0ull), a.value("samples", 4)) } };
+				 }
+				 return json{ { "textures", Bridge::GpuTrack::Holders(a.value("since", 0ull), a.value("samples", 4)) } };
+			 }, false } },
+			// Tests: where in memory each of "values" (hex addresses) is kept, and the class of the
+			// object keeping it: to follow a leaked object to what holds it, one step at a time.
+			{ "mem_holders", { [](const json& a) {
+				 std::vector<std::uintptr_t> values;
+				 for (const auto& value : a.at("values")) {
+					 values.push_back(std::stoull(value.get<std::string>(), nullptr, 16));
+				 }
+				 const auto holders = Bridge::GpuTrack::Scan(values);
+				 json       result = json::object();
+				 for (std::size_t i = 0; i < values.size(); ++i) {
+					 result[std::format("{:X}", values[i])] = holders[i];
+				 }
+				 return result;
+			 }, false } },
+			// A key press handed to the game's input directly ({"code": DirectInput scan code,
+			// "repeat"}): no window focus needed, nothing typed into other windows.
+			{ "key", { [](const json& a) {
+				 AgentMode::QueueKey(a.at("code").get<std::uint32_t>(), a.value("repeat", 1));
+				 return json{ { "queued", a.at("code").get<std::uint32_t>() } };
+			 }, false } },
 			{ "doors", { [](const json& a) {
 				 if (a.contains("force")) {
 					 Portal::DoorUse::SetForce(static_cast<Portal::DoorUse::Force>(std::clamp(a.at("force").get<int>(), 0, 2)));
 				 }
 				 return Portal::DoorUse::Status();
+			 } } },
+			// As the menu's button: every door's picture deleted, on disk and in memory, so a door is
+			// seen as never seen open again (an always-open door shut until its space is there).
+			{ "pictures_delete", { [](const json&) {
+				 return json{ { "deleted", Portal::Snapshot::DeleteAll() } };
 			 } } },
 			{ "portal_switches", { [](const json& a) {
 				 auto s = Portal::Render::GetDebugSwitches();
@@ -1355,6 +1396,7 @@ namespace Bridge
 				 auto* sky = RE::Sky::GetSingleton();
 				 auto* precip = sky ? sky->precip : nullptr;
 				 json  result{ { "mode", sky ? static_cast<int>(sky->mode.underlying()) : -1 }, { "precip", precip != nullptr },
+					 { "density", precip ? json{ precip->currentParticleDensity, precip->lastParticleDensity, precip->lastCubeSize } : json() },
 					 { "weather", sky && sky->currentWeather ? std::format("{:08X}", sky->currentWeather->GetFormID()) : "" } };
 				 if (precip) {
 					 for (const auto& [name, geometry] : { std::pair{ "current", precip->currentPrecip.get() }, std::pair{ "last", precip->lastPrecip.get() } }) {
@@ -1367,6 +1409,11 @@ namespace Bridge
 							 chain += std::format(" < '{}'", up->name.c_str());
 						 }
 						 auto* shader = geometry->GetGeometryRuntimeData().shaderProperty.get();
+						 if (auto* particle = netimmerse_cast<RE::BSParticleShaderProperty*>(shader); particle && particle->particleEmitter) {
+							 auto* emitter = static_cast<RE::BSParticleShaderCubeEmitter*>(particle->particleEmitter);
+							 result[std::string(name) + "Emitter"] = json{ { "alpha", emitter->alpha }, { "count", emitter->particleCount }, { "density", emitter->density },
+								 { "cubeSize", emitter->cubeSize }, { "type", static_cast<int>(emitter->emitterType.underlying()) } };
+						 }
 						 result[name] = std::format("'{}' {} flags {:X} at ({:.0f},{:.0f},{:.0f}) culled {} shader {}{}", geometry->name.c_str(), geometry->GetRTTI() ? geometry->GetRTTI()->name : "?",
 							 geometry->GetFlags().underlying(), geometry->world.translate.x, geometry->world.translate.y, geometry->world.translate.z, geometry->GetAppCulled(),
 							 shader && shader->GetRTTI() ? shader->GetRTTI()->name : "-", chain);

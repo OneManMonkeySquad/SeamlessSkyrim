@@ -80,6 +80,9 @@ namespace Render::Backend
 	// Whether shapes drawn with these shaders are cut at the far door in the portal pass. Community
 	// Shaders cuts only in its Lighting and Utility shaders; the native mask in every shader it hooks.
 	[[nodiscard]] bool CutsPortalShader(RE::BSShader::Type a_type);
+	// Whether the weather's rain and snow are masked at a merged doorway (the fork's particle
+	// shader): without it, rain let into an interior with the street merged fell in the room too.
+	[[nodiscard]] bool MasksPrecipitation();
 
 	[[nodiscard]] json Describe();
 }

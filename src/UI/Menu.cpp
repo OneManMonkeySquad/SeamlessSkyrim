@@ -77,6 +77,14 @@ namespace
 	{
 		bool enabled = Portal::Manager::Enabled();
 		const bool available = Portal::Manager::HooksInstalled();
+
+		ImGui::TextWrapped("Rendering: %s", Render::Backend::Name());
+		if (available && !Render::Backend::CanMerge()) {
+			ImGui::TextWrapped("Rooms aren't drawn into the world with this renderer (see [Render] sBackend in SeamlessSkyrim.ini).");
+		}
+
+		ImGui::NewLine();
+
 		ImGui::BeginDisabled(!available);
 		if (ImGui::Checkbox("Seamless doors", &enabled)) {
 			Portal::Manager::SetEnabled(enabled);
@@ -91,11 +99,7 @@ namespace
 		}
 
 		ImGui::NewLine();
-
-		ImGui::TextWrapped("Rendering: %s", Render::Backend::Name());
-		if (available && !Render::Backend::CanMerge()) {
-			ImGui::TextWrapped("Rooms aren't drawn into the world with this renderer (see [Render] sBackend in SeamlessSkyrim.ini).");
-		}
+		
 		bool merge = Portal::Manager::MergeEnabled();
 		if (ImGui::Checkbox("Draw rooms into the world (seen from outside)", &merge)) {
 			Portal::Manager::SetMergeEnabled(merge);
@@ -116,6 +120,24 @@ namespace
 		if (Render::Backend::MergedRooms() < 2) {
 			ImGui::TextWrapped("This renderer draws one room at a time: the others stay loaded out of sight, and their open doors "
 							   "show a picture.");
+		}
+
+		ImGui::NewLine();
+
+		bool pause = Portal::Manager::PauseUnseenRooms();
+		if (ImGui::Checkbox("Pause rooms nobody can see", &pause)) {
+			Portal::Manager::SetPauseUnseenRooms(pause);
+			Save(L"bPauseUnseenRooms", pause);
+		}
+		ImGui::TextWrapped("A loaded room whose doorway is out of view isn't simulated or drawn until it comes into view; "
+						   "the room at the door you're at always runs.");
+
+		ImGui::NewLine();
+
+		bool step = Portal::Manager::StepExterior();
+		if (ImGui::Checkbox("Street physics while indoors (people outside walk)", &step)) {
+			Portal::Manager::SetStepExterior(step);
+			Save(L"bStepExteriorFromInside", step);
 		}
 
 		ImGui::NewLine();
@@ -142,16 +164,6 @@ namespace
 
 		ImGui::NewLine();
 
-		bool pause = Portal::Manager::PauseUnseenRooms();
-		if (ImGui::Checkbox("Pause rooms nobody can see", &pause)) {
-			Portal::Manager::SetPauseUnseenRooms(pause);
-			Save(L"bPauseUnseenRooms", pause);
-		}
-		ImGui::TextWrapped("A loaded room whose doorway is out of view isn't simulated or drawn until it comes into view; "
-						   "the room at the door you're at always runs.");
-
-		ImGui::NewLine();
-		
 		{
 			// Presets rather than a slider: each size is a texture and a file per door, so a few
 			// steps that double are all that's worth offering.
@@ -186,14 +198,6 @@ namespace
 				ImGui::Text("%d deleted", *deleted);
 			}
 			ImGui::TextWrapped("Each door shows the plain colour until it is next seen open, and is taken again then.");
-		}
-
-		ImGui::NewLine();
-
-		bool step = Portal::Manager::StepExterior();
-		if (ImGui::Checkbox("Street physics while indoors (people outside walk)", &step)) {
-			Portal::Manager::SetStepExterior(step);
-			Save(L"bStepExteriorFromInside", step);
 		}
 	}
 

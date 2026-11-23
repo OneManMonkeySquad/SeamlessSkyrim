@@ -18,9 +18,8 @@ Files are written into existing ones rather than replaced (tools\copy-in-place.p
 deployed mod's hard links stay intact and running the script again needs no redeploy unless
 files were added or removed.
 
-Door tunings made in game are written to the game's SeamlessSkyrim_Doors.ini. When that file is
-newer than package\'s and differs from it, it is copied into package\ first (commit it there):
-otherwise each run would put the old doors back.
+Door tunings made in game (the game's SeamlessSkyrim_Doors_User.ini) are moved into package\'s
+SeamlessSkyrim_Doors.ini first (tools\fold-door-tunings.ps1; commit them there).
 
 SeamlessSkyrim files that sit loose in the game's Data folder (the CMake post-build step put them
 there before Vortex owned them) are removed, so Vortex doesn't deploy over them. An ini among them
@@ -129,16 +128,8 @@ $files["$plugins\SeamlessSkyrim.dll"] = $dll
 
 $files["$plugins\SeamlessSkyrim.ini"] = Join-Path $repo "package\$plugins\SeamlessSkyrim.ini"
 
-$doors = Join-Path $repo "package\$plugins\SeamlessSkyrim_Doors.ini"
-$liveDoors = Join-Path $GameData "$plugins\SeamlessSkyrim_Doors.ini"
-if ((Test-Path -LiteralPath $liveDoors) -and (
-		-not (Test-Path -LiteralPath $doors) -or (
-			(Get-Item -LiteralPath $liveDoors).LastWriteTime -gt (Get-Item -LiteralPath $doors).LastWriteTime -and
-			(Get-FileHash -LiteralPath $liveDoors).Hash -ne (Get-FileHash -LiteralPath $doors).Hash))) {
-	Copy-Item -LiteralPath $liveDoors -Destination $doors
-	Write-Host "Door tunings from the game copied into package\$plugins\SeamlessSkyrim_Doors.ini; commit them." -ForegroundColor Yellow
-}
-if (Test-Path -LiteralPath $doors) { $files["$plugins\SeamlessSkyrim_Doors.ini"] = $doors }
+& (Join-Path $PSScriptRoot 'fold-door-tunings.ps1') -GameData $GameData
+$files["$plugins\SeamlessSkyrim_Doors.ini"] = Join-Path $repo "package\$plugins\SeamlessSkyrim_Doors.ini"
 
 $csBuild = Join-Path $CsFork 'build\ALL\Release'
 Assert-Newer (Join-Path $csBuild 'CommunityShaders.dll') (Join-Path $CsFork 'src')

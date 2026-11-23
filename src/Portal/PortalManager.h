@@ -93,6 +93,8 @@ namespace Portal::Manager
 	[[nodiscard]] std::optional<DoorPair> DoorPairAt(float a_radius);
 	// The remote cells are merged into the world scene right now.
 	[[nodiscard]] bool Merged();
+	// Main thread: the street is merged into the interior the player is in.
+	[[nodiscard]] bool StreetMerged();
 	// Render: how bright a room's own lights and ambient are drawn right now, merged behind a_door
 	// and seen from the street: as an eye used to the street sees it (its brightness against the
 	// street's, Portal::Snapshot), as from inside within a few steps of the doorway.

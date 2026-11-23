@@ -54,6 +54,28 @@
       64.34993743896484
     ]
   },
+  "markarth-understone-front": {
+    "cell": "Wilderness",
+    "headingDeg": 248.08872985839844,
+    "interior": false,
+    "note": "Markarth street in front of Understone Keep's doors (00016E47, set to stand open)",
+    "pos": [
+      -178746.984375,
+      3410.0,
+      -2182.39501953125
+    ]
+  },
+  "markarth-understone-inside-looking-out": {
+    "cell": "MarkarthUnderStoneKeep",
+    "headingDeg": 180.0,
+    "interior": true,
+    "note": "Inside Understone Keep, 200 units from its front doors (0007F65E, set to stand open), looking at them",
+    "pos": [
+      -1982.0,
+      -2519.999755859375,
+      6432.35009765625
+    ]
+  },
   "mistveil-keep-door": {
     "cell": "RiftenCitySouth",
     "headingDeg": 178.61306762695312,
@@ -74,6 +96,39 @@
       173462.984375,
       -95080.9921875,
       11136.470703125
+    ]
+  },
+  "riften-beggars-row-door": {
+    "cell": "RiftenBeggarsRow",
+    "headingDeg": 266.8428649902344,
+    "interior": true,
+    "note": "Inside Beggar's Row facing its street door 00089D5F (to RiftenCityNorth)",
+    "pos": [
+      966.4946899414062,
+      -204.39825439453125,
+      41.44931411743164
+    ]
+  },
+  "riften-beggars-row-street": {
+    "cell": "RiftenCityNorth",
+    "headingDeg": 185.0680389404297,
+    "interior": false,
+    "note": "Riften's canal walk, 100 units in front of Beggar's Row's street door 00089D60",
+    "pos": [
+      172929.15625,
+      -94086.8359375,
+      10689.6923828125
+    ]
+  },
+  "riften-elgrim-door": {
+    "cell": "RiftenElgrimsElixirs",
+    "headingDeg": 171.1770477294922,
+    "interior": true,
+    "note": "Inside Elgrim's Elixirs facing its street door (00016D3E); door frame is part of the door mesh",
+    "pos": [
+      -118.78004455566406,
+      606.6213989257812,
+      113.39425659179688
     ]
   },
   "riften-prison-marker": {
@@ -107,6 +162,17 @@
       -65365.55859375,
       104570.90625,
       -8416.486328125
+    ]
+  },
+  "solitude-gate-street": {
+    "cell": "SolitudeOrigin",
+    "headingDeg": 245.00001525878906,
+    "interior": false,
+    "note": "Solitude, in the open street ~500 units in front of the city gate (00101D9D), looking out through it. In rain: the rain in front must carry on through the gateway (was: it stopped at the gateway's outline, the picture covering it).",
+    "pos": [
+      -64912.99609375,
+      104782.9921875,
+      -8418.18359375
     ]
   },
   "solitude-hall-of-the-dead-door": {

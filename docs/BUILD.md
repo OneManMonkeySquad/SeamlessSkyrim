@@ -45,8 +45,10 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
 - New mod folder: restart Vortex, enable `SeamlessSkyrim`, make it load after Community Shaders
   and Skylighting, deploy. Later runs write into the deployed files and need no redeploy unless
   the script says files were added or removed.
-- Doors tuned in game (`<game>\Data\SKSE\Plugins\SeamlessSkyrim_Doors.ini`) are copied back into
-  `package/` when newer; commit them there.
+- Doors tuned in game land in `<game>\Data\SKSE\Plugins\SeamlessSkyrim_Doors_User.ini`, never in
+  the shipped `SeamlessSkyrim_Doors.ini` (an update would replace a player's tunings with it).
+  `tools/fold-door-tunings.ps1`, run by this script and `make-release.ps1`, moves them into
+  `package/`'s file and the game's, and deletes the user file; commit `package/`.
 - `-RestoreStockCommunityShaders` puts stock 1.9.1 back into Vortex's own Community Shaders mod.
   A `cp` into the game's Data folder writes through Vortex's hard links into whichever mod owns
   the file, which is how the fork's files once ended up in the stock mod.
@@ -62,8 +64,8 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
 `tools/make-release.ps1 -Build` writes `build/release/SeamlessSkyrim-<version>.zip` (version from
 `CMakeLists.txt`), a FOMOD installer (`package/fomod/`):
 
-- `Core/`, always installed: the plugin (Release, no PDB), `package/`'s ini, and the game's
-  `SeamlessSkyrim_Doors.ini`, which the script first copies into `package/` (commit it).
+- `Core/`, always installed: the plugin (Release, no PDB) and `package/`'s two ini, the in-game
+  door tunings folded in first (commit them).
 - `CommunityShaders/`, optional: the fork's DLL and changed files. The installer preselects it
   when `SKSE\Plugins\CommunityShaders.dll` is already installed, and leaves it unselected but
   selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
@@ -142,6 +144,22 @@ Scripts beside the MCP server (for loops, and commands with no MCP tool such as 
   `getattr(server.run_route, "fn", server.run_route)(steps=[...])` for an MCP tool.
 - `re_read` takes an offset from the module base. For a heap address pass `address - base`; the
   base is `(Get-Process SkyrimSE).MainModule.BaseAddress` (0x7FF73F6A0000 on every launch so far).
+
+`press_key` goes through the bridge (`key`): the plugin adds the press to the game's own input
+queue in its keyboard read, so it needs no focus and nothing reaches other windows. A key only
+does something in a menu where the menu-mode control map names it: `e` accepts a message box,
+`esc`/`tab` cancel; Enter isn't mapped there. `os_input=true` falls back to Windows input (focuses
+the game). Message boxes from mods missing their DLL (MCM, OStim) pause the game after a load;
+`e` once per box.
+
+GPU memory (bridge, from a script): `gpu_live` starts tracking every texture and buffer the
+device makes and lists the live ones grouped by the stack that made them (`since`: a mark from an
+earlier call, to see what a walk left behind); `gpu_holders` scans memory for what keeps the
+largest of them (`orphans: true`: D3D textures whose engine texture is already gone), with the
+class of each holder from MSVC RTTI; `mem_holders` does the same for any addresses. Freed memory
+still holds old pointers, so a holder is a lead, not proof. Tracking hooks AddRef/Release of
+textures: leave it off for timing measurements. `(Get-Counter "\GPU Process Memory(pid_<id>*)\Total
+Committed")` shows GPU memory the game holds; private bytes follow it.
 
 Test suite (`run_suite`):
 - Runs the routes listed in `tools/skyrim-mcp/suite.json`: only paths that broke more than once,
@@ -234,8 +252,9 @@ copied from the AE game's plugins folder, trainwreck, no Community Shaders). It 
   menu with `coc`/`place_go`. A place whose cell is `Wilderness` (`understone-keep-front`) can't
   be reached that way: `coc Wilderness` picks some cell of that name, here one without a
   worldspace, and crashed; use `cow MarkarthWorld -44 0` and `move_to`.
-- A new game asks about Survival Mode after a minute and the prompt holds the player. `press_key`
-  doesn't reach it in background mode: `game_window_mode("show")`, `right`, `enter`, then back.
+- A new game asks about Survival Mode after a minute and the prompt holds the player. With OS
+  input `press_key` didn't reach it in background mode (`game_window_mode("show")`, `right`,
+  `enter`, then back); the bridge's keys (`right`, then `e`) not tried on it yet.
 - Doors start locked in a new game (the Smelter Overseer's House): a locked door gets no portal.
 
 ### AE 1.6.1170
