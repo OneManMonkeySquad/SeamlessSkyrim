@@ -821,6 +821,16 @@ namespace Portal::Travel
 		logger::info("travel: after loading, through door {:08X} to ({:.0f},{:.0f},{:.0f})", a_door->GetFormID(), a_position.x, a_position.y, a_position.z);
 	}
 
+	void ThroughDoor(RE::TESObjectREFR* a_door)
+	{
+		auto* base = a_door->GetBaseObject()->As<RE::TESObjectDOOR>();
+		SEAMLESS_ASSERT(base);
+		REL::Relocation<void (*)(RE::TESObjectDOOR*, RE::RefHandle*)> teleportThroughDoor{ REL::RelocationID(17523, 17924) };
+		RE::RefHandle handle = a_door->GetHandle().native_handle();
+		teleportThroughDoor(base, &handle);
+		SEAMLESS_ASSERT(RE::PlayerCharacter::GetSingleton()->GetPlayerRuntimeData().queuedTargetLoc.isValid);
+	}
+
 	void Request(const Manager::Active& a_portal, bool a_limitCamera, float a_cameraFloor, bool a_exact)
 	{
 		std::scoped_lock guard(lock);

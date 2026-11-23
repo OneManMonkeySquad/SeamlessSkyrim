@@ -91,3 +91,8 @@
   `BSEffectShader` setup (SkyrimSE.exe+155757A, ID 107527+0x4EA) reads a light of the pass whose
   `NiLight` is gone (`BSLight::light` null), drawing the street behind the gate on the first frame
   it was ready. Not reproduced in about 30 trips since.
+- Through a city gate the view back takes about 5 s (the purge after the trip, then the load):
+  walking back through it sooner takes the engine's trip with its loading screen.
+- Riften's south gate's picture (seen from outside before the city is there): a pale smeared band
+  along the bottom of the gateway and its right edge, where the gate passage's floor and wall
+  right behind the plane are drawn from the picture's depth.

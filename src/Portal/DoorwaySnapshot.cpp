@@ -17,7 +17,16 @@ namespace
 	constexpr int kMaxHeight = 512;
 	// The menu sets it on the render thread; Capture reads it on the main thread.
 	std::atomic<int> pictureHeight{ kDefaultHeight };
-	// A doorway's shape: three quarters as wide as high.
+	// A doorway's shape: three quarters as wide as high, or wider (a double door, a city gate: at
+	// three quarters its picture had a third or less of the texels across that it had up, the
+	// street seen through Solitude's gate smeared sideways). Its own shape there, in sixteenths.
+	constexpr float kNarrowest = 0.75f;
+	constexpr float kWidest = 3.0f;
+	float AspectOf(const std::array<RE::NiPoint3, 4>& a_corners)
+	{
+		const float aspect = (a_corners[1] - a_corners[0]).Length() / (a_corners[2] - a_corners[0]).Length();
+		return std::clamp(std::round(aspect * 16.0f) / 16.0f, kNarrowest, kWidest);
+	}
 	UINT WidthFor(UINT a_height) { return a_height * 3 / 4; }
 	constexpr std::uint32_t kMagic = 0x57445353;  // "SSDW"
 	// 2: alpha is how far behind the doorway each texel's surface is, and the header is followed by
@@ -56,12 +65,12 @@ namespace
 	// and seen at more of an angle (stretched further).
 	constexpr float kCameraDensity = 2.0f;
 
-	// A picture's size in texels: the doorway at the size set ([Portals] iDoorwayPictureHeight),
-	// times the extent.
-	std::pair<UINT, UINT> SizeFor(const Extent& a_extent, int a_doorwayHeight)
+	// A picture's size in texels: the doorway at the size set ([Portals] iDoorwayPictureHeight) and
+	// its shape (AspectOf), times the extent.
+	std::pair<UINT, UINT> SizeFor(const Extent& a_extent, int a_doorwayHeight, float a_aspect)
 	{
 		const float density = a_extent == kCameraExtent ? kCameraDensity : 1.0f;
-		return { static_cast<UINT>(std::lround(a_doorwayHeight * 0.75f * density * (a_extent[1] - a_extent[0]))),
+		return { static_cast<UINT>(std::lround(a_doorwayHeight * a_aspect * density * (a_extent[1] - a_extent[0]))),
 			static_cast<UINT>(std::lround(a_doorwayHeight * density * (a_extent[3] - a_extent[2]))) };
 	}
 
@@ -384,7 +393,7 @@ namespace
 				std::uint32_t header[4]{};
 				// No larger than the largest ever written, the capture camera's at the largest size: a
 				// damaged file's header asked for gigabytes of texels before its read could fail.
-				const auto [widest, highest] = SizeFor(kCameraExtent, kMaxHeight);
+				const auto [widest, highest] = SizeFor(kCameraExtent, kMaxHeight, kWidest);
 				if (file.read(reinterpret_cast<char*>(header), sizeof(header)) && header[0] == kMagic && header[1] >= 1 && header[1] <= kVersion && header[2] >= 1 &&
 					header[2] <= widest && header[3] >= 1 && header[3] <= highest) {
 					float      place[4]{};
@@ -1144,14 +1153,14 @@ namespace Portal::Snapshot
 		return device && !pipeline.failed && Find(device, a_door, a_outdoors);
 	}
 
-	bool CameraPictureWanted(RE::FormID a_door)
+	bool CameraPictureWanted(RE::FormID a_door, const Corners& a_corners)
 	{
 		auto* device = Device();
 		if (!device || pipeline.failed) {
 			return false;
 		}
 		const auto* picture = Find(device, a_door, false);
-		const auto [width, height] = SizeFor(kCameraExtent, pictureHeight.load());
+		const auto [width, height] = SizeFor(kCameraExtent, pictureHeight.load(), AspectOf(a_corners));
 		return !picture || picture->version < kVersion || picture->extent != kCameraExtent || picture->width != width || picture->height != height;
 	}
 
@@ -1202,7 +1211,7 @@ namespace Portal::Snapshot
 			return;
 		}
 		const auto now = std::chrono::steady_clock::now();
-		const auto [width, height] = SizeFor(extent, pictureHeight.load());
+		const auto [width, height] = SizeFor(extent, pictureHeight.load(), AspectOf(a_corners));
 		// One at another size or extent (the size was changed since, or it was taken with the
 		// player's view) is taken again at once. The capture camera's is kept: from its fixed place
 		// it comes out the same.

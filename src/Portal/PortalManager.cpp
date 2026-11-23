@@ -819,7 +819,9 @@ namespace
 			pictureWait.since.reset();
 			return false;
 		}
-		if (pictureWait.gaveUp || !Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor)) {
+		auto* door = Lookup(a_portal.sourceDoor);
+		if (pictureWait.gaveUp ||
+			!Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor, Portal::Doors::Quad(door, RE::PlayerCharacter::GetSingleton()->GetPosition(), true))) {
 			return false;
 		}
 		const auto now = std::chrono::steady_clock::now();
@@ -842,8 +844,7 @@ namespace
 	// to and stood at, shut. A door that is to open (Wanted) now swings open whatever the load, and
 	// its doorway shows a blurred picture of what was last seen through it (DoorwaySnapshot), or a
 	// plain colour, until the real space takes over and the picture fades out. The door's collision
-	// stays: there is nothing to walk into yet. A city gate shows no picture unless set to
-	// (Doors::PictureFromAfar): through its gateway the player's own worldspace shows.
+	// stays: there is nothing to walk into yet. A city gate shows its picture too (StandInSwinging).
 	struct DoorwayStandIn
 	{
 		RE::FormID               linked = 0;
@@ -900,11 +901,15 @@ namespace
 	// Which of the pair a stand-in swings: the one the portal would (Doors::SwingingDoor), its
 	// picture showing the far one swung; but a gate without a picture swings its own, or the
 	// gateway stood empty.
+	// A city gate shows its picture once it has one, from any distance: through its gateway the
+	// player's own worldspace showed the street worldspace's low-detail copy of the city (a log
+	// house right behind Riften's south gate, Solitude's gatehouse walled up). Until the gate has a
+	// picture it still does, unless set to show the plain colour instead (Doors::PictureFromAfar).
 	RE::FormID StandInSwinging(RE::TESObjectREFR* a_door, DoorwayStandIn& a_standIn)
 	{
 		const auto id = a_door->GetFormID();
 		const auto key = Portal::Doors::CorrectionDoor(id, Outdoors(a_door), a_standIn.linked, a_standIn.outdoors);
-		a_standIn.picture = !a_standIn.gate || Portal::Doors::PictureFromAfar(key);
+		a_standIn.picture = !a_standIn.gate || Portal::Doors::PictureFromAfar(key) || Portal::Snapshot::HasPicture(id, a_standIn.outdoors);
 		return a_standIn.picture ? Portal::Doors::SwingingDoor(id, Outdoors(a_door), a_standIn.linked, a_standIn.outdoors) : id;
 	}
 
@@ -2060,6 +2065,27 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// The player is about to take a_door the engine's way (its loading screen): the engine gets the
+	// cells it leads into, not ones attached under our scene.
+	void BeforeEngineTrip(RE::TESObjectREFR* a_door)
+	{
+		const auto portal = GetActive();
+		if (portal && a_door->GetFormID() == portal->sourceDoor) {
+			attachHoldoff = 3.0f;
+			Portal::Manager::ReleaseAll("player took the portal door the engine's way");
+		}
+		// A door into a space kept out of sight leads the engine into a cell attached under our
+		// scene: it is let go first.
+		auto* teleport = a_door->extraList.GetByType<RE::ExtraTeleport>();
+		auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
+		if (auto* cell = linked ? linked->GetParentCell() : nullptr) {
+			if (const auto kept = std::ranges::find(warm, cell, &Portal::RemoteCell::Cell); kept != warm.end()) {
+				LetGoKept(kept, "player took a door into it");
+				attachHoldoff = std::max(attachHoldoff, 3.0f);
+			}
+		}
+	}
+
 	class ActivateSink final : public RE::BSTEventSink<RE::TESActivateEvent>
 	{
 	public:
@@ -2069,28 +2095,78 @@ namespace
 			if (a_event && a_event->objectActivated && a_event->actionRef.get() == RE::PlayerCharacter::GetSingleton() && UsedPairOf(a_event->objectActivated.get())) {
 				return RE::BSEventNotifyControl::kContinue;
 			}
-			// The player used the portal's door the normal way: let the engine have the cell.
-			const auto portal = GetActive();
-			if (portal && a_event && a_event->objectActivated && a_event->actionRef.get() == RE::PlayerCharacter::GetSingleton() &&
-				a_event->objectActivated->GetFormID() == portal->sourceDoor) {
-				attachHoldoff = 3.0f;
-				Portal::Manager::ReleaseAll("player activated the portal door");
-			}
-			// Used the normal way, a door into a space kept out of sight leads the engine into a cell
-			// attached under our scene: it is let go first.
-			auto* teleport = a_event && a_event->objectActivated && a_event->actionRef.get() == RE::PlayerCharacter::GetSingleton() ?
-			                     a_event->objectActivated->extraList.GetByType<RE::ExtraTeleport>() :
-			                     nullptr;
-			auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
-			if (auto* cell = linked ? linked->GetParentCell() : nullptr) {
-				if (const auto kept = std::ranges::find(warm, cell, &Portal::RemoteCell::Cell); kept != warm.end()) {
-					LetGoKept(kept, "player used a door into it");
-					attachHoldoff = std::max(attachHoldoff, 3.0f);
-				}
+			// The player used a door the normal way.
+			if (a_event && a_event->objectActivated && a_event->actionRef.get() == RE::PlayerCharacter::GetSingleton()) {
+				BeforeEngineTrip(a_event->objectActivated.get());
 			}
 			return RE::BSEventNotifyControl::kContinue;
 		}
 	} activateSink;
+
+	// A doorway standing open while the space behind it isn't there to walk into (a stand-in: its
+	// picture, or a gate onto the player's own worldspace; the space still loading, or not loaded
+	// at all after a trip through a city gate, where the view back waits for the purge) is walked
+	// through all the same. Its door stays solid, or the player walked on into whatever stands
+	// behind it in their own space (past a city gate, the street worldspace's low-detail copy of
+	// the city); walking into it, they are taken through the engine's way, with its loading
+	// screen. Without this they could only stand at the open doorway and wait.
+	struct Pressing
+	{
+		RE::FormID door = 0;
+		float      depth = 0.0f;
+		float      held = 0.0f;  // seconds walked into it without getting nearer
+	} pressing;
+
+	void WalkIntoStandIns(RE::PlayerCharacter* a_player, RE::TESObjectCELL* a_here, float a_delta)
+	{
+		// From the doorway's centre out: the door's panel plus what may stop the player short of it
+		// (a city gate's arch reaches well past its panel).
+		constexpr float kReach = 120.0f;
+		// Held back (by the door, or anything in front of it) rather than still walking up to it.
+		constexpr float kHeldSpeed = 30.0f;
+		constexpr float kHeldSeconds = 0.15f;
+		RE::FormID  door = 0;
+		float       depth = 0.0f;
+		const float yaw = a_player->GetAngleZ();
+		const auto  facing = RE::NiPoint3{ std::sin(yaw), std::cos(yaw), 0.0f };
+		const auto  position = a_player->GetPosition();
+		if (a_player->IsMoving() && crossCooldown <= 0.0f) {
+			for (const auto& [id, standIn] : standIns) {
+				auto* ref = Lookup(id);
+				if (standIn.handedOver || standIn.swing < 0.5f || !ref || !ref->Get3D() || !InPlayerSpace(ref, a_here) || ref->IsLocked()) {
+					continue;
+				}
+				const auto  center = Portal::Doors::Center(ref);
+				const auto  size = Portal::Doors::Size(ref);
+				const auto  inward = AwayFrom(ref, position);
+				const auto  offset = position - center;
+				const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
+				const float side = std::abs(offset.x * inward.y - offset.y * inward.x);
+				const float bottom = center.z - size.halfHeight;
+				if (d >= -(size.halfDepth + kReach) && side <= size.halfWidth && position.z >= bottom - 64.0f && position.z <= bottom + size.halfHeight &&
+					facing.Dot(inward) > 0.5f) {
+					door = id;
+					depth = d;
+					break;
+				}
+			}
+		}
+		if (!door || door != pressing.door) {
+			pressing = { door, depth, 0.0f };
+			return;
+		}
+		pressing.held = depth - pressing.depth < kHeldSpeed * a_delta ? pressing.held + a_delta : 0.0f;
+		pressing.depth = depth;
+		if (pressing.held < kHeldSeconds) {
+			return;
+		}
+		pressing = {};
+		crossCooldown = 1.0f;
+		auto* ref = Lookup(door);
+		logger::info("portal: door {:08X} walked into before the space behind it was there: taken the engine's way", door);
+		BeforeEngineTrip(ref);
+		Portal::Travel::ThroughDoor(ref);
+	}
 
 	class CellSink final : public RE::BSTEventSink<RE::BGSActorCellEvent>
 	{
@@ -2581,6 +2657,7 @@ namespace Portal::Manager
 		}
 		// Before the portal's own door handling: a door a stand-in held is handed over this frame.
 		UpdateStandIns(player, here, a_delta);
+		WalkIntoStandIns(player, here, a_delta);
 		if (!GetActive() && candidate && attachHoldoff <= 0.0f && !(candidate->cell->GetFormID() == failedCell && failedCooldown > 0.0f)) {
 			const auto attachStarted = std::chrono::steady_clock::now();
 			bool       attached = false;
@@ -4088,11 +4165,8 @@ namespace Portal::Manager
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		const bool outdoors = portal->cell && !portal->cell->IsInteriorCell();
 		const bool gate = outdoors && here && !here->IsInteriorCell();
-		// A city gate only when it shows its picture from afar (Doors::PictureFromAfar): otherwise
-		// it was taken and written to disk every 20 s for nothing.
-		if (gate && !Doors::PictureFromAfar(Doors::CorrectionDoor(portal->sourceDoor, true, portal->linkedDoor, true))) {
-			return std::nullopt;
-		}
+		// A city gate too: its picture stands in close by while the city behind isn't there
+		// (StandInSwinging).
 		return DoorwayFill{ portal->sourceDoor, outdoors, gate, 1.0f };
 	}
 

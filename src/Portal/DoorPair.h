@@ -96,10 +96,11 @@ namespace Portal::Doors
 	void                                  SetAlwaysOpen(RE::FormID a_door, bool a_open);
 	[[nodiscard]] std::vector<RE::FormID> AlwaysOpenDoors();
 
-	// A city gate seen from beyond the live view's reach shows its doorway picture (the menu,
-	// stored with the correction). Without it the gateway shows the player's own worldspace,
-	// which in most cities holds a simple copy of the other side (Whiterun's, Riften's houses);
-	// Solitude's gatehouse is walled up behind its gate on both sides.
+	// A city gate shows its doorway picture while the city behind isn't there; before it has one,
+	// with this set (the menu, stored with the correction), the plain colour. Without it the
+	// gateway shows the player's own worldspace then, which in most cities holds a simple copy of
+	// the other side (Whiterun's, Riften's houses); Solitude's gatehouse is walled up behind its
+	// gate on both sides.
 	[[nodiscard]] bool PictureFromAfar(RE::FormID a_door);
 	void               SetPictureFromAfar(RE::FormID a_door, bool a_picture);
 

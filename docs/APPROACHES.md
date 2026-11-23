@@ -11,12 +11,17 @@ Read this before proposing a new approach. The engine facts behind it are in ENG
 | Interior ↔ interior, exterior ↔ exterior (city gates) | The portal pass (1); through a city gate the world's own shapes are masked as far as the portal pass draws (`UpdateGateMask`) |
 | A room's doorway before its merge | A picture taken with the portal pass, kept per door |
 
-Crossing is always the engine's own door teleport without its loading screen (2).
+Crossing is the engine's own door teleport without its loading screen (2). A doorway standing
+open before the space behind it is there to walk into (a stand-in) is taken the engine's way, with
+its loading screen, when the player walks into it (`WalkIntoStandIns`); its door stays solid until
+then, or the player walked on into whatever stands behind it in their own space.
 
 A door opens when it is used (the player, or an NPC reaching for it on its way through) and
 shuts 5 s after nobody stands in it; city gates and the doors set to stand open always stand
-open (`DoorUse`, `Wanted` in `PortalManager.cpp`). From afar a gate shows the player's own
-worldspace through its gateway, or its picture where set (Solitude's).
+open (`DoorUse`, `Wanted` in `PortalManager.cpp`). Until the city behind it is there, a gate
+shows its picture from any distance; one with no picture yet shows the player's own worldspace
+through its gateway (the street worldspace's low-detail copy of the city). A doorway's picture has the doorway's own shape when it is wider than three
+quarters of its height (a gate's is about twice as wide as a door's).
 
 ## Overview
 

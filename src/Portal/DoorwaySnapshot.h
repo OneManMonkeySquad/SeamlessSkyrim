@@ -89,7 +89,8 @@ namespace Portal::Snapshot
 
 	// Main thread: the door into a room has no picture taken with the capture camera at the
 	// current size. Such a picture is kept once taken: from its fixed place it comes out the same.
-	bool CameraPictureWanted(RE::FormID a_door);
+	// a_corners: the doorway as the capture camera takes it (its shape sets the picture's).
+	bool CameraPictureWanted(RE::FormID a_door, const Corners& a_corners);
 
 	// How the space behind the doorway is lit as seen from the player's. A picture is drawn as
 	// bright as the real space would be (lightScale against the one it was taken under). The

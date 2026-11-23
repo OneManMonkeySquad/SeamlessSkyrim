@@ -229,7 +229,7 @@ namespace
 		}
 		if (Outdoors(pair.source) && Outdoors(pair.linked)) {
 			bool picture = Portal::Doors::PictureFromAfar(pair.key->GetFormID());
-			if (ImGui::Checkbox("Picture from afar (a gate walled up behind)", &picture)) {
+			if (ImGui::Checkbox("Plain colour until it has a picture (a gate walled up behind)", &picture)) {
 				Portal::Doors::SetPictureFromAfar(pair.key->GetFormID(), picture);
 			}
 		}

@@ -25,6 +25,10 @@ namespace Portal::Travel
 	// to a_position (in the space it leads to) facing a_yaw, with the game's usual loading screen.
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw);
 
+	// Main thread: the player is taken through a_door to its marker the engine's way, with its
+	// loading screen (the space behind isn't there to walk into).
+	void ThroughDoor(RE::TESObjectREFR* a_door);
+
 	// Per frame (player update): records frame times while a transition is running.
 	void Update();
 

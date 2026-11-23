@@ -296,7 +296,7 @@
     ]
   },
   "riften-south-gate-turn-back": {
-    "note": "Riften's south gate: walk out of the city, turn round at once and walk back in before the view back into the city is ready. Was: the door just come out of stayed walkable (Travel's arrival hold) until that view was ready, and the player walked through the open gate into the Tamriel worldspace's low-detail copy of Riften, with no crossing back.",
+    "note": "Riften's south gate: walk out of the city, turn round at once and walk back in before the view back into the city is ready. Expected: the player is taken back into the city (the engine's trip, with its loading screen). Was: the door just come out of stayed walkable (Travel's arrival hold) until that view was ready, and the player walked through the open gate into the Tamriel worldspace's low-detail copy of Riften, with no crossing back; then, the gate solid, the player stood at it until the view was ready.",
     "steps": [
       {
         "load": "SeamlessTestRiftenSouthGate"
