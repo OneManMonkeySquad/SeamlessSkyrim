@@ -327,7 +327,7 @@ namespace
 	// out its space loads and is let go. Not by a fixed amount: a house door must still win when
 	// walked up to near a gate (it has to be the shown one to be walked through), and at half the
 	// distance it does unless it stands within twice the switch margin of the gate.
-	constexpr float kGateWeight = 0.5f;
+	constexpr float kGateWeight = 0.25f;
 
 	// a_door's distance from a_origin as the reaches and the order of doors count it.
 	float Reach(const RE::NiPoint3& a_origin, RE::TESObjectREFR* a_door, RE::TESObjectREFR* a_linked)
@@ -963,6 +963,18 @@ namespace
 		return normal.Dot(Portal::Doors::ShownCenter(a_door) - a_viewer) >= 0.0f ? normal : normal * -1.0f;
 	}
 
+	// How far behind a_gate (along a_inward) its far gate stands. By the references' origins: the
+	// far gate's 3D isn't loaded yet. Both gates are placed the same way about their meshes, so
+	// their origins stand apart as their doorways do.
+	float GateDepth(RE::TESObjectREFR* a_gate, RE::FormID a_farGate, const RE::NiPoint3& a_inward)
+	{
+		return (Lookup(a_farGate)->GetPosition() - a_gate->GetPosition()).Dot(a_inward);
+	}
+	// Gates this close are one gateway seen from either side (Whiterun's, 20 units apart, one mesh
+	// at two sizes). Solitude's stand 370 apart, the player's worldspace walling the passage up
+	// between them.
+	constexpr float kGatesApart = 150.0f;
+
 	// Which of the pair a stand-in swings: the one the portal would (Doors::SwingingDoor), its
 	// picture showing the far one swung; but a gate without a picture swings its own, or the
 	// gateway stood empty.
@@ -1137,7 +1149,15 @@ namespace
 			} else {
 				auto*      linked = Lookup(standIn.linked);
 				const auto settings = linked ? Portal::Doors::CorrectionDoor(door, linked)->GetFormID() : id;
-				Portal::Doors::Swing(door, Portal::Doors::ToShown(door).rotate * standIn.inwardInCell * -1.0f, SwingEase(door, standIn.swing, standIn.opening), settings);
+				// A gate without a picture swings its own leaves where the portal swings the far
+				// gate's: into the space behind. Swung towards the player instead, the leaves jumped
+				// from one side of the gateway to the other when the portal took the gate over. Not
+				// where the gates stand apart: there its leaves would swing into the masked passage.
+				const bool intoFar = standIn.gate &&
+				                     Portal::Doors::SwingingDoor(id, true, standIn.linked, true) == standIn.linked &&
+				                     GateDepth(door, standIn.linked, AwayFrom(door, origin)) <= kGatesApart;
+				const auto away = Portal::Doors::ToShown(door).rotate * standIn.inwardInCell;
+				Portal::Doors::Swing(door, intoFar ? away : away * -1.0f, SwingEase(door, standIn.swing, standIn.opening), settings);
 			}
 			++it;
 		}
@@ -3413,15 +3433,11 @@ namespace Portal::Manager
 			if (!gate) {
 				return std::nullopt;
 			}
-			const auto inward = AwayFrom(gate, eye);
-			// By the references' origins: the far gate's 3D isn't loaded yet. Both gates are placed
-			// the same way about their meshes, so their origins stand apart as their doorways do.
-			const float depth = (farGate->GetPosition() - gate->GetPosition()).Dot(inward);
-			// Gates this close are one gateway seen from either side (Whiterun's, 20 units apart, one
-			// mesh at two sizes): the player's worldspace has its own passage behind it, and masked,
-			// the passage's ceiling opened onto the sky. Solitude's stand 370 apart.
-			constexpr float kApart = 150.0f;
-			if (depth <= kApart) {
+			const auto  inward = AwayFrom(gate, eye);
+			const float depth = GateDepth(gate, farGate->GetFormID(), inward);
+			// Close gates: the player's worldspace has its own passage behind them, and masked, the
+			// passage's ceiling opened onto the sky.
+			if (depth <= kGatesApart) {
 				return std::nullopt;
 			}
 			const auto  center = Doors::Center(gate);

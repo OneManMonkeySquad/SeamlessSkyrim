@@ -197,6 +197,17 @@
       -2182.92919921875
     ]
   },
+  "whiterun-gate-from-warmaidens": {
+    "cell": "WhiterunPLainsDistrict03",
+    "headingDeg": 275.0,
+    "interior": false,
+    "note": "Whiterun, beside Warmaiden's street door (0001DB52 holds the portal), looking at the city gate 0001B1F3 as a stand-in. Was: its leaves swung into the city, while with the gate's portal active the far gate's swing out into Tamriel.",
+    "pos": [
+      20899.998046875,
+      -7779.99951171875,
+      -3618.13916015625
+    ]
+  },
   "whiterun-gate-inside-looking-out": {
     "cell": "WhiterunOrigin",
     "headingDeg": 270.0,
