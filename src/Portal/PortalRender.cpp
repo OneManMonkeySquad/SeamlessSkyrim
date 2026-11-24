@@ -1593,6 +1593,9 @@ namespace
 		const auto mapping = Portal::Doors::Compute(a_portal);
 		const bool capturing = a_capture.has_value();
 		portalCamera->local = mapping.toLinked * (capturing ? a_capture->transform : mainCamera->world);
+		// A gate's mapping is scaled (Doors::Compute) for where the camera stands; what it sees from
+		// there doesn't change with its own scale.
+		portalCamera->local.scale = 1.0f;
 		if (capturing) {
 			auto& frustum = portalCamera->GetRuntimeData2().viewFrustum;
 			frustum.fLeft = a_capture->left;

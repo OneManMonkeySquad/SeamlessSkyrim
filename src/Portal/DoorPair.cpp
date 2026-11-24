@@ -1022,8 +1022,18 @@ namespace Portal::Doors
 		const auto  outside = frame(inYaw, Center(source));
 		const auto  inside = frame(outYaw, Center(linked));
 
+		// A gate's two doors can be one mesh placed at different sizes: Whiterun's is 10% larger on
+		// the city side. Seen through either, the other side's gateway didn't fill the one it was seen
+		// in (its arch lower, its threshold higher). Mapped scaled by their ratio around the doorway,
+		// the two gateways are one: the camera behind stands that much nearer (or further from) the
+		// far gate, which looks the same as that side drawn larger. A street seen from a room is
+		// scaled where it is merged instead (PlacementOf).
+		RE::NiTransform grow;
+		if (!source->GetParentCell()->IsInteriorCell() && !linked->GetParentCell()->IsInteriorCell()) {
+			grow.scale = Size(linked).halfHeight / Size(source).halfHeight;
+		}
 		Mapping mapping;
-		mapping.toLinked = inside * outside.Invert();
+		mapping.toLinked = inside * grow * outside.Invert();
 		mapping.sourceCenter = Center(source);
 		mapping.inward = { std::sin(inYaw), std::cos(inYaw), 0.0f };
 		// The hand correction turns the inside around its own door: seen from the door that holds

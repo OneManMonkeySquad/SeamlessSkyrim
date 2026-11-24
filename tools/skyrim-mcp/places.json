@@ -197,6 +197,17 @@
       -2182.92919921875
     ]
   },
+  "whiterun-gate-inside-looking-out": {
+    "cell": "WhiterunOrigin",
+    "headingDeg": 270.0,
+    "interior": false,
+    "note": "Whiterun, in the gatehouse passage 500 units inside the city gate (0001B1F3 -> Tamriel 0001B1F1), first person, looking out. Was: the outside's gateway smaller than the city's (its arch lower, its threshold higher): the city-side gate is placed ~10% larger.",
+    "pos": [
+      19850.0,
+      -7432.99951171875,
+      -3602.6240234375
+    ]
+  },
   "whiterun-market-arcadia-mare": {
     "cell": "WhiterunPLainsDistrict03",
     "headingDeg": 94.99999237060547,
