@@ -185,7 +185,12 @@ town falls between screenshots):
 - `run_route(name, capture=true)` saves the frames of each crossing and of the merge that follows
   it (40 frames, about a second) and lists them under `bursts`, each with its `oddFrames`: frames
   that differ from the one before and the one after, which resemble each other. A route step
-  `{"frames": n}` starts a burst at that point of the route.
+  `{"frames": n}` starts a burst at that point of the route. An NPC carried through the portal's
+  door starts an `npc` burst (60 frames).
+- NPCs walking through a door: route `bannered-mare-npcs-evening` (Whiterun at 19:48, timescale
+  60: three or four walk into the Bannered Mare within 30 s). Writing a burst out stalls the game
+  ~2.5 s, which shows in any timing taken across it. Papyrus `Actor.PathToReference` dispatched
+  through the VM (`DispatchMethodCall1`) didn't move anyone; the schedules do.
 - `capture_frames(frames, crop)` takes a burst now and returns it as one contact sheet. `crop`
   cuts to the doorway and makes the odd-frame scores more sensitive. The single frames stay in
   the burst's folder at full size.

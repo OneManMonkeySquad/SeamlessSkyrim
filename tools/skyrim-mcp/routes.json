@@ -1,4 +1,24 @@
 {
+  "bannered-mare-npcs-evening": {
+    "note": "Whiterun at 19:48, timescale 60, standing at the foot of the Bannered Mare's steps looking at its door (00016072/0001A6F4, stands open): within ~20 s Brenuin, Olfina Gray-Mane and Jon Battle-Born walk in through the doorway (NpcTravel carries them; capture takes an 'npc' burst at each). Was: slid in without walking, then stood just inside the door for seconds (user, 2026-11-24).",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "place": "bannered-mare-steps"
+      },
+      {
+        "console": "set gamehour to 19.8"
+      },
+      {
+        "console": "set timescale to 60"
+      },
+      {
+        "wait": 30
+      }
+    ]
+  },
   "bannered-mare-rain-look-out": {
     "note": "Inside the Bannered Mare in a storm (weather 0010A241), its front door (00016072) opened, looking out at the market. Was: no rain through the doorway (the engine gives precipitation no particles indoors); rain must fall in the street only, not in the room.",
     "steps": [

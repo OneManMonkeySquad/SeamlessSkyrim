@@ -92,6 +92,15 @@
   the same cell; `kSwitchMargin`).
 - NPCs opening a shut door (`DoorUse`, from NpcTravel's door idle hook) seen in the log only
   (Whiterun's market with every door forced shut: they open, NPCs walk through), not watched.
+- NPCs walked through the Bannered Mare's doorway from the street (`bannered-mare-npcs-evening`
+  with capture): one vanishes a step past the door plane while the one beside it, not yet past,
+  is still drawn (`MergedOverrides` hands it to the room there). Seen before the walk changes too.
+- An NPC following close behind another through a door can be moved in by the engine from more
+  than 200 units out (`kDoorRange`): not carried, it vanishes from the steps and appears at the
+  marker inside. Once (Brenuin) the engine moved it straight back out, where it turned round and
+  walked in again by the door. Seen once each.
+- The first NPC walked through a door after a load can still stand 1.5 s on the marker before
+  walking on; the others go on within 0.25 s.
 - Shutting a door by using it while standing in its doorway swings it shut onto the player.
 - A door pair placed at two sizes is evened out only for the street seen from inside (drawn
   larger, `PlacementOf`). Between two interiors (the portal pass) the far side's wall still shows

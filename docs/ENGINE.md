@@ -133,6 +133,19 @@ Found porting the plugin; each was checked in the code of both.
   when a thread-local state (TLS + 0x9E8) is 1, set by whom isn't known.
 - **High process:** `Actor::MoveToHigh()` on a remote cell's actors is accepted, and they aren't
   demoted while the cell stays attached.
+- **An NPC's graph `Speed` is pulled, not set:** each graph update reads it from the actor's
+  movement through `BSTAnimationGraphDataChannel<Actor, float, ActorSpeedChannel>` (vtable AE
+  207549 / SE 260606, slot 1 `PollChannelUpdateImpl` stores it at +0x18; the actor is at +0x28),
+  so `SetGraphVariableFloat("Speed")` is overwritten; an actor moved by `SetPosition` walks in place
+  with its legs still. `TurnDelta`'s channel is ActorTurnDeltaChannel (207559). Writes inside
+  `Actor::UpdateAnimation` (ID 37361, after its ID 37364) never ran for NPCs.
+- **AI after being moved:** an NPC held on a path of our own for a second (`SetPosition` every
+  frame) stood 1-2 s at the end before its AI walked on; `EvaluatePackage(true, false)` then gets
+  it going within ~0.1 s, except now and then the first one after a load.
+- **NPCs through a load door:** one following close behind another is moved through without
+  `MovementMessageActivateDoor`'s idle call (the door idle hook doesn't see it), sometimes from
+  more than 200 units in front of the door. After the move the AI's path goes on from the door's
+  marker.
 - **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
   ID 18870 / 18897), with `bhkWorld` vfunc 0x32 (arg 0).
   - Stepping a second world from the main thread, beside that job, corrupted memory: it is

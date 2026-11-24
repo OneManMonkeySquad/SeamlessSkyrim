@@ -3,6 +3,7 @@
 #include "Portal/DoorPair.h"
 #include "Portal/DoorUse.h"
 
+#include "Bridge/FrameHooks.h"
 #include "Hooks.h"
 
 namespace
@@ -27,11 +28,33 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// The NPCs being walked through a doorway (UpdateWalks) and their pace. The animation graph's
+	// Speed isn't a variable anyone sets: each graph update pulls it from the actor's movement
+	// through a channel (ActorSpeedChannel), and the AI stands still meanwhile, so the NPC slid
+	// through the doorway with its legs still, whatever was written into Speed.
+	std::mutex                                 pacedLock;
+	std::vector<std::pair<RE::Actor*, float>> paced;
+
+	struct SpeedChannelHook
+	{
+		static void Thunk(RE::BSAnimationGraphChannel* a_this, bool a_arg)
+		{
+			func(a_this, a_arg);
+			auto*            actor = *reinterpret_cast<RE::Actor**>(reinterpret_cast<std::uintptr_t>(a_this) + 0x28);  // set by its constructor (ID 37984)
+			std::scoped_lock lock(pacedLock);
+			if (const auto it = std::ranges::find(paced, actor, &std::pair<RE::Actor*, float>::first); it != paced.end()) {
+				a_this->value = std::bit_cast<std::uint32_t>(it->second);
+			}
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	struct Seen
 	{
 		bool         remote;  // was in the space behind the door
 		RE::NiPoint3 position;
 		float        heading;
+		float        speed;  // the animation graph's Speed: its pace, walking or running
 	};
 
 	std::unordered_map<RE::FormID, Seen> lastFrame;
@@ -61,6 +84,7 @@ namespace
 		float           crossAt = 0.0f;  // fraction of the way at which the door plane is passed
 		bool            crossed = false;
 		bool            driven = false;  // moved by us, because it didn't walk by itself
+		float           speed;  // units per second, and the animation graph's Speed meanwhile
 	};
 	std::vector<Walk> walks;
 
@@ -109,6 +133,10 @@ namespace
 	{
 		if (a_actor) {
 			a_actor->NotifyAnimationGraph("moveStop");
+			// After being held on the walk, the AI left the NPC standing on the marker for one to two
+			// seconds (the next one through the door walked into it); with its package evaluated
+			// now, it mostly walks on within about 0.1 s.
+			a_actor->EvaluatePackage(true, false);
 		}
 		if (auto* controller = a_actor ? a_actor->GetCharController() : nullptr) {
 			controller->gravity = a_walk.gravity;
@@ -128,7 +156,7 @@ namespace
 				// second; there is no navmesh short of a doorway, and coming out it stands inside
 				// the building's collision), so it is moved, at walking pace.
 				a_walk.driven = true;
-				done = elapsed * kWalkSpeed / distance;
+				done = elapsed * a_walk.speed / distance;
 			}
 			if (done >= 1.0f) {
 				Portal::Manager::RefreshMergedShapes();
@@ -144,8 +172,6 @@ namespace
 			}
 			actor->SetPosition(a_walk.from + path * done, true);
 			actor->SetHeading(a_walk.heading);
-			actor->SetGraphVariableFloat("Speed", kWalkSpeed);
-			actor->SetGraphVariableFloat("Direction", 0.0f);
 			// Short of the doorway there is no floor on the new side.
 			if (auto* controller = actor->GetCharController()) {
 				controller->gravity = 0.0f;
@@ -159,6 +185,13 @@ namespace
 			}
 			return false;
 		});
+		std::scoped_lock lock(pacedLock);
+		paced.clear();
+		for (auto& walk : walks) {
+			if (auto actor = walk.actor.get()) {
+				paced.emplace_back(actor.get(), walk.speed);
+			}
+		}
 	}
 }
 
@@ -166,6 +199,8 @@ namespace Portal::NpcTravel
 {
 	void Install()
 	{
+		REL::Relocation<std::uintptr_t> speedChannel{ RE::VTABLE_BSTAnimationGraphDataChannel_Actor_float_ActorSpeedChannel_[0] };
+		SpeedChannelHook::func = speedChannel.write_vfunc(0x1, SpeedChannelHook::Thunk);
 		// MovementMessageActivateDoor's handler, its call that starts the activate idle at the door.
 		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(36854, 37878), REL::Relocate(0x1A3, 0x1AA) };
 		if (Hooks::CallsTo(site.address(), REL::RelocationID(38289, 39255), "npc travel: door idle")) {
@@ -204,7 +239,8 @@ namespace Portal::NpcTravel
 				continue;
 			}
 			const bool remote = std::ranges::find(a_remoteCells, cell) != a_remoteCells.end();
-			Seen       seen{ remote, actor->GetPosition(), actor->GetAngleZ() };
+			Seen       seen{ remote, actor->GetPosition(), actor->GetAngleZ(), 0.0f };
+			actor->GetGraphVariableFloat("Speed", seen.speed);
 
 			const auto before = lastFrame.find(actor->GetFormID());
 			if (before != lastFrame.end() && before->second.remote != remote) {
@@ -217,36 +253,31 @@ namespace Portal::NpcTravel
 					// other way (not every NPC came in through that handler: Jon Battle-Born, following
 					// Carlotta in, didn't) would play on through the walk below.
 					actor->NotifyAnimationGraph("IdleForceDefaultState");
-					// The engine's own transition has already put the actor at the door's marker; it is
-					// moved back to where it would be had it simply walked on, so it doesn't jump in
-					// the picture. But not short of the doorway on the new side: there is no floor and
-					// no navmesh behind a door (Embry, carried into the inn from the porch, sank 37
-					// units and never moved again). So at least a step past the door plane, at the
-					// height the marker gave.
-					constexpr float kPastDoor = 40.0f;
-					const float     markerZ = actor->GetPositionZ();
-					auto            point = wentIn ? old.position : toSource * old.position;
-					const auto      offset = point - mapping.sourceCenter;
-					const float     depth = offset.x * mapping.inward.x + offset.y * mapping.inward.y;  // > 0: remote side
-					if (wentIn && depth < kPastDoor) {
-						point += mapping.inward * (kPastDoor - depth);
-					} else if (!wentIn && depth > -kPastDoor) {
-						point -= mapping.inward * (depth + kPastDoor);
+					// The engine's own transition has already put the actor at the door's marker on the
+					// new side; it is moved back to where it stood in front of the door (mapped through
+					// the pair) and walked from there to that marker, so it doesn't jump in the picture.
+					// The walk ends on the marker because that is where the AI's path through the door
+					// goes on from: ended a step past the door plane instead, short of the marker, the
+					// NPC stood there for one and a half seconds before its AI walked it on.
+					const auto  marker = actor->GetPosition();
+					auto        start = wentIn ? mapping.toLinked * old.position : toSource * old.position;
+					const auto  depthOf = [&](const RE::NiPoint3& a_source) {  // > 0: remote side
+                        const auto offset = a_source - mapping.sourceCenter;
+                        return offset.x * mapping.inward.x + offset.y * mapping.inward.y;
+					};
+					const float startDepth = depthOf(wentIn ? old.position : toSource * old.position);
+					const float markerDepth = depthOf(wentIn ? toSource * marker : marker);
+					if (std::abs(start.z - marker.z) < 100.0f) {
+						start.z = marker.z;
 					}
-					auto start = wentIn ? mapping.toLinked * old.position : toSource * old.position;
-					seen.position = wentIn ? mapping.toLinked * point : point;
-					if (std::abs(seen.position.z - markerZ) < 100.0f) {
-						seen.position.z = markerZ;
-						start.z = markerZ;
-					}
-					seen.heading = std::atan2(seen.position.x - start.x, seen.position.y - start.y);
-					if (start.GetDistance(seen.position) > 10.0f && std::ranges::none_of(walks, [&](const Walk& a_walk) { return a_walk.actor.get().get() == actor.get(); })) {
+					seen.position = marker;
+					seen.heading = std::atan2(marker.x - start.x, marker.y - start.y);
+					if (start.GetDistance(marker) > 10.0f && std::ranges::none_of(walks, [&](const Walk& a_walk) { return a_walk.actor.get().get() == actor.get(); })) {
 						auto* controller = actor->GetCharController();
-						// How far in front of the plane it starts (depth is that of the unclamped point);
-						// already past it, it is on the new side from the first step.
-						const float before = std::max(wentIn ? -depth : depth, 0.0f);
-						walks.push_back({ actor->GetHandle(), start, seen.position, seen.heading, controller ? controller->gravity : 1.0f, std::chrono::steady_clock::now(), wentIn,
-							before / (before + kPastDoor) });
+						// At its own pace: someone running in runs on, someone who stopped at the door walks.
+						const float speed = old.speed > 30.0f ? old.speed : kWalkSpeed;
+						walks.push_back({ actor->GetHandle(), start, marker, seen.heading, controller ? controller->gravity : 1.0f, std::chrono::steady_clock::now(), wentIn,
+							std::clamp(startDepth / (startDepth - markerDepth), 0.0f, 1.0f), false, false, speed });
 						actor->SetPosition(start, true);
 						actor->NotifyAnimationGraph("moveStart");
 						seen.position = start;
@@ -268,6 +299,7 @@ namespace Portal::NpcTravel
 						root->Update(update);
 					}
 					KeepVisible(actor.get());
+					FrameHooks::CaptureEventFrames(L"npc", 60);  // run_route(capture=true): every frame of the walk
 					Manager::RefreshMergedShapes();
 					++carried;
 					lastCarried = std::format("{} {} at ({:.0f},{:.0f},{:.0f})", actor->GetDisplayFullName(), wentIn ? "in" : "out", seen.position.x, seen.position.y, seen.position.z);
