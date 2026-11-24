@@ -70,9 +70,8 @@ namespace Portal::Snapshot
 	// takes the doorway's picture if none was taken lately. From the portal pass it is taken with
 	// the capture camera, which Capture asks for (TakeCaptureRequest) and waits a frame; merged into
 	// the world, with the player's view if that sees the doorway well enough, unless there is a
-	// capture camera's picture already (of the street, the player's view replaces it). A room, or the
-	// street from inside, is merged as soon as it has loaded, so the manager holds the merge back for
-	// a door without one (Manager::PictureWanted).
+	// capture camera's picture already. A room, or the street from inside, is merged as soon as it
+	// has loaded, so the manager holds the merge back for a door without one (Manager::PictureWanted).
 	// a_gate: a city gate's doorway, taken from further back (its far side is a street, not a room).
 	void Capture(const View& a_view, const Source& a_source, RE::FormID a_door, bool a_outdoors, bool a_gate, const Corners& a_corners);
 
@@ -90,8 +89,8 @@ namespace Portal::Snapshot
 	bool HasPicture(RE::FormID a_door, bool a_outdoors);
 
 	// Main thread: the door has no picture taken with the capture camera at the current size (a
-	// door to the street: for this part of the day, and none from the player's view either). Such a
-	// picture is kept once taken: from its fixed place it comes out the same.
+	// door to the street: for this part of the day). Such a picture is kept once taken: from its
+	// fixed place it comes out the same.
 	// a_corners: the doorway as the capture camera takes it (its shape sets the picture's).
 	bool CameraPictureWanted(RE::FormID a_door, bool a_outdoors, const Corners& a_corners);
 

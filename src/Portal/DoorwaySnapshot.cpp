@@ -110,6 +110,7 @@ namespace
 		float         lightScale = 1.0f;  // Source::lightScale when taken
 		std::uint32_t version = kVersion;
 		float         brightness = 0.0f;  // RoomBrightness; 0 until its texels have been on the CPU
+		float         distance = 0.0f;    // the street's: StreetDistance; 0 until its texels have been on the CPU
 	};
 	std::unordered_map<std::string, Picture> pictures;
 
@@ -324,6 +325,34 @@ namespace
 		return count ? static_cast<float>(std::exp(sum / count)) / a_lightScale : 0.0f;
 	}
 
+	// How far off the street mostly is from where its picture was taken (its texels as Brightness's):
+	// the sphere it is drawn on. The mean of the distances' logarithms: a near post and the far
+	// end of the street count alike. The sky left out, and what is around the doorway: the street
+	// side's own porch and eaves above and beside the door took it to 330 units in The Drunken
+	// Huntsman, with the city wall 1000 to 2400 off, and the wall stood in the picture a step lower
+	// than in the real view taking over from it.
+	float StreetDistance(const void* a_texels, UINT a_width, UINT a_height, std::size_t a_rowPitch, const DoorwayPlace& a_takenFrom, const Extent& a_extent)
+	{
+		using DirectX::PackedVector::XMConvertHalfToFloat;
+		const float back = std::max(-a_takenFrom[2], 0.0f);
+		const auto  column = [&](float a_across) { return static_cast<UINT>(std::clamp((a_across - a_extent[0]) / (a_extent[1] - a_extent[0]), 0.0f, 1.0f) * a_width); };
+		const auto  row = [&](float a_up) { return static_cast<UINT>(std::clamp(1.0f - (a_up - a_extent[2]) / (a_extent[3] - a_extent[2]), 0.0f, 1.0f) * a_height); };
+		double      sum = 0.0;
+		std::size_t count = 0;
+		for (UINT y = row(1.0f); y < row(0.0f); ++y) {
+			const auto* texels = reinterpret_cast<const std::uint16_t*>(static_cast<const char*>(a_texels) + y * a_rowPitch);
+			for (UINT x = column(0.0f); x < column(1.0f); ++x) {
+				const float behind = XMConvertHalfToFloat(texels[x * 4 + 3]);
+				if (behind >= 20000.0f) {
+					continue;
+				}
+				sum += std::log(behind + back);
+				++count;
+			}
+		}
+		return count ? static_cast<float>(std::exp(sum / count)) : 0.0f;
+	}
+
 	// With mipmaps: where the eye's ray stretches a row of texels across the screen (leaving the
 	// picture at its side, or sliding off a near thing's edge onto the room behind it) the draw
 	// blurs by how far, from a smaller mip. Sampled sharp there, the row showed as streaks.
@@ -428,6 +457,8 @@ namespace
 						picture.version = header[1];
 						if (!a_outdoors) {
 							picture.brightness = Brightness(texels.data(), header[2], header[3], header[2] * 8, picture.lightScale);
+						} else if (depth) {
+							picture.distance = StreetDistance(texels.data(), header[2], header[3], header[2] * 8, picture.takenFrom, picture.extent);
 						}
 					}
 				}
@@ -570,9 +601,11 @@ namespace
 				float4             TakenFrom;         // xyz: where, camera-relative; w: how far behind the doorway the plain colour stands
 				float4             Look;              // x: Adaptation::Kind; y: daylight; z: 1 = the outdoors behind; w: the picture's light now against when taken
 				float4             Extent;            // the part of the door's plane the picture covers, as Extent
-				float4             Gate;              // x: 1 = a city gate (the same sky on both sides)
+				float4             Gate;              // x: 1 = a city gate (the same sky on both sides); y: the street's StreetDistance, 0 = not known
 			};
 			static const float kFar = 30000;
+			// The street's sphere when the picture's texels haven't been on the CPU yet (Gate.y).
+			static const float kStreetDistance = 1000;
 			struct Vertex { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 world : TEXCOORD1; float depth : TEXCOORD2; };
 			Vertex VS(float3 world : POSITION, float2 uv : TEXCOORD0)
 			{
@@ -666,6 +699,19 @@ namespace
 				float before = 0;
 				float t = end;
 				bool  hit = false;
+				// The street from a room: from beside the doorway the eye sees past what stands near it
+				// (a brazier, the street door's leaf swung open), where the picture has nothing. Marched
+				// through its depth, the ray landed on the near thing or the street behind from one
+				// pixel to the next, in a salad of both. Taken as a sphere around where it was taken
+				// from, as far off as the street mostly is, it keeps some parallax and stays whole.
+				if (Look.z > 0.5 && Gate.x < 0.5 && Plain.w > 0.5 && Origin.w > 0.5) {
+					float3 fromTaken = v.world - TakenFrom.xyz;
+					float  along = dot(fromTaken, dir);
+					float  radius = max(Gate.y > 0 ? Gate.y : kStreetDistance, 2 * -Inward.w);
+					float  s = -along + sqrt(max(along * along - dot(fromTaken, fromTaken) + radius * radius, 0));
+					t = min(TOf(s * facing), end);
+					hit = true;
+				} else
 				[loop] for (int i = 1; i <= 24; ++i) {
 					float at = end * i / 24;
 					float surface = TOf(StoredBehind(uvNear + delta * at));
@@ -993,8 +1039,12 @@ namespace
 				}
 				// Taken again meanwhile: the newer one's texels decide.
 				const auto found = pictures.find(it->key);
-				if (found != pictures.end() && found->second.taken == it->taken && it->key.ends_with("#inside")) {
-					found->second.brightness = Brightness(mapped.pData, it->width, it->height, mapped.RowPitch, it->lightScale);
+				if (found != pictures.end() && found->second.taken == it->taken) {
+					if (it->key.ends_with("#inside")) {
+						found->second.brightness = Brightness(mapped.pData, it->width, it->height, mapped.RowPitch, it->lightScale);
+					} else {
+						found->second.distance = StreetDistance(mapped.pData, it->width, it->height, mapped.RowPitch, it->takenFrom, it->extent);
+					}
 				}
 				a_context->Unmap(it->staging, 0);
 				if (!file) {
@@ -1226,11 +1276,6 @@ namespace Portal::Snapshot
 		}
 		// The street's for this part of the day: another part's is lit for another hour.
 		const auto* picture = Load(device, KeyOf(a_door, a_outdoors, PartOfDay()), a_outdoors);
-		// The player's view of the street is kept (Capture): the portal pass has no real sky and no
-		// distant LOD.
-		if (a_outdoors && picture && picture->extent == kDoorwayOnly) {
-			return false;
-		}
 		const auto [width, height] = SizeFor(kRoomCamera.extent, pictureHeight.load(), AspectOf(a_corners));
 		return !picture || picture->version < kVersion || picture->extent != kRoomCamera.extent || picture->width != width || picture->height != height;
 	}
@@ -1279,9 +1324,10 @@ namespace Portal::Snapshot
 		const auto key = KeyOf(a_door, a_outdoors, PartOfDay());
 		auto&      picture = pictures[key];
 		picture.used = std::chrono::steady_clock::now();
-		// The player's view sees less than the capture camera did. Of the street it replaces it all
-		// the same: the portal pass draws a gradient for the sky and no distant LOD.
-		if (!withCamera && !a_outdoors && picture.view && picture.extent != kDoorwayOnly) {
+		// The player's view sees less than the capture camera did. Also of the street, though the
+		// portal pass draws a gradient for its sky and no distant LOD: with the doorway only, a step
+		// aside from in front of it showed the picture's edge drawn out in streaks.
+		if (!withCamera && picture.view && picture.extent != kDoorwayOnly) {
 			return;
 		}
 		const auto now = std::chrono::steady_clock::now();
@@ -1457,6 +1503,7 @@ namespace Portal::Snapshot
 			const auto& extent = picture ? picture->extent : kDoorwayOnly;
 			std::memcpy(constants + 96, extent.data(), sizeof(float) * 4);
 			constants[100] = a_gate ? 1.0f : 0.0f;
+			constants[101] = picture ? picture->distance : 0.0f;
 			Upload(context, pipeline.drawConstants, constants, sizeof(constants));
 		}
 		// Opaque, it stands in for the doorway like geometry (depth and motion); fading out, it only

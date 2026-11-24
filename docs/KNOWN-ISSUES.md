@@ -136,6 +136,10 @@
   caster beyond the portal's nine cells, distant LOD (not in the portal pass), or the gateway's
   shadows being the soft copy (Volumetric Shadows' VSM, 512 texels a cascade) where the world has
   its crisp shadow mask. The portal's own shadow pass costs about 1 ms of the main thread.
+- The street's doorway picture seen from inside is drawn on a sphere (`StreetDistance`): while it
+  fades into the real street (0.4 s), a few steps from the doorway, the two are seen doubled, the
+  picture's far wall lower and smaller (The Drunken Huntsman's side door: sphere 690 units, the
+  city wall 1000-2400 off).
 - College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
   open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
   the route predates doors opening only when used and doesn't use the door.

@@ -32,6 +32,17 @@
       320.3499450683594
     ]
   },
+  "drunken-huntsman-side-door-at-angle": {
+    "cell": "WhiterunDrunkenHuntsman",
+    "headingDeg": 220.0,
+    "interior": true,
+    "note": "Drunken Huntsman, the side door to the street (000165C7) seen ~40 degrees off its front, a few hundred units off: its stand-in picture at an angle.",
+    "pos": [
+      59.999996185302734,
+      -1099.9998779296875,
+      68.33189392089844
+    ]
+  },
   "jorrvaskr-front-door": {
     "cell": "WhiterunWindDistrict03",
     "headingDeg": 90.0,
