@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.6.0
+
+### Doors
+
+- Doors swing with their own `Open`/`Close` animations; the scripted bounce is gone.
+- NPCs cross an open doorway with their walk animation at their own speed, and continue to
+  their destination instead of stopping at the door.
+- Exterior doors seen from inside stay shut until the exterior is loaded, then swing open on
+  the live view. The captured picture of the exterior is removed.
+
+### City gates
+
+- The worldspace behind a gate loads from 4000 units (was 750), and a gate is prioritised over
+  the doors around it. A house door still wins when walked up to.
+- Until it loads, a gate shows the current worldspace's LOD city instead of a captured picture.
+  Fixes the brick wall in Solitude's gate.
+- A gate pair's view is scaled by the ratio of the two doorways, and only when both sides are
+  the same mesh more than 1% apart. Whiterun's gate is placed 10% larger on the city side; its
+  far arch no longer sits offset.
+- A gate's leaves swing in the same direction as the far gate's seen through it, and finish
+  swinging before the gate is released.
+- Shadows seen through a gate match the city's own at any distance.
+
+### Performance
+
+- Persistent references' 3D loads on the engine's model loader thread instead of the main
+  thread: attaching at Whiterun's gate takes 21 ms instead of 79.
+- After a crossing, light scenes take in 32 lights per frame for 30 frames: the frame after
+  leaving Understone Keep takes 30 ms instead of 96.
+- The exterior's cells and land are read while the player is still inside: no 200 ms hitch on
+  the first walk out after loading a save.
+- The portal pass is scissored to the doorway's screen rectangle: 2.35 ms of GPU time instead
+  of 3.96 at Solitude's gate.
+- A merged room's actors are listed once instead of every frame; the list grew without bound.
+
+### Fixes
+
+- Items dropped in a room no longer vanish after walking out and back in.
+- A door's 3D is cloned from a loaded door of the same model, and inherited what the portals
+  had changed on it. Clones are now made from the unmodified state:
+  - doors keep leaves, handles and collision after loading a save inside a building with open
+    doors;
+  - interior doors loaded while a building with the same doors was merged into the street no
+    longer have their collision misplaced.
+- Whiterun's gate: the capture built a plain door's shape instead of the gate's, so it re-ran
+  every other frame and the view lagged a frame.
+- Whiterun's gate: guards fell through the road. Far-side collision is removed from the
+  passage only where its bound's centre is on the player's side of the doorway.
+- The exterior's image space no longer applies a few steps past a shop door's plane (blue
+  tint); it blends in only at the doorway or inside.
+- The doorway just crossed shows its space as soon as it loads, without a fade.
+- An always-open exterior door is open on the first frame after entering the shop.
+
 ## 0.5.0
 
 ### Doors
