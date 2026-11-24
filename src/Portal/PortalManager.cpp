@@ -325,8 +325,9 @@ namespace
 	// A city gate (outdoors, into another worldspace) is many times a house door's size and seen
 	// from far down the road: it counts as nearer than it is, in which door is shown and in how far
 	// out its space loads and is let go. Not by a fixed amount: a house door must still win when
-	// walked up to near a gate (it has to be the shown one to be walked through), and at half the
-	// distance it does unless it stands within twice the switch margin of the gate.
+	// walked up to near a gate (it has to be the shown one to be walked through), and at a quarter
+	// of the distance it does unless it stands within four times the switch margin of the gate
+	// (kSwitchMargin / kGateWeight).
 	constexpr float kGateWeight = 0.25f;
 
 	// a_door's distance from a_origin as the reaches and the order of doors count it.
@@ -612,8 +613,10 @@ namespace
 		}
 	}
 
-	// Far enough past ReleaseRadius (fast travel on horseback), a door still swinging is let go anyway.
-	constexpr float kForceReleaseRadius = 2500.0f;
+	// Far enough past ReleaseRadius (fast travel on horseback), a door still swinging is let go
+	// anyway. Past it, by reach (Reach), as ReleaseRadius is: a fixed distance stood inside a gate's
+	// release reach and a sparse street's, and those were let go at once, swinging or not.
+	constexpr float kForceReleaseBeyond = 1350.0f;
 	bool            doorWanted = false;  // the portal's door swings towards open (else towards shut): Wanted
 
 	// How far open a_door is a_t of the way through its swing (0 .. 1), a_opening or shutting: its own
@@ -2758,7 +2761,6 @@ namespace Portal::Manager
 		if (const auto portal = GetActive()) {
 			auto*       door = Lookup(portal->sourceDoor);
 			auto*       linkedDoor = Lookup(portal->linkedDoor);
-			const float distance = door ? player->GetPosition().GetDistance(door->GetPosition()) : FLT_MAX;
 			const float reach = door && linkedDoor ? Reach(player->GetPosition(), door, linkedDoor) : FLT_MAX;
 			// Another door into the same space counts too (an inn's kitchen door next to its front
 			// door): the space is placed by the door pair, so it has to be the nearest door's.
@@ -2779,7 +2781,7 @@ namespace Portal::Manager
 			// first, it swung open again right after.
 			const bool keepOpen = door && linkedDoor && !off && !locked && Wanted(door, linkedDoor);
 			doorWanted = keepOpen;
-			if (end && (DoorShut() || keepOpen || distance > kForceReleaseRadius)) {
+			if (end && (DoorShut() || keepOpen || reach > ReleaseRadius() + kForceReleaseBeyond)) {
 				if (better && candidate->cell == portal->cell && !remote.merged) {
 					// The other door leads into the same space, which is attached already: only the
 					// door pair changes. Let go and attached again, the doorway was empty for a third

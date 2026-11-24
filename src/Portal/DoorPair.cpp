@@ -225,10 +225,12 @@ namespace Portal::Doors
 			return motion;
 		}
 
-		// The door's own "Open" and "Close" animations (its NiControllerManager's sequences) for
-		// a_leaf: how far it has turned from shut, as a share of how far "Open" turns it. A leaf that
-		// slides instead of turning, by how far it has moved.
-		std::optional<std::pair<Motion, Motion>> OwnMotion(RE::NiAVObject* a_root, RE::NiAVObject* a_leaf)
+		// The door's own "Open" and "Close" animations (its NiControllerManager's sequences), as the
+		// first of a_leaves that "Open" moves: how far it has turned from shut, as a share of how far
+		// "Open" turns it. A leaf that slides instead of turning, by how far it has moved. A leaf
+		// "Open" leaves where it is (a latch, a frame piece the controller also targets) has no
+		// share to give: every amount divided by its zero movement.
+		std::optional<std::pair<Motion, Motion>> OwnMotion(RE::NiAVObject* a_root, const std::vector<RE::NiAVObject*>& a_leaves)
 		{
 			RE::NiControllerManager* manager = nullptr;
 			for (auto* controller = a_root->GetControllers(); controller && !manager; controller = controller->next.get()) {
@@ -239,43 +241,53 @@ namespace Portal::Doors
 			if (!open || !close) {
 				return std::nullopt;
 			}
-			const auto interpolatorOf = [&](RE::NiControllerSequence* a_sequence) -> RE::NiInterpolator* {
+			// Only a transform controller's: a node can also carry a visibility or a colour track,
+			// whose interpolator fills no transform.
+			const auto interpolatorOf = [](RE::NiControllerSequence* a_sequence, RE::NiAVObject* a_leaf) -> RE::NiInterpolator* {
 				for (std::uint32_t i = 0; i < a_sequence->arraySize; ++i) {
-					if (a_sequence->idTagArray.data()[i].avObjectName == a_leaf->name) {
+					const auto& tag = a_sequence->idTagArray.data()[i];
+					if (tag.avObjectName == a_leaf->name && tag.ctlrType == "NiTransformController") {
 						return a_sequence->interpArray.data()[i].interpolator.get();
 					}
 				}
 				return nullptr;
 			};
-			auto* openInterpolator = interpolatorOf(open);
-			auto* closeInterpolator = interpolatorOf(close);
-			if (!openInterpolator || !closeInterpolator) {
-				return std::nullopt;
-			}
 			const auto at = [](RE::NiInterpolator* a_interpolator, float a_time) {
 				QuatTransform value{};
 				a_interpolator->Update1(a_time, nullptr, reinterpret_cast<RE::NiQuatTransform&>(value));
 				return value;
 			};
-			const auto shut = at(openInterpolator, open->beginKeyTime);
-			const auto turned = [&](const QuatTransform& a_value) {
-				const float dot = std::abs(a_value.rotate.w * shut.rotate.w + a_value.rotate.x * shut.rotate.x + a_value.rotate.y * shut.rotate.y + a_value.rotate.z * shut.rotate.z);
-				return 2.0f * std::acos(std::min(dot, 1.0f));
-			};
-			const auto moved = [&](const QuatTransform& a_value) { return a_value.translate.GetDistance(shut.translate); };
-			const auto opened = at(openInterpolator, open->endKeyTime);
-			const bool slides = turned(opened) < RE::deg_to_rad(1.0f);
-			const float full = slides ? moved(opened) : turned(opened);
-			const auto sample = [&](RE::NiControllerSequence* a_sequence, RE::NiInterpolator* a_interpolator) {
-				Motion motion{ (a_sequence->endKeyTime - a_sequence->beginKeyTime) / a_sequence->frequency, std::vector<float>(kMotionSamples) };
-				for (std::size_t i = 0; i < kMotionSamples; ++i) {
-					const float t = static_cast<float>(i) / static_cast<float>(kMotionSamples - 1);
-					const auto  value = at(a_interpolator, a_sequence->beginKeyTime + t * (a_sequence->endKeyTime - a_sequence->beginKeyTime));
-					motion.amount[i] = (slides ? moved(value) : turned(value)) / full;
+			for (auto* leaf : a_leaves) {
+				auto* openInterpolator = interpolatorOf(open, leaf);
+				auto* closeInterpolator = interpolatorOf(close, leaf);
+				if (!openInterpolator || !closeInterpolator) {
+					continue;
 				}
-				return motion;
-			};
-			return std::pair{ sample(open, openInterpolator), sample(close, closeInterpolator) };
+				const auto shut = at(openInterpolator, open->beginKeyTime);
+				const auto turned = [&](const QuatTransform& a_value) {
+					const float dot = std::abs(a_value.rotate.w * shut.rotate.w + a_value.rotate.x * shut.rotate.x + a_value.rotate.y * shut.rotate.y + a_value.rotate.z * shut.rotate.z);
+					return 2.0f * std::acos(std::min(dot, 1.0f));
+				};
+				const auto  moved = [&](const QuatTransform& a_value) { return a_value.translate.GetDistance(shut.translate); };
+				const auto  opened = at(openInterpolator, open->endKeyTime);
+				const bool  slides = turned(opened) < RE::deg_to_rad(1.0f);
+				const float full = slides ? moved(opened) : turned(opened);
+				constexpr float kStill = 1.0f;  // units: under this the leaf doesn't slide either
+				if (slides && full < kStill) {
+					continue;
+				}
+				const auto sample = [&](RE::NiControllerSequence* a_sequence, RE::NiInterpolator* a_interpolator) {
+					Motion motion{ (a_sequence->endKeyTime - a_sequence->beginKeyTime) / a_sequence->frequency, std::vector<float>(kMotionSamples) };
+					for (std::size_t i = 0; i < kMotionSamples; ++i) {
+						const float t = static_cast<float>(i) / static_cast<float>(kMotionSamples - 1);
+						const auto  value = at(a_interpolator, a_sequence->beginKeyTime + t * (a_sequence->endKeyTime - a_sequence->beginKeyTime));
+						motion.amount[i] = (slides ? moved(value) : turned(value)) / full;
+					}
+					return motion;
+				};
+				return std::pair{ sample(open, openInterpolator), sample(close, closeInterpolator) };
+			}
+			return std::nullopt;
 		}
 
 		float AmountAt(const Motion& a_motion, float a_t)
@@ -309,7 +321,7 @@ namespace Portal::Doors
 			for (auto* node : animated) {
 				geometry.leaves.push_back({ RE::NiPointer<RE::NiAVObject>(node), {}, toDoor(node).translate });
 			}
-			if (const auto own = animated.empty() ? std::nullopt : OwnMotion(a_root, animated.front())) {
+			if (const auto own = OwnMotion(a_root, animated)) {
 				std::tie(geometry.opening, geometry.shutting) = *own;
 			} else {
 				geometry.opening = StillDoorMotion(true);
@@ -1144,10 +1156,17 @@ namespace Portal::Doors
 		// in (its arch lower, its threshold higher). Mapped scaled by their ratio around the doorway,
 		// the two gateways are one: the camera behind stands that much nearer (or further from) the
 		// far gate, which looks the same as that side drawn larger. A street seen from a room is
-		// scaled where it is merged instead (PlacementOf).
+		// scaled where it is merged instead (PlacementOf). Only one mesh (by its model: the two sides'
+		// base doors can be two forms): two different gates'
+		// heights say nothing about their scale, and a scaled mapping also moves where the player
+		// and the people walking through come out. Within 1% it is the measurement's noise.
 		RE::NiTransform grow;
-		if (!source->GetParentCell()->IsInteriorCell() && !linked->GetParentCell()->IsInteriorCell()) {
-			grow.scale = Size(linked).halfHeight / Size(source).halfHeight;
+		const auto modelOf = [](RE::TESObjectREFR* a_door) { return a_door->GetBaseObject()->As<RE::TESModel>()->GetModel(); };
+		if (!source->GetParentCell()->IsInteriorCell() && !linked->GetParentCell()->IsInteriorCell() && _stricmp(modelOf(source), modelOf(linked)) == 0) {
+			const float ratio = Size(linked).halfHeight / Size(source).halfHeight;
+			if (std::abs(ratio - 1.0f) > 0.01f) {
+				grow.scale = ratio;
+			}
 		}
 		Mapping mapping;
 		mapping.toLinked = inside * grow * outside.Invert();

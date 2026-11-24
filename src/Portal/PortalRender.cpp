@@ -1835,8 +1835,22 @@ namespace
 		// doorway's rectangle (with its margin) bounds the quad that shows the picture, at render scale
 		// and jitter alike. The main view's rain drawn into the picture below is cut the same way. A
 		// capture's picture is all of it.
-		const bool scissored = !capturing && !a_fullTarget;
-		if (scissored) {
+		// Switched off again on leaving, also by an exception (a door unloaded mid-frame, caught in
+		// the draw hook): left on, the rest of the frame was cut to the doorway's rectangle.
+		struct Scissor
+		{
+			decltype(shadowState) state;
+			bool                  on;
+			void Off()
+			{
+				if (std::exchange(on, false)) {
+					state.rasterStateScissorMode = 0;
+					state.stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RASTER_CULL_MODE);
+				}
+			}
+			~Scissor() { Off(); }
+		} scissor{ shadowState, !capturing && !a_fullTarget };
+		if (scissor.on) {
 			const float     width = DrawingTargets().pictureWidth, height = DrawingTargets().pictureHeight;
 			const D3D11_RECT rect{ static_cast<LONG>(std::floor(a_doorway[0] * width)), static_cast<LONG>(std::floor((1.0f - a_doorway[3]) * height)),
 				static_cast<LONG>(std::ceil(a_doorway[1] * width)), static_cast<LONG>(std::ceil((1.0f - a_doorway[2]) * height)) };
@@ -1864,10 +1878,7 @@ namespace
 			!RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell()) {
 			DrawMainPrecipitation(root);
 		}
-		if (scissored) {
-			shadowState.rasterStateScissorMode = 0;
-			shadowState.stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RASTER_CULL_MODE);
-		}
+		scissor.Off();
 		// A capture isn't for the doorway: the last picture stays on screen this frame. Otherwise the
 		// new one goes on screen at once; a picture held back for drawing fewer passes than usual
 		// stood still in the doorway while the view turned (the doorway's cull is narrowed to its
