@@ -119,8 +119,9 @@ namespace
 	constexpr float kReleaseBeyond = 400.0f;
 	// Few doors around the player (the scan, NearestPortalDoor): nothing competes for what is loaded,
 	// so it is loaded from much further out without spaces being swapped as the player moves.
-	// Outdoors the kept rooms reach further (warmReach); indoors, where one space is loaded, the
-	// shown one does (farActivate, 0 when it doesn't apply).
+	// Outdoors the kept rooms reach further (warmReach); indoors, where one space is loaded, and
+	// outdoors near a door into another worldspace, the shown one does (farActivate, 0 when it
+	// doesn't apply).
 	bool            sparse = false;
 	float           farActivate = 0.0f;
 	float           NearRadius() { return doorOpenRadius + kLoadAhead; }
@@ -319,13 +320,28 @@ namespace
 		heading = length > 500.0f ? RE::NiPoint3() : step / length;
 	}
 
-	// What doors are ordered by: the distance, a little less for a door ahead of the player and a
-	// little more for one behind.
-	float Rank(const RE::NiPoint3& a_origin, const RE::NiPoint3& a_door)
+	bool Outdoors(RE::TESObjectREFR* a_door);
+
+	// A city gate (outdoors, into another worldspace) is many times a house door's size and seen
+	// from far down the road: it counts as nearer than it is, in which door is shown and in how far
+	// out its space loads and is let go. Not by a fixed amount: a house door must still win when
+	// walked up to near a gate (it has to be the shown one to be walked through), and at half the
+	// distance it does unless it stands within twice the switch margin of the gate.
+	constexpr float kGateWeight = 0.5f;
+
+	// a_door's distance from a_origin as the reaches and the order of doors count it.
+	float Reach(const RE::NiPoint3& a_origin, RE::TESObjectREFR* a_door, RE::TESObjectREFR* a_linked)
 	{
-		const auto  to = a_door - a_origin;
-		const float distance = to.Length();
-		return distance - kHeadingNudge * heading.Dot(to) / std::max(distance, 1.0f);
+		const float distance = a_origin.GetDistance(a_door->GetPosition());
+		return Outdoors(a_door) && Outdoors(a_linked) ? distance * kGateWeight : distance;
+	}
+
+	// What doors are ordered by: the reach, a little less for a door ahead of the player and a
+	// little more for one behind.
+	float Rank(const RE::NiPoint3& a_origin, RE::TESObjectREFR* a_door, RE::TESObjectREFR* a_linked)
+	{
+		const auto to = a_door->GetPosition() - a_origin;
+		return Reach(a_origin, a_door, a_linked) - kHeadingNudge * heading.Dot(to) / std::max(to.Length(), 1.0f);
 	}
 
 	// Load doors into another space: outside -> interior, interior -> outside or another interior,
@@ -385,6 +401,7 @@ namespace
 			RE::NiPointer<RE::TESObjectREFR> linked;
 			RE::TESObjectCELL* cell;  // null: an exterior cell not loaded yet
 			float              distance;
+			float              reach;  // see Reach
 			float              rank;
 		};
 		std::vector<Found> found;
@@ -402,7 +419,7 @@ namespace
 			if (Portal::Doors::PortalOff(a_ref->GetFormID()) || Portal::Doors::PortalOff(linked->GetFormID())) {
 				return RE::BSContainer::ForEachResult::kContinue;
 			}
-			found.push_back({ a_ref, linked, linked->GetParentCell(), origin.GetDistance(a_ref->GetPosition()), Rank(origin, a_ref->GetPosition()) });
+			found.push_back({ a_ref, linked, linked->GetParentCell(), origin.GetDistance(a_ref->GetPosition()), Reach(origin, a_ref, linked.get()), Rank(origin, a_ref, linked.get()) });
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
 		{
@@ -425,7 +442,13 @@ namespace
 			} else if (spaces(FLT_MAX) <= few) {
 				sparse = true;
 			}
-			farActivate = sparse && !outdoors ? farReach : 0.0f;
+			// Outdoors a kept room stands in for loading the shown one early, but only interiors are
+			// kept: a city gate's worldspace was loaded at the near reach, its low-detail stand-in seen
+			// through the open gate until then.
+			const bool worldDoor = std::ranges::any_of(found, [&](const Found& a_door) {
+				return a_door.distance <= farReach && (!a_door.cell || !a_door.cell->IsInteriorCell());
+			});
+			farActivate = sparse && (!outdoors || worldDoor) ? farReach : 0.0f;
 			warmReach = sparse && outdoors ? farReach : kWarmDistance;
 		}
 		const Found* best = nullptr;
@@ -447,7 +470,7 @@ namespace
 					}
 				}
 			}
-			if (door.distance <= ActivateRadius() && (!best || door.rank < best->rank)) {
+			if (door.reach <= ActivateRadius() && (!best || door.rank < best->rank)) {
 				best = &door;
 			}
 		}
@@ -499,13 +522,14 @@ namespace
 		if (!door || !door->Get3D() || !cell) {
 			return std::nullopt;
 		}
-		const float distance = a_player->GetPosition().GetDistance(door->GetPosition());
+		auto*      linked = RE::TESForm::LookupByID<RE::TESObjectREFR>(scanned->linkedDoor);
+		const auto origin = a_player->GetPosition();
 		// A teleport between scans leaves the last scan's door far behind: attached, it was let go
 		// at once as walked away from, and attached again, every frame until the next scan.
-		if (distance > ActivateRadius()) {
+		if (Reach(origin, door, linked) > ActivateRadius()) {
 			return std::nullopt;
 		}
-		return Candidate{ door, scanned->linkedDoor, cell, distance, Rank(a_player->GetPosition(), door->GetPosition()) };
+		return Candidate{ door, scanned->linkedDoor, cell, origin.GetDistance(door->GetPosition()), Rank(origin, door, linked) };
 	}
 
 	RE::TESObjectREFR* Lookup(RE::FormID a_id)
@@ -2739,15 +2763,17 @@ namespace Portal::Manager
 		const auto candidate = CandidateDoor(player, a_delta);
 		if (const auto portal = GetActive()) {
 			auto*       door = Lookup(portal->sourceDoor);
+			auto*       linkedDoor = Lookup(portal->linkedDoor);
 			const float distance = door ? player->GetPosition().GetDistance(door->GetPosition()) : FLT_MAX;
+			const float reach = door && linkedDoor ? Reach(player->GetPosition(), door, linkedDoor) : FLT_MAX;
 			// Another door into the same space counts too (an inn's kitchen door next to its front
 			// door): the space is placed by the door pair, so it has to be the nearest door's.
 			const bool  better = candidate && (candidate->cell != portal->cell || candidate->door->GetFormID() != portal->sourceDoor) &&
-			                     candidate->rank + kSwitchMargin < (door ? Rank(player->GetPosition(), door->GetPosition()) : FLT_MAX);
+			                     candidate->rank + kSwitchMargin < (door && linkedDoor ? Rank(player->GetPosition(), door, linkedDoor) : FLT_MAX);
 			// A shop closing for the night locks its door.
 			const bool  off = Portal::Doors::PortalOff(portal->sourceDoor) || Portal::Doors::PortalOff(portal->linkedDoor);
 			const bool  locked = door && door->IsLocked() && Portal::DoorUse::GetForce() != Portal::DoorUse::Force::kAllOpen;
-			const char* end = distance > ReleaseRadius() ? "player walked away" : better ? "a closer door" : locked ? "door locked" :
+			const char* end = reach > ReleaseRadius() ? "player walked away" : better ? "a closer door" : locked ? "door locked" :
 			                  off                         ? "portal switched off for this door" :
 			                                                nullptr;
 			// Walking in a room walked into, the player stands on its copied collision: it isn't let
@@ -2757,7 +2783,6 @@ namespace Portal::Manager
 			}
 			// A door a stand-in will hold open is let go open, to be taken over where it is: swung shut
 			// first, it swung open again right after.
-			auto*      linkedDoor = Lookup(portal->linkedDoor);
 			const bool keepOpen = door && linkedDoor && !off && !locked && Wanted(door, linkedDoor);
 			doorWanted = keepOpen;
 			if (end && (DoorShut() || keepOpen || distance > kForceReleaseRadius)) {

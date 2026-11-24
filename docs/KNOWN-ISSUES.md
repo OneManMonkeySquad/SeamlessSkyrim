@@ -48,7 +48,13 @@
   to avoid (2.6 ms a frame in Honningbrew Meadery's cellar) is only avoided coming from afar.
   Nothing takes a merge back short of letting the space go.
 - Outdoors with few doors around, a fourth space coming within reach halves the reach
-  (`sparse`), and every kept room beyond the shorter one is let go in the same frame.
+  (`sparse`), and every kept room beyond the shorter one is let go in the same frame, as is a
+  city gate's view beyond it.
+- Walking into Whiterun through its gate from outside (route steps: load
+  `SeamlessTestWhiterunGateOutside`, walk to (19900, -7424)), the player is carried straight
+  back out about 3 s later: the city's arrival point is 40 units past the city-side gate's plane,
+  and once the view back out is attached, `Approach` crosses at depth >= 0 without the walk being
+  towards the doorway. Seen at 4749361, before the gate reach changes.
 - Seen from indoors without Sky Sync, the street's sun direction and colours are those of the
   moment the player came in, for half a game hour; then they jump to the computed ones
   (`PortalRender.cpp`, `RecentOutdoors`).
