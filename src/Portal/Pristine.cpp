@@ -8,6 +8,7 @@ namespace
 		kMoved,
 		kTwoSided,
 		kLayer,
+		kFlags,
 	};
 
 	struct Change
@@ -16,6 +17,7 @@ namespace
 		Kind            kind;
 		RE::NiTransform before;  // kMoved
 		RE::COL_LAYER   layer;   // kLayer: before
+		std::uint32_t   flags;   // kFlags: before
 	};
 
 	using CreateClone = RE::NiObject* (*)(RE::NiObject*, RE::NiCloningProcess&);
@@ -41,7 +43,7 @@ namespace
 	}
 
 	// A few of each kind: the first copies of a model come in dozens of shapes at once.
-	std::array<std::atomic<int>, 4> repairsLogged{};
+	std::array<std::atomic<int>, 5> repairsLogged{};
 
 	// NiObject::CreateClone (vfunc 0x17), hooked in the vtable of each class an object was changed
 	// in, when the first one is (Record): the copy is made there, its members copied from the
@@ -72,20 +74,23 @@ namespace
 		case Kind::kLayer:
 			HavokBodyOf(copy)->collidable.broadPhaseHandle.collisionFilterInfo.SetCollisionLayer(it->layer);
 			break;
+		case Kind::kFlags:
+			*reinterpret_cast<std::uint32_t*>(&static_cast<RE::bhkNiCollisionObject*>(copy)->flags) = it->flags;
+			break;
 		}
 		if (repairsLogged[std::to_underlying(it->kind)]++ < 3) {
-			constexpr std::array<const char*, 4> kKinds{ "shown", "turned back", "one-sided", "collision layer put back" };
+			constexpr std::array<const char*, 5> kKinds{ "shown", "turned back", "one-sided", "collision layer put back", "collision flags put back" };
 			logger::info("portal: a copy of '{}' made as before the portal changed it ({})", a_original->GetRTTI()->name, kKinds[std::to_underlying(it->kind)]);
 		}
 		return copy;
 	}
 
-	void Record(RE::NiObject* a_object, Kind a_kind, const RE::NiTransform& a_before = {}, RE::COL_LAYER a_layer = RE::COL_LAYER::kUnidentified)
+	void Record(RE::NiObject* a_object, Kind a_kind, const RE::NiTransform& a_before = {}, RE::COL_LAYER a_layer = RE::COL_LAYER::kUnidentified, std::uint32_t a_flags = 0)
 	{
 		const auto vtable = VtableOf(a_object);
 		std::scoped_lock guard(lock);
 		assert(std::ranges::find(changes, a_object, &Change::object) == changes.end());
-		changes.push_back({ a_object, a_kind, a_before, a_layer });
+		changes.push_back({ a_object, a_kind, a_before, a_layer, a_flags });
 		if (!std::ranges::contains(hooked, vtable, &Hooked::vtable)) {
 			// Listed before the slot is written: the hook looks its original up there.
 			hooked.push_back({ vtable, reinterpret_cast<CreateClone*>(vtable)[0x17] });
@@ -151,5 +156,15 @@ namespace Portal::Pristine
 	void LayerBack(RE::NiAVObject* a_object)
 	{
 		Forget(BodyOf(a_object));
+	}
+
+	void FlagsChanged(RE::bhkNiCollisionObject* a_collision, std::uint32_t a_before)
+	{
+		Record(a_collision, Kind::kFlags, {}, RE::COL_LAYER::kUnidentified, a_before);
+	}
+
+	void FlagsBack(RE::bhkNiCollisionObject* a_collision)
+	{
+		Forget(a_collision);
 	}
 }

@@ -1,5 +1,7 @@
 #include "Portal/CameraLimit.h"
 
+#include "Portal/Pristine.h"
+
 namespace
 {
 	// Below this horizontal distance the camera is inside or right at the player's head, so the
@@ -17,7 +19,7 @@ namespace
 		playerHidden = a_hide;
 		if (!a_hide) {
 			for (auto& shape : hiddenShapes) {
-				shape->SetAppCulled(false);
+				Portal::Pristine::Show(shape.get());
 			}
 			hiddenShapes.clear();
 			return;
@@ -27,8 +29,10 @@ namespace
 			return;
 		}
 		RE::BSVisit::TraverseScenegraphGeometries(body, [](RE::BSGeometry* a_shape) {
+			// Through Pristine, as every shape hidden for longer than a view: a model loaded meanwhile
+			// may be a copy of it.
 			if (!a_shape->GetAppCulled()) {
-				a_shape->SetAppCulled(true);
+				Portal::Pristine::Hide(a_shape);
 				hiddenShapes.emplace_back(a_shape);
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;

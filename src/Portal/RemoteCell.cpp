@@ -4,6 +4,7 @@
 #include "Hooks.h"
 #include "Portal/DoorPair.h"
 #include "Portal/LightScene.h"
+#include "Portal/Pristine.h"
 #include "Probe.h"
 
 namespace
@@ -670,6 +671,7 @@ namespace Portal
 		for (auto& [object, flags] : stilledClutter) {
 			if (auto* collision = object->collisionObject ? netimmerse_cast<RE::bhkNiCollisionObject*>(object->collisionObject.get()) : nullptr) {
 				*reinterpret_cast<std::uint32_t*>(&collision->flags) = flags;
+				Pristine::FlagsBack(collision);
 			}
 		}
 		stilledClutter.clear();
@@ -1158,6 +1160,7 @@ namespace Portal
 				auto* collision = a_object->collisionObject ? netimmerse_cast<RE::bhkNiCollisionObject*>(a_object->collisionObject.get()) : nullptr;
 				if (collision && collision->flags.any(RE::bhkNiCollisionObject::Flag::kActive)) {
 					stilledClutter.emplace_back(RE::NiPointer<RE::NiAVObject>(a_object), collision->flags.underlying());
+					Pristine::FlagsChanged(collision, collision->flags.underlying());
 					collision->flags.reset(RE::bhkNiCollisionObject::Flag::kActive, RE::bhkNiCollisionObject::Flag::kSyncOnUpdate);
 					newlyStilled = true;
 					++stilled;
@@ -1834,6 +1837,7 @@ namespace Portal
 					}
 					if (collision && !ofActor && collision->flags.any(RE::bhkNiCollisionObject::Flag::kActive)) {
 						stilledClutter.emplace_back(RE::NiPointer<RE::NiAVObject>(a_object), collision->flags.underlying());
+						Pristine::FlagsChanged(collision, collision->flags.underlying());
 						collision->flags.reset(RE::bhkNiCollisionObject::Flag::kActive, RE::bhkNiCollisionObject::Flag::kSyncOnUpdate);
 					}
 					return RE::BSVisit::BSVisitControl::kContinue;

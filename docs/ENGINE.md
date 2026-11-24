@@ -308,8 +308,11 @@ Found porting the plugin; each was checked in the code of both.
   dragon door of the street attached next: leaves, handles and backing), through
   `NiObject::CreateClone` (vfunc 0x17). A collision layer too: `bhkRigidBody`'s CreateClone (ID
   78068) builds the copy's Havok body from the original's cinfo (Warmaiden's inside door came
-  non-collidable, layer 15, while the inn's door was held walkable). A leaf's turn and a shape
-  drawn two-sided would come the same way (not seen). What the portals change in a door's 3D goes
+  non-collidable, layer 15, while the inn's door was held walkable). The collision object's flags
+  too: Warmaiden's inner doors, loaded while the inn's (same model) were stilled for its merge
+  (`kActive` and `kSyncOnUpdate` off), came stilled, their bodies left where the inn's doors stand,
+  and couldn't be used. A leaf's turn and a shape drawn two-sided would come the same way (not
+  seen). What the portals change in a door's 3D goes
   through `Portal::Pristine`, which makes copies as before the change.
 - **The main view's cull** (ID 36643) doesn't walk the scene. It hands each loaded cell's 3D to
   jobs slot by slot, leaving out:

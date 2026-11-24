@@ -140,6 +140,7 @@
 - College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
   open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
   the route predates doors opening only when used and doesn't use the door.
-- Loaded inside The Drunken Huntsman (`SeamlessTestDrunkenHuntsmanInside`), the street merged:
-  the land of 3 of its 9 cells (0001A27A, 0001A27F, 0001A27B) is left at the street's own place,
-  not moved to the doorway (`scene_check`). Not looked at on screen.
+- The street merged into an interior: the land of some of its cells is left at the street's own
+  place, not moved to the doorway (`scene_check`): loaded inside The Drunken Huntsman
+  (`SeamlessTestDrunkenHuntsmanInside`, 3 of 9 cells), walked into Warmaiden's
+  (`warmaidens-back-door-walk-in`). Not looked at on screen.

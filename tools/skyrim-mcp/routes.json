@@ -856,6 +856,45 @@
       }
     ]
   },
+  "warmaidens-back-door-walk-in": {
+    "note": "Loaded inside The Drunken Huntsman, out of its side door (the inn merged into the street, its loose collision stilled), then into Warmaiden's through its back door (000252CD, standing west of it). Warmaiden's inner doors (WRDoor02 000BCC7F, 000BCC80), copies of the inn's while stilled, must be usable: they came stilled, their bodies where the inn's doors stand (user, 2026-11-24).",
+    "steps": [
+      {
+        "load": "SeamlessTestDrunkenHuntsmanInside"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "walk": {
+          "ref": "000165C7",
+          "stop_distance": 0,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "move": [
+          20638,
+          -8727,
+          -3520
+        ]
+      },
+      {
+        "heading": 90
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "name": "inside"
+        }
+      }
+    ]
+  },
   "warrens-door-look-in": {
     "note": "Markarth's mines, in front of the Warrens' door (00016F6D), looking in. Was: only the floor by the door, then sky: the street's occlusion planes culled the merged Warrens. The check can't see this; look at the picture.",
     "steps": [
