@@ -52,6 +52,10 @@ Why it falls short: it isn't the game's world render.
   (`RenderPortalShadows`), and the fork lights the pass with their soft copy (Volumetric Shadows'
   VSM, 512 texels a cascade), not the world's crisp shadow mask; terrain and cloud shadows as
   outdoors (the other worldspace's heightmap). Community Shaders fork only.
+- **A doorway picture's capture frame** draws the pass with the capture camera into the hidden
+  target set, so the doorway shows the previous frame's picture that frame. A picture that never
+  came out the size asked for was retaken every other frame for good (Whiterun's gate: the view
+  through it stuttered and lagged a turn by a frame half the time).
 - **Drawn like the main view:** at its render resolution and with its jitter, so the upscaler
   resolves the doorway with the scene (a doorway picture's capture is drawn at full size).
 - **No real sky:** a gradient is drawn instead (`DrawSky`).

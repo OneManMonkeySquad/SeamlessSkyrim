@@ -165,6 +165,9 @@ Found porting the plugin; each was checked in the code of both.
   shadow map technique (vertex descriptor 0xC000, RenderShadowmap | Clamped), skinned ones with
   RenderDepth (0x2004). The technique doesn't tell a shadow map from the main view; the depth
   target does (`RendererShadowState::depthStencil`, `kSHADOWMAPS` and the like).
+- **Camera data in the frame:** at the start of `RenderPlayerView` the NiCamera has this frame's
+  transform but the renderer's camera data (`RendererShadowState::cameraData`) is still the last
+  frame's; by `Main::RenderWorld` both are this frame's.
 - **The main camera** is the world-root camera (ID 403513, camera at +0x128). `RenderPlayerView`
   pushes it into every light scene's culling process (ID 415016 count, ID 415022 array) and calls
   ID 107132 (camera).

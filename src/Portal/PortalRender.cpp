@@ -1553,6 +1553,7 @@ namespace
 	{
 		RE::FormID door;
 		bool       outdoors;  // the space behind the door
+		bool       gate;      // IsGate: the doorway is the gate's whole opening (DoorwayQuad)
 		float      nearClip;
 		float      farClip;
 	};
@@ -1620,7 +1621,7 @@ namespace
 		// The doorway on screen still shows the last picture, read with the clip distances it was
 		// drawn with.
 		if (capturing) {
-			captureDrawn = CaptureDrawn{ a_capture->door, !a_portal.cell->IsInteriorCell(), portalCamera->GetRuntimeData2().viewFrustum.fNear,
+			captureDrawn = CaptureDrawn{ a_capture->door, !a_portal.cell->IsInteriorCell(), IsGate(a_portal), portalCamera->GetRuntimeData2().viewFrustum.fNear,
 				portalCamera->GetRuntimeData2().viewFrustum.fFar };
 		} else {
 			portalNear = portalCamera->GetRuntimeData2().viewFrustum.fNear;
@@ -2391,7 +2392,12 @@ namespace
 		} else if (captureDrawn) {
 			// Whether or not the doorway is settled (a room waits to be merged for this).
 			guarded([&] {
-				const auto                     corners = Portal::Doors::Quad(Portal::Doors::Door(captureDrawn->door), viewer, true);
+				// The doorway as the picture was asked for with (the snapshot chance's, below): a
+				// gate's with another shape was a picture of another size, never the one asked for,
+				// and Whiterun's gate was captured every other frame for good, every other frame
+				// showing the picture of the frame before (the view through it stuttered, and lagged
+				// a turn by a frame half the time).
+				const auto                     corners = Portal::Doors::Quad(Portal::Doors::Door(captureDrawn->door), viewer, !captureDrawn->gate, captureDrawn->gate);
 				const Portal::Snapshot::Source source{ DrawingTargets().color.SRV, DrawingTargets().depth.depthSRV, captureDrawn->nearClip, captureDrawn->farClip, true };
 				Portal::Snapshot::Capture(view, source, captureDrawn->door, captureDrawn->outdoors, corners);
 			});

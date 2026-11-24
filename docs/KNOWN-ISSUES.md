@@ -22,7 +22,7 @@
 - Walking out of Belethor's the first time after loading the save: the teleport ~165 ms (the grid change, engine).
 - The street merged into Riften's jail right after loading its save: the frame of the merge is drawn nearly black, the room included (seen with and without the persistent references' pass). Cause not looked into.
 - Whiterun's gate, walking in from Tamriel right after walking out (from 450 units outside): the player comes out 11 units past the gate and is carried back out 3 s later, standing in its doorway once the view back is ready. Walking in from the gate itself they come out 250 units in and stay. Same at c39335d.
-- A city gate's picture follows an instant turn (bridge `heading`) one frame late: the world turns in frame n, the doorway's picture in n+1. Same at c39335d and with the portal pass unscissored; turning with the mouse not checked.
+- While a doorway's picture is being captured (up to ~3 s before a room is merged), every capture frame shows the previous frame's picture in the doorway: the view lags a frame while it lasts. Drawing the live pass as well on those frames would fix it, at about double the portal cost while capturing.
 - Persistent references without 3D whose cell has no loaded data (still filed under the worldspace's persistent cell) are loaded on the main thread, not queued (`RemoteCell::PersistentIn`): 71 of them around Riften's jail, ~30 ms of a 50 ms attach.
 - In the Bannered Mare with the street merged, the world scene's light update takes ~4 ms every frame (`perf`, `lights: world`). Not looked into.
 - Whiterun's hanging shop signs: torn off and fallen on walking out of Belethor's, twice in ~30 walk-outs (`belethors-walk-out`; once right after loading the save coming from Riften); cause not found.
