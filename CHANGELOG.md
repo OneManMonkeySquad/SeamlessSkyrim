@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1
+
+### Fixes
+
+- **Cave mouths and other automatic load doors take the player through again (with the game's
+  fade, as without the mod). The HUD and menus no longer disappear until a game is loaded.**
+- An automatic door in a street shown through a doorway no longer takes the player through
+  from inside the building (AE 1.7.104 only).
+
 ## 0.6.0
 
 ### Doors
