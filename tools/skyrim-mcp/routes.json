@@ -171,7 +171,7 @@
     ]
   },
   "drunken-huntsman-side-door-from-inside": {
-    "note": "Drunken Huntsman, from the bar walk up to the side door 000165C7 (to the street). Set to stand open: with a street picture it stands open from the load, otherwise shut until the street merges.",
+    "note": "Drunken Huntsman, from the bar walk up to the side door 000165C7 (to the street, set to stand open): from inside it stays shut until its street is shown live, then swings open.",
     "steps": [
       {
         "load": "SeamlessTestDrunkenHuntsmanInside"

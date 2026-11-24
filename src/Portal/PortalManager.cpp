@@ -686,6 +686,16 @@ namespace
 		return (portal && portal->sourceDoor == a_door && (remote.merged || Portal::Manager::ReadyPortal())) || BesideDoor(a_door);
 	}
 
+	// A door out of a building (a_door indoors, its pair outdoors) shows the street only live, never
+	// a picture of it: the street's pictures, taken from inside and drawn with their depth, broke up
+	// into streaks seen from beside the doorway, and drawn flat they looked nothing like the street.
+	// So such a door opens from inside only once its street is shown (StandsOpen), and has no
+	// stand-in.
+	bool StreetShownLive(RE::TESObjectREFR* a_door, bool a_linkedOutdoors)
+	{
+		return !Outdoors(a_door) && a_linkedOutdoors;
+	}
+
 	// The pair stands open whoever uses it (it can't be shut), and already before the space behind
 	// it is there: it is never seen shut, so never seen opening either. a_door: the one in the
 	// player's space; its linked door needn't be loaded.
@@ -702,7 +712,8 @@ namespace
 		}
 		const bool outdoors = Outdoors(a_door);
 		const auto key = Portal::Doors::CorrectionDoor(a_door->GetFormID(), outdoors, a_linked, a_linkedOutdoors);
-		return (outdoors && a_linkedOutdoors) || (Portal::Doors::AlwaysOpen(key) && Portal::Snapshot::HasPicture(a_door->GetFormID(), a_linkedOutdoors));
+		return (outdoors && a_linkedOutdoors) ||
+		       (!StreetShownLive(a_door, a_linkedOutdoors) && Portal::Doors::AlwaysOpen(key) && Portal::Snapshot::HasPicture(a_door->GetFormID(), a_linkedOutdoors));
 	}
 
 	bool OpenFromAfar(RE::TESObjectREFR* a_door, RE::TESObjectREFR* a_linked)
@@ -865,10 +876,6 @@ namespace
 	// is drawn with the world, and it is merged as soon as it has loaded. Once per door (the
 	// picture is kept), the merge waits for it: a moment for the room's late lights, then the
 	// frames it takes. Merged anyway if it doesn't come.
-	// The street seen from inside too, once per part of the day: taken only from the player's view,
-	// it needed the whole doorway on screen in first person for a moment, which walking up to a
-	// door hardly ever gave, and without a picture a door set to stand open stayed shut until its
-	// street was merged, then swung open in front of the player (The Drunken Huntsman's two doors).
 	struct PictureWait
 	{
 		RE::FormID                                           door = 0;
@@ -888,24 +895,13 @@ namespace
 		if (pictureWait.door != a_portal.sourceDoor) {
 			pictureWait = { a_portal.sourceDoor };
 		}
-		if (!a_mergeable || a_here->IsInteriorCell() == a_portal.cell->IsInteriorCell()) {
+		if (!a_mergeable || a_here->IsInteriorCell() || !a_portal.cell->IsInteriorCell()) {
 			pictureWait.since.reset();
 			return false;
 		}
 		auto* door = Lookup(a_portal.sourceDoor);
-		if (pictureWait.gaveUp || !Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor, !a_portal.cell->IsInteriorCell(),
-										  Portal::Doors::Quad(door, RE::PlayerCharacter::GetSingleton()->GetPosition(), true))) {
-			return false;
-		}
-		// The street's door is the one swung from inside, and the portal pass draws it: taken before
-		// it was open, the picture showed the door shut in the doorway. A door not opening isn't
-		// waited for: its street would stay unmerged until the wait gave up.
-		// Wanted, not doorWanted: that is false for the frame a door's portal starts.
-		auto*      linked = Lookup(a_portal.linkedDoor);
-		const bool swungInPicture = !a_portal.cell->IsInteriorCell() && SwingingDoorOf(door, linked) == a_portal.linkedDoor;
-		const bool swinging = swungInPicture && !(openDoor.door == a_portal.sourceDoor && openDoorSwing >= 1.0f);
-		if (swinging && !Wanted(door, linked)) {
-			pictureWait.since.reset();
+		if (pictureWait.gaveUp ||
+			!Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor, Portal::Doors::Quad(door, RE::PlayerCharacter::GetSingleton()->GetPosition(), true))) {
 			return false;
 		}
 		const auto now = std::chrono::steady_clock::now();
@@ -917,7 +913,7 @@ namespace
 			logger::warn("portal: no doorway picture for door {:08X} from the capture camera; merged without", a_portal.sourceDoor);
 			return false;
 		}
-		if (!swinging && now - *pictureWait.since >= kPictureLightsSettle) {
+		if (now - *pictureWait.since >= kPictureLightsSettle) {
 			pictureWanted = a_portal.sourceDoor;
 		}
 		return true;
@@ -1062,7 +1058,8 @@ namespace
 		standInDoors.clear();
 		const auto add = [&](RE::TESObjectREFR* a_door) {
 			const auto linked = PortalLink(a_door, a_here);
-			if (!linked || Portal::Doors::PortalOff(a_door->GetFormID()) || Portal::Doors::PortalOff(linked->GetFormID()) ||
+			// A door out of a building shows the street only live (StreetShownLive).
+			if (!linked || StreetShownLive(a_door, Outdoors(linked.get())) || Portal::Doors::PortalOff(a_door->GetFormID()) || Portal::Doors::PortalOff(linked->GetFormID()) ||
 				std::ranges::any_of(standInDoors, [&](const StandInDoor& a_known) { return a_known.door == a_door->GetFormID(); })) {
 				return;
 			}
@@ -4406,6 +4403,10 @@ namespace Portal::Manager
 		const bool gate = outdoors && here && !here->IsInteriorCell();
 		// A city gate only when it shows one (StandInSwinging): a picture nobody sees is megabytes on disk.
 		if (gate && !Portal::Doors::PictureFromAfar(Portal::Doors::CorrectionDoor(portal->sourceDoor, true, portal->linkedDoor, true))) {
+			return std::nullopt;
+		}
+		// Nor the street from inside: shown only live (StreetShownLive).
+		if (outdoors && !gate) {
 			return std::nullopt;
 		}
 		return DoorwayFill{ portal->sourceDoor, outdoors, gate, 1.0f };

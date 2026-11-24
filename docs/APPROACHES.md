@@ -9,7 +9,7 @@ Read this before proposing a new approach. The engine facts behind it are in ENG
 | Outdoors, a door into a room | The room merged into the world scene (3), up to four at once (`[Portals] iShownRooms`) |
 | Indoors, the door out to the street | The street merged into the interior (9, `[Portals] bMergeOutdoors`, on) |
 | Interior ↔ interior, exterior ↔ exterior (city gates) | The portal pass (1); through a city gate the world's own shapes are masked as far as the portal pass draws (`UpdateGateMask`) |
-| A doorway before its space is there | A picture taken with the portal pass before the merge, kept per door (the street's per part of the day) |
+| A room's doorway before its merge | A picture taken with the portal pass, kept per door. From inside a building, none of the street: its door stays shut until the street is shown live (`StreetShownLive`) |
 
 Crossing is the engine's own door teleport without its loading screen (2). A doorway standing
 open before the space behind it is there to walk into (a stand-in) is taken the engine's way, with
