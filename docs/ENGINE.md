@@ -275,8 +275,21 @@ Found porting the plugin; each was checked in the code of both.
   update; after a seamless trip `Travel.cpp` lets it take 32 lights at a time, nearest first, in
   the world scene and in ours (the space walked out of, attached again with its ~150 lights).
 - **The teleport's cost** (ID 40438, loading screen and waits skipped): 15-40 ms into an interior,
-  25-60 ms out to a street seen before, 150-170 ms out of Belethor's or Riften's jail the first
-  time after a load (the grid change, ID 13317, and its cell attaches, IDs 13427/13428).
+  25-60 ms out to a street seen before, 60-70 ms out of Belethor's the first time after a load
+  (170 ms before `RemoteCell::Prewarm`).
+- **The change into an exterior** (ID 13317) sets the grid up around the arrival cell
+  (13288 -> 13428 -> 13430) and calls ID 13427 for *every* grid cell: `TESWorldSpace::LoadCell`
+  (from the plugin files if not in memory), the attach if the cell isn't in the grid yet, then
+  `GetLand()` and `LoadVertices(true, true)` on its land, which reads (ID 18748) and builds
+  (ID 18750) a land not loaded yet and leaves a built one alone. A city worldspace's cells take
+  their land from the parent's: `cellLand` is null until `GetLand()` makes it (flags 0x400 with
+  the record found, 0x40F once loaded). It also demands the world map's clouds (ID 53142 + 0x272,
+  `BSModelDB::Demand` into a global emptied indoors; the path from ID 20495, by default
+  `Meshes\Sky\SkyrimWorldMapCloudBank.nif`): ~25 ms from disk.
+- **A cell read from the files and never attached** (`LoadCell`, with or without ID 19111's
+  temporary references) crashed the AI update (ID 36031 under 35600 -> 35567), also after
+  loading a game. Attached and detached again (IDs 18976, 19063, 19130) it stays kUnattached like
+  a cell walked past.
 - **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
   (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).

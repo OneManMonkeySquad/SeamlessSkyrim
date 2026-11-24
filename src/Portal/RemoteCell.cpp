@@ -376,6 +376,20 @@ namespace Portal
 				}
 			}
 		}
+		prewarmCells.clear();
+		prewarmLand = nullptr;
+		worldMapClouds.reset();
+		handedWorldMapClouds.reset();
+		prewarmModel = a_toMerge && !a_cell->IsInteriorCell();
+		if (prewarmModel) {
+			const auto* coordinates = a_cell->GetCoordinates();
+			const int   radius = static_cast<int>(RE::GetINISetting("uGridsToLoad:General")->data.u) / 2;
+			for (int dy = -radius; dy <= radius; ++dy) {
+				for (int dx = -radius; dx <= radius; ++dx) {
+					prewarmCells.emplace_back(static_cast<std::int16_t>(coordinates->cellX + dx), static_cast<std::int16_t>(coordinates->cellY + dy));
+				}
+			}
+		}
 		// All the cells' persistent references in one pass over the worldspace's persistent cell
 		// (thousands of references in a city): done per cell, it was most of an attach.
 		if (!(debugSkip & 1)) {
@@ -700,6 +714,10 @@ namespace Portal
 		}
 		borrowedPersistent.clear();
 		handedOver.clear();
+		if (handOver) {
+			handedWorldMapClouds = std::move(worldMapClouds);
+		}
+		worldMapClouds.reset();
 		const Perf::Scope detachScope("release: detach");
 		for (auto* cell : cells | std::views::reverse) {
 			auto* cell3D = Cell3D(cell);
@@ -891,9 +909,70 @@ namespace Portal
 				logger::info("portal: ground under the street; simulating it");
 			}
 		}
+		// Not in the frames around the merge, which are long already.
+		if (ready && readySeconds > 1.0f && (prewarmModel || prewarmLand || !prewarmCells.empty())) {
+			Prewarm();
+		}
 		// Diagnostics (16384): a space kept out of sight isn't simulated.
 		const bool simulate = stepEnabled && (Shown() || !(debugSkip & 16384));
 		StepWorld(simulate && (primary->IsInteriorCell() || (stepExterior && groundFound)) ? primary->GetbhkWorld() : nullptr);
+	}
+
+	void RemoteCell::Prewarm()
+	{
+		const Perf::Scope scope("prewarm");
+		auto* world = cells.front()->GetRuntimeData().worldSpace;
+		// The change into an exterior loads the world map's clouds (ID 53142 + 0x272: Demand into a
+		// global emptied indoors), ~25 ms from disk on the first walk out. Held here, the engine's
+		// demand finds the model in the database. The path as ID 20495 picks it.
+		if (std::exchange(prewarmModel, false)) {
+			const char* path = R"(Meshes\Sky\SkyrimWorldMapCloudBank.nif)";
+			if (auto* parent = world->parentWorld; parent && world->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData) && !parent->model.empty()) {
+				path = parent->model.c_str();
+			} else if (!world->model.empty()) {
+				path = world->model.c_str();
+			}
+			RE::BSModelDB::Demand(path, worldMapClouds, {});
+			return;
+		}
+		// The engine's grid set up around the arrival cell (ID 13317 -> 13430 -> 13427 per cell)
+		// reads each cell not yet in memory from the plugin files, attaches it, and loads and
+		// builds every cell's land: ~110 ms on the first walk out of a shop after loading a game
+		// (a city worldspace's cells take their land from the parent's, which AttachOne leaves
+		// unloaded). Done here beforehand, the cell in one frame and its land in the next: 1-13 ms
+		// each, depending on the disk. A cell beyond the street's is attached and detached again,
+		// as one the player walked past: the engine keeps it loaded (kUnattached) and only
+		// attaches it again. Kept attached and handed over, drawn merged into the interior they
+		// cost ~7 ms a frame (Belethor's); only read from the files, never attached, the AI update
+		// crashed on them (ID 36031, also after loading a game).
+		if (auto* cell = std::exchange(prewarmLand, nullptr)) {
+			// As 13427 does: GetLand makes the cell's land (from the parent worldspace's, or an
+			// empty one where there is none), and LoadVertices leaves a land already built as it is.
+			cell->GetLand()->LoadVertices(true, true);
+			return;
+		}
+		const auto [x, y] = prewarmCells.back();
+		prewarmCells.pop_back();
+		auto* cell = world->LoadCell(x, y);
+		if (!cell) {
+			return;  // beyond the worldspace's edge
+		}
+		const auto state = cell->cellState.get();
+		if (state == CellState::kUnloaded || state == CellState::kDataLoaded) {
+			REL::Relocation<bool (*)(RE::TESObjectCELL*)>               loadTempData{ REL::RelocationID(18637, 19111) };
+			REL::Relocation<void (*)(RE::TESObjectCELL*, RE::NiNode*)> attachCell{ REL::RelocationID(18518, 18976) };
+			REL::Relocation<std::uint8_t (*)(RE::TESObjectCELL*, bool)> finishAttach{ REL::RelocationID(18594, 19063) };
+			REL::Relocation<void (*)(RE::TESObjectCELL*, bool)>         detachCell{ REL::RelocationID(18655, 19130) };
+			loadTempData(cell);
+			attachingRemote = true;
+			attachCell(cell, scene.get());
+			finishAttach(cell, true);
+			attachingRemote = false;
+			// Off our root before the engine's detach, as in Release.
+			scene->DetachChild(Cell3D(cell));
+			detachCell(cell, true);
+		}
+		prewarmLand = cell;
 	}
 
 	void RemoteCell::Show()

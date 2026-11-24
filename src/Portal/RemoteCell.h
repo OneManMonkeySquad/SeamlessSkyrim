@@ -221,6 +221,15 @@ namespace Portal
 		PersistentByCell       roundPersistent;         // as found when the round began
 		bool                   fadeForced = false;      // every cell's references shown this frame
 
+		// A street to be merged into an interior: what the engine's change into it on the walk out
+		// would read from disk, read beforehand, one piece a frame once the space is ready (Prewarm).
+		std::vector<std::pair<std::int16_t, std::int16_t>> prewarmCells;  // the engine's grid around the door's cell
+		bool                                               prewarmModel = false;
+		RE::TESObjectCELL*                                 prewarmLand = nullptr;  // its land next
+		RE::NiPointer<RE::NiNode>                          worldMapClouds;
+		static inline RE::NiPointer<RE::NiNode>            handedWorldMapClouds;  // see Release
+		void                                               Prewarm();
+
 		// An interior's "always render" objects (BSPortalGraph::alwaysRenderChildren: Mistveil Keep's
 		// steps up to the jarl's dais) hang nowhere: the engine culls them one by one from its portal
 		// graph, which a remote cell's scene doesn't have. They are hung under a node of their cell's
