@@ -64,6 +64,56 @@
       }
     ]
   },
+  "belethors-out-in-bannered-mare": {
+    "note": "Loaded in Belethor's, walked out and back in, then looking out through its door at the Bannered Mare's door (0001A6F7, stands open) across the market. Was: that door seen differently in the first frames after walking in (shut, open on its backing panel, open dark).",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "walk": {
+          "pos": [
+            0,
+            -900
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "walk": {
+          "pos": [
+            24081,
+            -8285
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "move": [
+          0,
+          -480,
+          68
+        ]
+      },
+      {
+        "heading": 190
+      },
+      {
+        "frames": 40
+      },
+      {
+        "wait": 2
+      }
+    ]
+  },
   "belethors-walk-out": {
     "note": "Loaded in Belethor's facing the front door, walked out into Whiterun's Plains District (shop signs in front of the door swung wildly or fell off on walking out).",
     "steps": [

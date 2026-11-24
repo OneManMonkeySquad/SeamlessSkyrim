@@ -954,6 +954,10 @@ namespace
 	// scan it got a stand-in, and walked through backwards, the doorway showed the space the player
 	// stood in (the room's picture looking out of it, the street's looking into it).
 	RE::TESObjectCELL*       standInScanCell = nullptr;
+	// The space merged into the player's when standInDoors was found (InView). Walked into a shop,
+	// the scan at the cell change ran before the street was merged into it: the street's doors
+	// that stand open (the Bannered Mare's) were seen shut until the next scan, half a second on.
+	RE::TESObjectCELL*       standInScanMerged = nullptr;
 
 	// The side a stand-in's door swings away from (a_viewer's), in the player's space: Swing reads
 	// it against the door as drawn, which for a door of the merged space isn't where its own cell
@@ -1064,9 +1068,11 @@ namespace
 
 	void UpdateStandIns(RE::PlayerCharacter* a_player, RE::TESObjectCELL* a_here, float a_delta)
 	{
-		if ((standInScanTimer -= a_delta) <= 0.0f || a_here != standInScanCell) {
+		auto* merged = remote.merged ? remote.Cell() : nullptr;
+		if ((standInScanTimer -= a_delta) <= 0.0f || a_here != standInScanCell || merged != standInScanMerged) {
 			standInScanTimer = kStandInScanSeconds;
 			standInScanCell = a_here;
+			standInScanMerged = merged;
 			ScanStandInDoors(a_player, a_here);
 		}
 		const auto real = SpaceShown;
@@ -2685,6 +2691,7 @@ namespace Portal::Manager
 		standInDoors.clear();
 		standInScanTimer = 0.0f;
 		standInScanCell = nullptr;
+		standInScanMerged = nullptr;
 		Portal::DoorUse::Clear();
 	}
 
@@ -2873,6 +2880,9 @@ namespace Portal::Manager
 					// space (walked out of it just now), into the portal's before the first frame:
 					// adopted only in the next Update, the room was drawn once without them.
 					remote.Update(0.0f);
+					// The merged space's doors that stand open, open in the merge's own frame: the
+					// stand-ins ran before it this frame, when those doors weren't in view yet.
+					UpdateStandIns(player, here, 0.0f);
 					logger::info("portal: merge took {:.1f} ms", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - mergeStarted).count());
 					logger::info("portal: merged {} into the world ({})", Probe::DescribeCell(portal->cell), result.dump());
 				} catch (const std::exception& e) {
