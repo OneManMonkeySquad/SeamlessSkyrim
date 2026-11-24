@@ -2968,10 +2968,12 @@ namespace Portal::Manager
 			const float side = std::abs(offset.x * mapping->inward.y - offset.y * mapping->inward.x);
 			const float above = std::abs(offset.z) - mapping->halfHeight;
 			const auto  fade = [](float a_beyond) { return 1.0f - std::clamp(a_beyond / 100.0f, 0.0f, 1.0f); };
-			// Past the doorway's plane, though, the camera is in the space behind it (a merged room
-			// walked into), however far to the side or upstairs: there the outdoor image space came
-			// back, and the room brightened as soon as one walked along its wall.
-			const float inDoorway = std::max(fade(side - mapping->halfWidth) * fade(above), std::clamp(depth / 50.0f, 0.0f, 1.0f));
+			// Walking in a merged room, the camera past the doorway's plane is in the room however far
+			// to the side or upstairs: there the outdoor image space came back, and the room
+			// brightened as soon as one walked along its wall. Only then: the plane runs on along the
+			// street, and from anywhere beyond it the whole street took the room's image space.
+			const float inRoom = playerInRoom ? std::clamp(depth / 50.0f, 0.0f, 1.0f) : 0.0f;
+			const float inDoorway = std::max(fade(side - mapping->halfWidth) * fade(above), inRoom);
 			// The source door's "inward" points away from the player's space: into the interior
 			// from outside, out of it from inside.
 			UpdateTone(here, portal->cell, here->IsInteriorCell() ? -depth : depth, inDoorway);

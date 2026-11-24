@@ -230,6 +230,17 @@
       -3393.09912109375
     ]
   },
+  "whiterun-plains-gate-colorshift": {
+    "cell": "WhiterunPLainsDistrict03",
+    "headingDeg": 274.5500183105469,
+    "interior": false,
+    "note": "Belethor's door 0001A6F5 takes over the portal ~2 m behind here. Was: from there the whole street took the shop's image space (blue), being past the door's plane.",
+    "pos": [
+      23050.87890625,
+      -7756.4453125,
+      -3497.621826171875
+    ]
+  },
   "windhelm-sadris-door": {
     "cell": "Wilderness",
     "headingDeg": 89.99897003173828,
