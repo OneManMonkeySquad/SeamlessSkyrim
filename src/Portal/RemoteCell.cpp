@@ -503,7 +503,12 @@ namespace Portal
 			RE::BSVisit::TraverseScenegraphObjects(a_root, [&](RE::NiAVObject* a_object) {
 				auto* collision = a_object->collisionObject ? a_object->collisionObject->AsBhkNiCollisionObject() : nullptr;
 				auto* body = collision ? collision->body.get() : nullptr;
-				if (body && body->GetWorld1() && touches(a_object->worldBound)) {
+				// Only what stands on the player's side. A piece reaching into the passage from the far
+				// side is what the far side's people stand on: Whiterun's road and gate wall, taken out
+				// for their bounds touching the passage, let the guards behind the gate fall through.
+				const auto  offset = a_object->worldBound.center - a_center;
+				const float depth = offset.x * a_inward.x + offset.y * a_inward.y;
+				if (body && body->GetWorld1() && depth < 0.0f && touches(a_object->worldBound)) {
 					passageCleared.emplace_back(body);
 					body->RemoveFromCurrentWorld();
 				}
