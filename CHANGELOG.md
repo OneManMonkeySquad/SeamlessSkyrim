@@ -4,24 +4,24 @@
 
 ### Doors
 
+- **NPCs cross an open doorway with their walk animation at their own speed, and continue to
+  their destination instead of stopping at the door.**
 - Doors swing with their own `Open`/`Close` animations; the scripted bounce is gone.
-- NPCs cross an open doorway with their walk animation at their own speed, and continue to
-  their destination instead of stopping at the door.
 - Exterior doors seen from inside stay shut until the exterior is loaded, then swing open on
   the live view. The captured picture of the exterior is removed.
 
 ### City gates
 
+- **Until it loads, a gate shows the current worldspace's LOD city instead of a captured picture.
+  Fixes the brick wall in Solitude's gate.**
+- Shadows seen through a gate match the city's own at any distance.
 - The worldspace behind a gate loads from 4000 units (was 750), and a gate is prioritised over
   the doors around it. A house door still wins when walked up to.
-- Until it loads, a gate shows the current worldspace's LOD city instead of a captured picture.
-  Fixes the brick wall in Solitude's gate.
 - A gate pair's view is scaled by the ratio of the two doorways, and only when both sides are
   the same mesh more than 1% apart. Whiterun's gate is placed 10% larger on the city side; its
   far arch no longer sits offset.
 - A gate's leaves swing in the same direction as the far gate's seen through it, and finish
   swinging before the gate is released.
-- Shadows seen through a gate match the city's own at any distance.
 
 ### Performance
 
@@ -37,7 +37,7 @@
 
 ### Fixes
 
-- Items dropped in a room no longer vanish after walking out and back in.
+- **Items dropped in a room no longer vanish after walking out and back in.**
 - A door's 3D is cloned from a loaded door of the same model, and inherited what the portals
   had changed on it. Clones are now made from the unmodified state:
   - doors keep leaves, handles and collision after loading a save inside a building with open
