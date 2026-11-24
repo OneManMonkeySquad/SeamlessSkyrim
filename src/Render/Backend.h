@@ -79,7 +79,9 @@ namespace Render::Backend
 	// (Terrain Shadows) for it while the player's worldspace (a city's) has none of its own.
 	void SetPortalWorldspace(RE::TESWorldSpace* a_worldspace);
 	void SetPortalShadows(RE::BSShadowDirectionalLight* a_light, void* a_shadowMaps, void* a_volumetricShadowMaps);
-	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior);
+	// a_camera: the camera the pass draws with; the fork turns the pass's depth back into distance
+	// with its near and far (a city gate's portal camera has its near plane at the far gate).
+	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior, const RE::NiCamera* a_camera);
 	void EndPortalPass();
 
 	// Community Shaders' Sky Sync: the sun's direction for an hour and its place on the sky.

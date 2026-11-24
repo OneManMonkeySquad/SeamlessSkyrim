@@ -28,6 +28,7 @@ namespace
 		void (*setPortalClip)(const float*) = nullptr;
 		void (*setPortalShadows)(RE::BSShadowDirectionalLight*, void*, void*) = nullptr;
 		void (*setPortalWorldspace)(RE::TESWorldSpace*) = nullptr;
+		void (*setPortalCamera)(float, float) = nullptr;
 		void (*beginPass)(RE::NiDirectionalLight*, bool) = nullptr;
 		void (*endPass)() = nullptr;
 		bool (*outdoorSunDirection)(float, const float*, float*) = nullptr;
@@ -54,6 +55,7 @@ namespace
 		Find(a_module, "SeamlessPortal_SetPortalClip", fork.setPortalClip);
 		Find(a_module, "SeamlessPortal_SetPortalShadows", fork.setPortalShadows);
 		Find(a_module, "SeamlessPortal_SetPortalWorldspace", fork.setPortalWorldspace);
+		Find(a_module, "SeamlessPortal_SetPortalCamera", fork.setPortalCamera);
 		Find(a_module, "SeamlessPortal_BeginPass", fork.beginPass);
 		Find(a_module, "SeamlessPortal_EndPass", fork.endPass);
 		Find(a_module, "SeamlessPortal_OutdoorSunDirection", fork.outdoorSunDirection);
@@ -266,9 +268,13 @@ namespace Render::Backend
 		}
 	}
 
-	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior)
+	void BeginPortalPass(RE::NiDirectionalLight* a_sun, bool a_interior, const RE::NiCamera* a_camera)
 	{
 		if (kind == Kind::kCommunityShaders) {
+			if (fork.setPortalCamera) {
+				const auto& frustum = a_camera->GetRuntimeData2().viewFrustum;
+				fork.setPortalCamera(frustum.fNear, frustum.fFar);
+			}
 			// The fork uploads its per-frame lighting once per frame, for the world: around the
 			// portal pass it must describe the other side. The game's shaders read the sun and the
 			// ambient the portal code already set, per draw.

@@ -798,6 +798,33 @@
       }
     ]
   },
+  "whiterun-gate-shadows": {
+    "note": "Outside Whiterun's gate at 17:00, time stopped, ~1000 units from the gate looking in; then move_to [18750,-7425,-3700] (~600 units) and compare the city through the gate. Was: the shadows behind the gate changed with the distance (far: the left house's front and the signpost in shadow, near: in sun), the fork linearised the portal pass's depth with the world camera's near/far.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "set gamehour to 17"
+      },
+      {
+        "move": [
+          18337,
+          -7425,
+          -3770
+        ]
+      },
+      {
+        "heading": 90
+      },
+      {
+        "wait": 8
+      }
+    ]
+  },
   "windhelm-sadris-walk-in": {
     "note": "Windhelm: walk into Sadri's Used Wares (merged into the street) from the front. Was: stuck 20 units short of the door, the house's collision closing the doorway behind the door never opened.",
     "steps": [

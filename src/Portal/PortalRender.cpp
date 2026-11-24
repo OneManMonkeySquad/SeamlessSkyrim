@@ -365,9 +365,9 @@ namespace
 		::Render::Backend::EndPortalPass();
 		::Render::Backend::SetPortalClip(nullptr);
 		auto* sun = a_root->GetRuntimeData().sunLight;
-		::Render::Backend::BeginPortalPass(sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr, false);
-		auto* precip = RE::Sky::GetSingleton()->precip;
 		auto* camera = RE::Main::WorldRootCamera();
+		::Render::Backend::BeginPortalPass(sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr, false, camera);
+		auto* precip = RE::Sky::GetSingleton()->precip;
 		ResetAccumulator(portalAccumulator.get());
 		auto& data = portalAccumulator->GetRuntimeData();
 		data.activeShadowSceneNode = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
@@ -1811,7 +1811,7 @@ namespace
 		}
 		if (useBackend) {
 			auto* sun = root->GetRuntimeData().sunLight;
-			::Render::Backend::BeginPortalPass(sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr, a_portal.cell->IsInteriorCell());
+			::Render::Backend::BeginPortalPass(sun ? skyrim_cast<RE::NiDirectionalLight*>(sun->light.get()) : nullptr, a_portal.cell->IsInteriorCell(), portalCamera.get());
 		}
 
 		std::vector<std::pair<RE::NiLight*, RE::NiColor>> scaledLights;

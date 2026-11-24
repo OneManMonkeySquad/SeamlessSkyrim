@@ -206,8 +206,10 @@ Found porting the plugin; each was checked in the code of both.
   Shaders' hooks, D3D11), on the one immediate context: it can't move to another thread.
 - **The sun's shadow maps** (`ShadowSceneNode::sunShadowDirLight`, a `BSShadowDirectionalLight`;
   every scene made with ID 106320 has one, sharing the scene's sun `NiDirectionalLight`):
-  1. `UpdateCamera(camera)` (vtable +0x80) fits the cascades to the camera (ID 107132 passes the
-     world camera).
+  1. `UpdateCamera(camera)` (vtable +0x80, ID 108496) fits the cascades to the camera (ID 107132
+     passes the world camera): split between the camera frustum's near and min(shadow distance,
+     its far) by the practical split scheme (linear and logarithmic blended), so a near plane
+     pushed out moves every split.
   2. `DirShadowLightCulling` (ID 108492, SE 101498; Community Shaders detours it for Interior Sun)
      culls job arrays (one `BSTArray` of top nodes per culling job, one job per entry of
      `fullFrustumCullingProcessArray`; the world's come from ID 106323) into the cascades'
