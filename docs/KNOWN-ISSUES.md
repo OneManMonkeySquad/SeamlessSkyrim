@@ -90,9 +90,6 @@
 - Riften's north gate: with the small door beside it (00078EDA, portal switched off) on as well,
   that door keeps the portal and the gate stays shut, even standing at the gate (both lead into
   the same cell; `kSwitchMargin`).
-- A door swung open drawn without its leaves (the doorway open, no door in it): Jorrvaskr's left
-  front door from the street, Belethor's street door from inside, 3 times in about 15 tries; the
-  leaves' shapes were culled (`ref_3d`: flag bit 0). Not after a reload; cause not found.
 - NPCs opening a shut door (`DoorUse`, from NpcTravel's door idle hook) seen in the log only
   (Whiterun's market with every door forced shut: they open, NPCs walk through), not watched.
 - Shutting a door by using it while standing in its doorway swings it shut onto the player.
@@ -143,3 +140,6 @@
 - College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
   open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
   the route predates doors opening only when used and doesn't use the door.
+- Loaded inside The Drunken Huntsman (`SeamlessTestDrunkenHuntsmanInside`), the street merged:
+  the land of 3 of its 9 cells (0001A27A, 0001A27F, 0001A27B) is left at the street's own place,
+  not moved to the doorway (`scene_check`). Not looked at on screen.

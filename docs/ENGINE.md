@@ -302,6 +302,15 @@ Found porting the plugin; each was checked in the code of both.
 
 ## Culling
 
+- **A reference's 3D is a copy of a loaded one of the same model, as it is at that moment.** A
+  shape hidden with `SetAppCulled` in the first instance of a model (loading a save inside The
+  Drunken Huntsman: its own two doors) comes hidden in every instance loaded after (every Whiterun
+  dragon door of the street attached next: leaves, handles and backing), through
+  `NiObject::CreateClone` (vfunc 0x17). A collision layer too: `bhkRigidBody`'s CreateClone (ID
+  78068) builds the copy's Havok body from the original's cinfo (Warmaiden's inside door came
+  non-collidable, layer 15, while the inn's door was held walkable). A leaf's turn and a shape
+  drawn two-sided would come the same way (not seen). What the portals change in a door's 3D goes
+  through `Portal::Pristine`, which makes copies as before the change.
 - **The main view's cull** (ID 36643) doesn't walk the scene. It hands each loaded cell's 3D to
   jobs slot by slot, leaving out:
   - slots 0, 1 and 4;

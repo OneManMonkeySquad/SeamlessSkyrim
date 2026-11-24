@@ -7,6 +7,7 @@
 #include "Paths.h"
 
 #include "Portal/CameraLimit.h"
+#include "Portal/Pristine.h"
 #include "Portal/DoorPair.h"
 #include "Portal/DoorUse.h"
 #include "Portal/DoorwaySnapshot.h"
@@ -3603,7 +3604,7 @@ namespace Portal::Manager
 		void ShowStrayShapes(MergedRoom& a_room)
 		{
 			for (auto& shape : a_room.strays) {
-				shape->SetAppCulled(false);
+				Portal::Pristine::Show(shape.get());
 			}
 			a_room.strays.clear();
 		}
@@ -3660,7 +3661,7 @@ namespace Portal::Manager
 			auto& shapes = a_pass.shapes;
 			ShowStrayShapes(a_room);
 			for (auto& shape : a_pass.strays) {
-				shape->SetAppCulled(true);
+				Portal::Pristine::Hide(shape.get());
 			}
 			a_room.strays = std::move(a_pass.strays);
 			if (a_primary) {
@@ -4494,10 +4495,22 @@ namespace Portal::Manager
 				a_part.problems.push_back(std::format("{} drawn at ({:.0f} {:.0f} {:.0f}), belongs at ({:.0f} {:.0f} {:.0f})", name, at.x, at.y, at.z, expected.x, expected.y, expected.z));
 			}
 		};
+		// A door drawn without its leaves (Pristine): shapes hidden that no opener hid.
+		const auto checkDoor = [&](Part& a_part, RE::TESObjectREFR* a_ref) {
+			auto* base = a_ref->GetBaseObject();
+			if (!base || !base->Is(RE::FormType::Door) || a_ref->IsDisabled() || !a_ref->Get3D() || static_cast<RE::TESObject*>(base)->IsMarker()) {
+				return;
+			}
+			++a_part.checked;
+			if (const auto hidden = Doors::HiddenByNoOpener(a_ref)) {
+				a_part.problems.push_back(std::format("door {:08X}: {} shape(s) hidden by no opener", a_ref->GetFormID(), hidden));
+			}
+		};
 		const auto checkCellRefs = [&](Part& a_part, RE::TESObjectCELL* a_cell, const RE::NiPoint3& a_center, const RE::NiTransform& a_toWorld) {
 			a_cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
 				if (a_ref && a_ref->GetPosition().GetDistance(a_center) <= a_radius) {
 					checkRef(a_part, a_ref, a_toWorld);
+					checkDoor(a_part, a_ref);
 				}
 				return RE::BSContainer::ForEachResult::kContinue;
 			});

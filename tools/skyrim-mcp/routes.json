@@ -144,6 +144,32 @@
       }
     ]
   },
+  "drunken-huntsman-doors-after-load": {
+    "note": "Loaded inside The Drunken Huntsman, then out of its side door: every door around drawn with its leaves. The inn's own doors, hidden while the street is merged, are the first dragon doors loaded, and every one loaded after was copied from them hidden (Pristine). Checked outside only: inside, the merged street's land fails the check (KNOWN-ISSUES).",
+    "steps": [
+      {
+        "load": "SeamlessTestDrunkenHuntsmanInside"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "walk": {
+          "ref": "000165C7",
+          "stop_distance": 0,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "name": "street"
+        }
+      }
+    ]
+  },
   "drunken-huntsman-side-door-from-inside": {
     "note": "Drunken Huntsman, from the bar walk up to the side door 000165C7 (to the street). Set to stand open: with a street picture it stands open from the load, otherwise shut until the street merges.",
     "steps": [

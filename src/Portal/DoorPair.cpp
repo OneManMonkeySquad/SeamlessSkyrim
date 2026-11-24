@@ -1,6 +1,7 @@
 #include "Portal/DoorPair.h"
 
 #include "Paths.h"
+#include "Portal/Pristine.h"
 
 namespace Portal::Doors
 {
@@ -505,11 +506,18 @@ namespace Portal::Doors
 		const auto&      geometry = GeometryOf(a_door);
 		auto&            swung = swungClosed[id];
 		if (!swung.empty() && (swung.size() != geometry.leaves.size() || swung.front().node != geometry.leaves.front().node)) {
-			swung.clear();  // the door's 3D was reloaded: its new leaves are closed
+			// The door's 3D was reloaded: its new leaves are closed. The old ones are put back:
+			// that 3D may live on as what the next door of its model is copied from (Pristine).
+			for (auto& leaf : swung) {
+				leaf.node->local = leaf.closedLocal;
+				Pristine::MovedBack(leaf.node.get());
+			}
+			swung.clear();
 		}
 		if (swung.empty()) {
 			for (const auto& leaf : geometry.leaves) {
 				swung.push_back({ leaf.node, leaf.node->local });
+				Pristine::Moved(leaf.node.get(), leaf.node->local);
 			}
 			// Swung open, a leaf shows its back to whoever looks through the doorway, from either
 			// side. Without one, its front is drawn there too; the lighting shader turns the normals
@@ -522,7 +530,7 @@ namespace Portal::Doors
 				RE::BSVisit::TraverseScenegraphGeometries(leaf.node.get(), [&](RE::BSGeometry* a_shape) {
 					auto* property = a_shape->GetGeometryRuntimeData().shaderProperty.get();
 					if (property->flags.none(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided)) {
-						property->flags.set(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided);
+						Pristine::TwoSided(property);
 						twoSided.emplace_back(property);
 					}
 					return RE::BSVisit::BSVisitControl::kContinue;
@@ -591,9 +599,10 @@ namespace Portal::Doors
 		}
 		for (auto& leaf : it->second) {
 			leaf.node->local = leaf.closedLocal;
+			Pristine::MovedBack(leaf.node.get());
 		}
 		for (auto& property : swungTwoSided[a_door]) {
-			property->flags.reset(RE::BSShaderProperty::EShaderPropertyFlag::kTwoSided);
+			Pristine::OneSided(property.get());
 		}
 		swungTwoSided.erase(a_door);
 		auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_door);
@@ -1283,7 +1292,7 @@ namespace Portal::Doors
 		{
 			for (auto& shape : BehindPanel(a_door)) {
 				if (!shape->GetAppCulled()) {
-					shape->SetAppCulled(true);
+					Pristine::Hide(shape.get());
 					a_shared.behindShapes.push_back(shape);
 				}
 			}
@@ -1297,6 +1306,7 @@ namespace Portal::Doors
 					if (layer != RE::COL_LAYER::kUnidentified && layer != RE::COL_LAYER::kNonCollidable) {
 						a_shared.layers.emplace_back(RE::NiPointer<RE::NiAVObject>(a_object), layer);
 						a_object->SetCollisionLayer(RE::COL_LAYER::kNonCollidable);
+						Pristine::LayerChanged(a_object, layer);
 					} else {
 						logger::info("portal: door {:08X}: collision on '{}' left as it is (layer {})", a_door->GetFormID(), a_object->name.c_str(), static_cast<int>(layer));
 					}
@@ -1316,7 +1326,7 @@ namespace Portal::Doors
 			for (const auto& leaf : GeometryOf(a_door).leaves) {
 				RE::BSVisit::TraverseScenegraphGeometries(leaf.node.get(), [&](RE::BSGeometry* a_shape) {
 					if (!a_shape->GetAppCulled()) {
-						a_shape->SetAppCulled(true);
+						Pristine::Hide(a_shape);
 						a_shared.hiddenShapes.emplace_back(a_shape);
 					}
 					return RE::BSVisit::BSVisitControl::kContinue;
@@ -1330,6 +1340,17 @@ namespace Portal::Doors
 		// recorded shapes and bodies were the old one's and went with it.
 		void Rebuilt(RE::TESObjectREFR* a_door, RE::NiAVObject* a_door3D, Shared& a_shared)
 		{
+			// The old 3D may live on as what the next door of its model is copied from (Pristine).
+			for (auto& shape : a_shared.behindShapes) {
+				Pristine::Show(shape.get());
+			}
+			for (auto& shape : a_shared.hiddenShapes) {
+				Pristine::Show(shape.get());
+			}
+			for (auto& [object, layer] : a_shared.layers) {
+				object->SetCollisionLayer(layer);
+				Pristine::LayerBack(object.get());
+			}
 			a_shared.behindShapes.clear();
 			a_shared.layers.clear();
 			a_shared.hiddenShapes.clear();
@@ -1360,6 +1381,20 @@ namespace Portal::Doors
 	{
 		std::scoped_lock lock(geometryLock);
 		return swungClosed.contains(a_door);
+	}
+
+	std::uint32_t HiddenByNoOpener(RE::TESObjectREFR* a_door)
+	{
+		const auto    open = openDoors.find(a_door->GetFormID());
+		std::uint32_t count = 0;
+		RE::BSVisit::TraverseScenegraphGeometries(a_door->Get3D(), [&](RE::BSGeometry* a_shape) {
+			const auto ours = [&](const std::vector<RE::NiPointer<RE::BSGeometry>>& a_list) { return std::ranges::contains(a_list, a_shape, &RE::NiPointer<RE::BSGeometry>::get); };
+			if (a_shape->GetAppCulled() && (open == openDoors.end() || (!ours(open->second.hiddenShapes) && !ours(open->second.behindShapes)))) {
+				++count;
+			}
+			return RE::BSVisit::BSVisitControl::kContinue;
+		});
+		return count;
 	}
 
 	// Standing open, not to be shut by using it: no prompt.
@@ -1480,7 +1515,7 @@ namespace Portal::Doors
 			auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(a_state.door);
 			if (a_state.hidden && --shared.hides == 0) {
 				for (auto& shape : shared.hiddenShapes) {
-					shape->SetAppCulled(false);
+					Pristine::Show(shape.get());
 				}
 				shared.hiddenShapes.clear();
 			}
@@ -1490,12 +1525,13 @@ namespace Portal::Doors
 			if (!a_state.solid && --shared.walkables == 0) {
 				for (auto& [object, layer] : shared.layers) {
 					object->SetCollisionLayer(layer);
+					Pristine::LayerBack(object.get());
 				}
 				shared.layers.clear();
 			}
 			if (--shared.opens == 0) {
 				for (auto& shape : shared.behindShapes) {
-					shape->SetAppCulled(false);
+					Pristine::Show(shape.get());
 				}
 				openDoors.erase(it);
 			}
