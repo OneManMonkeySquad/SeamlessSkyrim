@@ -32,8 +32,9 @@ namespace
 	// 2: alpha is how far behind the doorway each texel's surface is, and the header is followed by
 	// where the picture was taken from and the part of the door's plane it covers. A version 1
 	// picture is drawn flat until it is taken again. 3: as 2, taken without the room's people. 4:
-	// without the room's front wall (a capture camera's of an older version is taken again).
-	constexpr std::uint32_t kVersion = 4;
+	// without the room's front wall (a capture camera's of an older version is taken again). 5: the
+	// sky left out of a texel's average where anything else is in it; a gate's from further back.
+	constexpr std::uint32_t kVersion = 5;
 	// A picture is taken again at most this often (the room changes; the light outdoors does).
 	constexpr auto kRetake = std::chrono::seconds(20);
 
@@ -58,9 +59,28 @@ namespace
 	// doorway land in it. Not below: under the threshold is under the floor. From 80 units out
 	// (a 130 degree view) the room beyond a few steps came out in a patch of thirty texels in the
 	// middle, a dark smear in the doorway.
-	constexpr Extent       kCameraExtent{ -1.25f, 2.25f, 0.0f, 1.75f };
-	constexpr float        kCameraBack = 150.0f;
-	constexpr DoorwayPlace kCameraPlace{ 0.5f, 0.5f, -kCameraBack };
+	struct CameraShape
+	{
+		Extent extent;
+		float  back;  // how far in front of the doorway it stands
+		bool   atEye;  // at the height of the eye it is taken for, not the doorway's middle
+	};
+	constexpr CameraShape kRoomCamera{ { -1.25f, 2.25f, 0.0f, 1.75f }, 150.0f, false };
+	// A city gate's is seen from down the road, and what is behind it is a street thousands of
+	// units deep: from the room's place the city beyond the gatehouse came out in a patch of ninety
+	// texels, drawn nine times larger on screen from where a gate is walked up to. From about that
+	// far back the far side keeps its size; the narrower view still covers a player at the gate.
+	// At the road's eye height: Whiterun's road is below the gate's threshold, and from the
+	// doorway's middle the gatehouse's inner arch hid the street that the eye sees under it (the
+	// eye's rays ran off the picture's top, its edge drawn out in streaks).
+	constexpr CameraShape kGateCamera{ { -0.75f, 1.75f, 0.0f, 1.75f }, 1000.0f, true };
+	const CameraShape&    CameraOf(bool a_gate) { return a_gate ? kGateCamera : kRoomCamera; }
+
+	// a_eyeUp: the eye's height in the doorway's heights (Frame::PlaceOf).
+	DoorwayPlace PlaceOf(const CameraShape& a_shape, float a_eyeUp)
+	{
+		return { 0.5f, a_shape.atEye ? std::clamp(a_eyeUp, 0.0f, 1.0f) : 0.5f, -a_shape.back };
+	}
 	// Its texels per doorway against a picture taken with the player's view: taken once and kept,
 	// and seen at more of an angle (stretched further).
 	constexpr float kCameraDensity = 2.0f;
@@ -69,7 +89,7 @@ namespace
 	// its shape (AspectOf), times the extent.
 	std::pair<UINT, UINT> SizeFor(const Extent& a_extent, int a_doorwayHeight, float a_aspect)
 	{
-		const float density = a_extent == kCameraExtent ? kCameraDensity : 1.0f;
+		const float density = a_extent != kDoorwayOnly ? kCameraDensity : 1.0f;
 		return { static_cast<UINT>(std::lround(a_doorwayHeight * a_aspect * density * (a_extent[1] - a_extent[0]))),
 			static_cast<UINT>(std::lround(a_doorwayHeight * density * (a_extent[3] - a_extent[2]))) };
 	}
@@ -109,6 +129,9 @@ namespace
 
 	// Set by Capture, taken by the portal pass (TakeCaptureRequest); both on the render thread.
 	std::optional<Portal::Snapshot::CaptureCamera> captureWanted;
+	// Where that camera stood, for the frame drawn with it: placed again from the eye a frame on,
+	// a gate's moved with the player and the picture's corners missed what was drawn.
+	std::pair<RE::FormID, DoorwayPlace> wantedFrom{};
 
 	// The doorway's frame: corner 0 and its edges, and its normal turned away from a_eye (so the
 	// same whichever order the corners come in for the side it is seen from).
@@ -143,7 +166,7 @@ namespace
 
 	// Looking along the doorway's normal, so its plane is parallel to the image: the picture's
 	// texels are evenly spread over the door's plane, as the draw reads them.
-	Portal::Snapshot::CaptureCamera CameraFor(RE::FormID a_door, const Frame& a_frame)
+	Portal::Snapshot::CaptureCamera CameraFor(RE::FormID a_door, const Frame& a_frame, const CameraShape& a_shape, const DoorwayPlace& a_place)
 	{
 		Portal::Snapshot::CaptureCamera camera;
 		camera.door = a_door;
@@ -157,17 +180,17 @@ namespace
 			camera.transform.rotate.entry[row][1] = up[row];
 			camera.transform.rotate.entry[row][2] = right[row];
 		}
-		camera.transform.translate = a_frame.PointAt(kCameraPlace);
+		camera.transform.translate = a_frame.PointAt(a_place);
 		camera.transform.scale = 1.0f;
 		// The doorway's across may run either way on screen.
 		const float acrossOnScreen = right.Dot(a_frame.across) / width;
-		const float side0 = acrossOnScreen * (kCameraExtent[0] - kCameraPlace[0]) * width / kCameraBack;
-		const float side1 = acrossOnScreen * (kCameraExtent[1] - kCameraPlace[0]) * width / kCameraBack;
+		const float side0 = acrossOnScreen * (a_shape.extent[0] - a_place[0]) * width / a_shape.back;
+		const float side1 = acrossOnScreen * (a_shape.extent[1] - a_place[0]) * width / a_shape.back;
 		camera.left = std::min(side0, side1);
 		camera.right = std::max(side0, side1);
-		camera.bottom = (kCameraExtent[2] - kCameraPlace[1]) * height / kCameraBack;
-		camera.top = (kCameraExtent[3] - kCameraPlace[1]) * height / kCameraBack;
-		camera.toDoorway = kCameraBack;
+		camera.bottom = (a_shape.extent[2] - a_place[1]) * height / a_shape.back;
+		camera.top = (a_shape.extent[3] - a_place[1]) * height / a_shape.back;
+		camera.toDoorway = a_shape.back;
 		return camera;
 	}
 
@@ -393,7 +416,7 @@ namespace
 				std::uint32_t header[4]{};
 				// No larger than the largest ever written, the capture camera's at the largest size: a
 				// damaged file's header asked for gigabytes of texels before its read could fail.
-				const auto [widest, highest] = SizeFor(kCameraExtent, kMaxHeight, kWidest);
+				const auto [widest, highest] = SizeFor(kRoomCamera.extent, kMaxHeight, kWidest);  // the room's is the wider
 				if (file.read(reinterpret_cast<char*>(header), sizeof(header)) && header[0] == kMagic && header[1] >= 1 && header[1] <= kVersion && header[2] >= 1 &&
 					header[2] <= widest && header[3] >= 1 && header[3] <= highest) {
 					float      place[4]{};
@@ -423,7 +446,7 @@ namespace
 	}
 
 	constexpr std::size_t kCaptureConstants = 52;
-	constexpr std::size_t kDrawConstants = 100;
+	constexpr std::size_t kDrawConstants = 104;
 
 	bool EnsurePipeline(ID3D11Device* a_device)
 	{
@@ -491,19 +514,31 @@ namespace
 			float4 PS(float4 position : SV_Position) : SV_Target
 			{
 				float3 sum = 0;
+				float3 nearSum = 0;
 				float  nearness = 0;
+				float  count = 0;
 				[unroll] for (int i = 0; i < 4; ++i)
 				[unroll] for (int j = 0; j < 4; ++j) {
 					float2 uv = (floor(position.xy) + (float2(i, j) + 0.5) / 4) / Out.xy;
 					float4 clip = Corner0 + uv.x * (Corner1 - Corner0) + (1 - uv.y) * (Corner2 - Corner0);
 					float2 ndc = clip.xy / clip.w;
 					float2 pixel = float2((ndc.x * 0.5 + 0.5) * Sizes.x, (0.5 - ndc.y * 0.5) * Sizes.y);
-					sum += Scene.SampleLevel(Linear, pixel * Sizes.zw, 0).rgb;
-					nearness += 1 / Behind(ndc, pixel);
+					float3 color = Scene.SampleLevel(Linear, pixel * Sizes.zw, 0).rgb;
+					float  behind = Behind(ndc, pixel);
+					sum += color;
+					if (behind < kFar) {
+						nearSum += color;
+						nearness += 1 / behind;
+						++count;
+					}
 				}
-				// Averaged as nearness: a texel on a lamp against the sky averaged as distances stood
-				// thousands of units off, the lamp pulled away with it.
-				return float4(max(sum / 16, 0), 16 / nearness);
+				if (count == 0)
+					return float4(max(sum / 16, 0), kFar);
+				// The sky left out where anything else is: through a gate the real sky is shown where
+				// the picture has none (Draw), and a roof's edge averaged with the portal pass's flat
+				// sky colour stood in it as a blue fringe. Averaged as nearness: a lamp in front of a
+				// wall far behind it isn't pulled away to the wall.
+				return float4(max(nearSum / count, 0), count / nearness);
 			}
 		)";
 		// Draw: the picture blurred (or the plain colour) in the doorway, as the space behind it in
@@ -530,6 +565,7 @@ namespace
 				float4             TakenFrom;         // xyz: where, camera-relative; w: how far behind the doorway the plain colour stands
 				float4             Look;              // x: Adaptation::Kind; y: daylight; z: 1 = the outdoors behind; w: the picture's light now against when taken
 				float4             Extent;            // the part of the door's plane the picture covers, as Extent
+				float4             Gate;              // x: 1 = a city gate (the same sky on both sides)
 			};
 			static const float kFar = 30000;
 			struct Vertex { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 world : TEXCOORD1; float depth : TEXCOORD2; };
@@ -589,7 +625,13 @@ namespace
 				if (Plain.w < 0.5)
 					return TakenFrom.w;
 				// A picture without depth: everything at the doorway, drawn flat as before.
-				return Origin.w > 0.5 ? Picture.SampleLevel(Linear, uv, 0).a : 0;
+				if (Origin.w < 0.5)
+					return 0;
+				// Through a gate a roof or an arch stands against the sky: read between them, the
+				// depth made a slope to the sky that rays landed on, in dashes along every edge.
+				if (Gate.x > 0.5)
+					return Picture.Load(int3(clamp(uv / Params.yz, 0, 1 / Params.yz - 1), 0)).a;
+				return Picture.SampleLevel(Linear, uv, 0).a;
 			}
 			// Along the eye's ray past the doorway, the place its points are seen at from where the
 			// picture was taken moves in a straight line across the picture: from where the ray
@@ -618,9 +660,21 @@ namespace
 				end = saturate(end);
 				float before = 0;
 				float t = end;
+				bool  hit = false;
 				[loop] for (int i = 1; i <= 24; ++i) {
 					float at = end * i / 24;
-					if (at >= TOf(StoredBehind(uvNear + delta * at))) {
+					float surface = TOf(StoredBehind(uvNear + delta * at));
+					// Through a gate the eye looks under the gatehouse's arches from lower down than
+					// the picture was taken: the ray comes at an arch from behind, where the picture
+					// has the arch over the street it passes on to. As a solid reaching back forever
+					// the arch was drawn out over that street in streaks; a near thing is taken as a
+					// shell a few steps deep. A room's walls stay solid.
+					if (Gate.x > 0.5 && at - surface > 2.0 * end / 24) {
+						before = at;
+						continue;
+					}
+					if (at >= surface) {
+						hit = true;
 						t = at;
 						[unroll] for (int j = 0; j < 5; ++j) {
 							float middle = 0.5 * (before + t);
@@ -637,6 +691,12 @@ namespace
 				float2 uv = uvNear + delta * t;
 				float  behind = min(t * -Inward.w / (1 - t), kFar);
 				float3 world = v.world + dir * (behind / facing);
+				// As the live gate (PortalRender's doorway quad): where the far side has nothing, the
+				// player's own worldspace shows, with the real sky. The portal pass's is a flat colour,
+				// and a picture's sky is of another hour and weather. A ray that met nothing in the
+				// picture has left it past what was taken: the world there is the nearest guess.
+				if (Gate.x > 0.5 && Plain.w > 0.5 && (!hit || behind >= kFar * 0.5))
+					discard;
 
 				float3 color;
 				if (Plain.w > 0.5) {
@@ -1135,7 +1195,7 @@ namespace Portal::Snapshot
 
 	CaptureCamera CameraFor(RE::FormID a_door, const Corners& a_corners, const RE::NiPoint3& a_eye)
 	{
-		return ::CameraFor(a_door, Frame(a_corners, a_eye));
+		return ::CameraFor(a_door, Frame(a_corners, a_eye), kRoomCamera, PlaceOf(kRoomCamera, 0.0f));
 	}
 
 	void Prewarm()
@@ -1160,12 +1220,13 @@ namespace Portal::Snapshot
 			return false;
 		}
 		const auto* picture = Find(device, a_door, false);
-		const auto [width, height] = SizeFor(kCameraExtent, pictureHeight.load(), AspectOf(a_corners));
-		return !picture || picture->version < kVersion || picture->extent != kCameraExtent || picture->width != width || picture->height != height;
+		const auto [width, height] = SizeFor(kRoomCamera.extent, pictureHeight.load(), AspectOf(a_corners));
+		return !picture || picture->version < kVersion || picture->extent != kRoomCamera.extent || picture->width != width || picture->height != height;
 	}
 
-	void Capture(const View& a_view, const Source& a_source, RE::FormID a_door, bool a_outdoors, const Corners& a_corners)
+	void Capture(const View& a_view, const Source& a_source, RE::FormID a_door, bool a_outdoors, bool a_gate, const Corners& a_corners)
 	{
+		const auto& shape = CameraOf(a_gate);
 		auto* context = Context();
 		auto* device = Device();
 		// Without the depth a picture would be drawn flat again, and kept so on disk.
@@ -1177,10 +1238,11 @@ namespace Portal::Snapshot
 		// Merged into the world, the space is only in the frame the player sees, and the walls
 		// around the doorway are the player's space's: the picture is of the doorway, as seen.
 		const bool withCamera = a_source.portalFar > 0.0f;
-		const auto extent = withCamera ? kCameraExtent : kDoorwayOnly;
+		const auto extent = withCamera ? shape.extent : kDoorwayOnly;
+		const auto cameraPlace = a_source.captureCamera && wantedFrom.first == a_door ? wantedFrom.second : PlaceOf(shape, frame.PlaceOf(a_view.eye)[1]);
 		std::array<std::array<float, 4>, 4> clip;
 		if (withCamera) {
-			const auto camera = CameraFor(a_door, frame);
+			const auto camera = CameraFor(a_door, frame, shape, cameraPlace);
 			for (int i = 0; i < 4; ++i) {
 				clip[i] = CameraClip(camera, frame, extent[i & 1], extent[2 + (i >> 1)]);
 			}
@@ -1207,7 +1269,7 @@ namespace Portal::Snapshot
 		auto&      picture = pictures[key];
 		picture.used = std::chrono::steady_clock::now();
 		// The player's view sees less than the capture camera did.
-		if (!withCamera && picture.view && picture.extent == kCameraExtent) {
+		if (!withCamera && picture.view && picture.extent != kDoorwayOnly) {
 			return;
 		}
 		const auto now = std::chrono::steady_clock::now();
@@ -1220,7 +1282,8 @@ namespace Portal::Snapshot
 			return;
 		}
 		if (withCamera && !a_source.captureCamera) {
-			captureWanted = CameraFor(a_door, frame);
+			captureWanted = CameraFor(a_door, frame, shape, cameraPlace);
+			wantedFrom = { a_door, cameraPlace };
 			return;
 		}
 
@@ -1270,7 +1333,7 @@ namespace Portal::Snapshot
 			constants[48] = a_source.portalNear;
 			constants[49] = a_source.portalFar;
 			constants[50] = fillsTarget ? 1.0f : 0.0f;
-			constants[51] = withCamera ? kCameraBack : 0.0f;
+			constants[51] = withCamera ? shape.back : 0.0f;
 			Upload(context, pipeline.captureConstants, constants, sizeof(constants));
 			// The scene may still be bound as a target.
 			ID3D11RenderTargetView* noTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
@@ -1301,7 +1364,7 @@ namespace Portal::Snapshot
 		picture.taken = now;
 		picture.diskTried = true;
 		picture.depth = true;
-		picture.takenFrom = withCamera ? kCameraPlace : frame.PlaceOf(a_view.eye);
+		picture.takenFrom = withCamera ? cameraPlace : frame.PlaceOf(a_view.eye);
 		picture.extent = extent;
 		picture.lightScale = std::max(a_source.lightScale, 0.01f);
 		picture.version = kVersion;
@@ -1314,7 +1377,7 @@ namespace Portal::Snapshot
 		logger::info("doorway snapshot: {} taken ({}x{}, {})", key, width, height, withCamera ? "capture camera" : "the player's view");
 	}
 
-	void Draw(const View& a_view, RE::FormID a_door, bool a_outdoors, const Corners& a_corners, float a_alpha, const RE::NiColor& a_plain, const Adaptation& a_adaptation)
+	void Draw(const View& a_view, RE::FormID a_door, bool a_outdoors, bool a_gate, const Corners& a_corners, float a_alpha, const RE::NiColor& a_plain, const Adaptation& a_adaptation)
 	{
 		auto* context = Context();
 		auto* device = Device();
@@ -1381,6 +1444,7 @@ namespace Portal::Snapshot
 			constants[95] = picture ? a_adaptation.lightScale / picture->lightScale : 1.0f;
 			const auto& extent = picture ? picture->extent : kDoorwayOnly;
 			std::memcpy(constants + 96, extent.data(), sizeof(float) * 4);
+			constants[100] = a_gate ? 1.0f : 0.0f;
 			Upload(context, pipeline.drawConstants, constants, sizeof(constants));
 		}
 		// Opaque, it stands in for the doorway like geometry (depth and motion); fading out, it only

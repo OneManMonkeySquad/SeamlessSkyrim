@@ -1008,15 +1008,17 @@ namespace
 	// Which of the pair a stand-in swings: the one the portal would (Doors::SwingingDoor), its
 	// picture showing the far one swung; but a gate without a picture swings its own, or the
 	// gateway stood empty.
-	// A city gate shows its picture once it has one, from any distance: through its gateway the
-	// player's own worldspace showed the street worldspace's low-detail copy of the city (a log
-	// house right behind Riften's south gate, Solitude's gatehouse walled up). Until the gate has a
-	// picture it still does, unless set to show the plain colour instead (Doors::PictureFromAfar).
+	// Through a city gate the player's own worldspace shows its low-detail copy of the city: drawn
+	// in 3D, it sits right from any distance and angle, under the real sky and light. A picture
+	// (one taken from 1000 units out, reprojected with its depth) smeared the gatehouse's walls
+	// from close by and never looked like the street behind. Where that worldspace walls the
+	// passage up (Solitude's gatehouse), the gate mask takes the wall away (StandInGatePassage). A
+	// gate set to (Doors::PictureFromAfar) shows its picture, or the plain colour until it has one.
 	RE::FormID StandInSwinging(RE::TESObjectREFR* a_door, DoorwayStandIn& a_standIn)
 	{
 		const auto id = a_door->GetFormID();
 		const auto key = Portal::Doors::CorrectionDoor(id, Outdoors(a_door), a_standIn.linked, a_standIn.outdoors);
-		a_standIn.picture = !a_standIn.gate || Portal::Doors::PictureFromAfar(key) || Portal::Snapshot::HasPicture(id, a_standIn.outdoors);
+		a_standIn.picture = !a_standIn.gate || Portal::Doors::PictureFromAfar(key);
 		return a_standIn.picture ? Portal::Doors::SwingingDoor(id, Outdoors(a_door), a_standIn.linked, a_standIn.outdoors) : id;
 	}
 
@@ -3432,6 +3434,47 @@ namespace Portal::Manager
 
 		bool gateMasked = false;  // room 0's doorway is the city gate's (UpdateGateMask)
 
+		// Before the city behind a gate is there, the player's own worldspace shows through it, its
+		// low-detail copy of the city (StandInSwinging). Where the two gates stand apart, that
+		// worldspace's side of the gatehouse lies between them: Solitude's walls its passage up. Masked
+		// up to the far gate, the copy of the street beyond shows. The nearest such gate, as there is
+		// one mask.
+		std::optional<float> StandInGatePassage(float (&a_door)[12])
+		{
+			const auto         eye = RE::PlayerCharacter::GetSingleton()->GetPosition();
+			RE::TESObjectREFR* gate = nullptr;
+			RE::TESObjectREFR* farGate = nullptr;
+			for (const auto& [id, standIn] : standIns) {
+				auto* door = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
+				if (!standIn.gate || standIn.picture || !door->Get3D() || (gate && eye.GetDistance(door->GetPosition()) >= eye.GetDistance(gate->GetPosition()))) {
+					continue;
+				}
+				gate = door;
+				farGate = RE::TESForm::LookupByID<RE::TESObjectREFR>(standIn.linked);
+			}
+			if (!gate) {
+				return std::nullopt;
+			}
+			const auto inward = AwayFrom(gate, eye);
+			// By the references' origins: the far gate's 3D isn't loaded yet. Both gates are placed
+			// the same way about their meshes, so their origins stand apart as their doorways do.
+			const float depth = (farGate->GetPosition() - gate->GetPosition()).Dot(inward);
+			// Gates this close are one gateway seen from either side (Whiterun's, 20 units apart, one
+			// mesh at two sizes): the player's worldspace has its own passage behind it, and masked,
+			// the passage's ceiling opened onto the sky. Solitude's stand 370 apart.
+			constexpr float kApart = 150.0f;
+			if (depth <= kApart) {
+				return std::nullopt;
+			}
+			const auto  center = Doors::Center(gate);
+			const auto  size = Doors::Size(gate);
+			const float values[12] = { center.x, center.y, center.z, inward.x, inward.y, 0.0f, inward.y, -inward.x, 0.0f, size.halfWidth, size.halfHeight, 0.0f };
+			std::ranges::copy(values, a_door);
+			// A little past the far gate: the gatehouse's wall stands about its plane.
+			constexpr float kPastFarGate = 50.0f;
+			return depth + kPastFarGate;
+		}
+
 		// Through a city gate the portal pass draws the other worldspace, and where it drew nothing
 		// (the sky, beyond its few cells) the world's own shows: the two share their coordinates,
 		// distant land and sky. Where the two gates stand apart, the world's own side of the
@@ -3458,6 +3501,10 @@ namespace Portal::Manager
 						std::ranges::copy(values, door);
 					}
 				}
+			}
+			// Room 0 is a merged room's while one is.
+			if (!passage && !remote.merged && ::Render::Backend::CanMaskGate() && !a_here->IsInteriorCell()) {
+				passage = StandInGatePassage(door);
 			}
 			if (passage) {
 				SendMergedDoor(0, door);
@@ -4346,8 +4393,10 @@ namespace Portal::Manager
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		const bool outdoors = portal->cell && !portal->cell->IsInteriorCell();
 		const bool gate = outdoors && here && !here->IsInteriorCell();
-		// A city gate too: its picture stands in close by while the city behind isn't there
-		// (StandInSwinging).
+		// A city gate only when it shows one (StandInSwinging): a picture nobody sees is megabytes on disk.
+		if (gate && !Portal::Doors::PictureFromAfar(Portal::Doors::CorrectionDoor(portal->sourceDoor, true, portal->linkedDoor, true))) {
+			return std::nullopt;
+		}
 		return DoorwayFill{ portal->sourceDoor, outdoors, gate, 1.0f };
 	}
 

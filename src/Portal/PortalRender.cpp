@@ -1613,7 +1613,8 @@ namespace
 		auto*              linked = Portal::Doors::Door(a_portal.linkedDoor);
 		const auto&        rotate = portalCamera->world.rotate;
 		const RE::NiPoint3 forward{ rotate.entry[0][0], rotate.entry[1][0], rotate.entry[2][0] };  // NiCamera looks along local +X
-		const float        toDoor = capturing ? a_capture->toDoorway : (Portal::Doors::Center(linked) - portalCamera->world.translate).Dot(forward);
+		// A gate's mapping is scaled: the capture camera stands that much further from the far gate.
+		const float        toDoor = capturing ? a_capture->toDoorway * mapping.toLinked.scale : (Portal::Doors::Center(linked) - portalCamera->world.translate).Dot(forward);
 		// The capture camera cuts just past the door plane: its
 		// picture reaches beyond the doorway, where the room's front wall and the door's frame
 		// stood within the 20 units kept for the doorway quad, slivers at the plane that the
@@ -1624,8 +1625,11 @@ namespace
 		// The doorway on screen still shows the last picture, read with the clip distances it was
 		// drawn with.
 		if (capturing) {
-			captureDrawn = CaptureDrawn{ a_capture->door, !a_portal.cell->IsInteriorCell(), IsGate(a_portal), portalCamera->GetRuntimeData2().viewFrustum.fNear,
-				portalCamera->GetRuntimeData2().viewFrustum.fFar };
+			// In the player's space's units, as the picture keeps its distances: the depth read with
+			// them gives the far side's distances divided by the mapping's scale.
+			const float scale = mapping.toLinked.scale;
+			captureDrawn = CaptureDrawn{ a_capture->door, !a_portal.cell->IsInteriorCell(), IsGate(a_portal), portalCamera->GetRuntimeData2().viewFrustum.fNear / scale,
+				portalCamera->GetRuntimeData2().viewFrustum.fFar / scale };
 		} else {
 			portalNear = portalCamera->GetRuntimeData2().viewFrustum.fNear;
 			portalFar = portalCamera->GetRuntimeData2().viewFrustum.fFar;
@@ -2402,7 +2406,7 @@ namespace
 				// a turn by a frame half the time).
 				const auto                     corners = Portal::Doors::Quad(Portal::Doors::Door(captureDrawn->door), viewer, !captureDrawn->gate, captureDrawn->gate);
 				const Portal::Snapshot::Source source{ DrawingTargets().color.SRV, DrawingTargets().depth.depthSRV, captureDrawn->nearClip, captureDrawn->farClip, true };
-				Portal::Snapshot::Capture(view, source, captureDrawn->door, captureDrawn->outdoors, corners);
+				Portal::Snapshot::Capture(view, source, captureDrawn->door, captureDrawn->outdoors, captureDrawn->gate, corners);
 			});
 		} else if (chance && a_realShown && (!merged || (playerCamera && playerCamera->IsInFirstPerson()))) {
 			guarded([&] {
@@ -2419,7 +2423,7 @@ namespace
 				} else {
 					source = { ShownTargets().color.SRV, ShownTargets().depth.depthSRV, portalNear, portalFar, false };
 				}
-				Portal::Snapshot::Capture(view, source, chance->door, chance->outdoors, corners);
+				Portal::Snapshot::Capture(view, source, chance->door, chance->outdoors, chance->gate, corners);
 			});
 		}
 		auto        plainOutside = kPlainInside;
@@ -2453,7 +2457,7 @@ namespace
 					adaptation.kind = Kind::kRoomFromOutdoors;
 					adaptation.lightScale = Portal::Manager::RoomLightScale(standIn.door);
 				}
-				Portal::Snapshot::Draw(view, standIn.door, standIn.outdoors, corners, standIn.alpha, standIn.outdoors ? plainOutside : kPlainInside, adaptation);
+				Portal::Snapshot::Draw(view, standIn.door, standIn.outdoors, standIn.gate, corners, standIn.alpha, standIn.outdoors ? plainOutside : kPlainInside, adaptation);
 			});
 		}
 	}

@@ -63,7 +63,7 @@ namespace Portal::Snapshot
 		RE::FormID      door = 0;
 		RE::NiTransform transform;  // in the player's space, as an NiCamera's (looking along its rotation's first column)
 		float           left = 0.0f, right = 0.0f, bottom = 0.0f, top = 0.0f;  // the frustum at distance 1
-		float           toDoorway = 0.0f;  // the door plane's distance ahead
+		float           toDoorway = 0.0f;  // the door plane's distance ahead, in the player's space
 	};
 
 	// Render (main thread), after the world is drawn into the main target and before first person:
@@ -72,12 +72,13 @@ namespace Portal::Snapshot
 	// the world, with the player's view if that sees the doorway well enough, unless there is a
 	// capture camera's picture already. A room is merged as soon as it has loaded, so the manager
 	// holds the merge back for a door without one (Manager::PictureWanted).
-	void Capture(const View& a_view, const Source& a_source, RE::FormID a_door, bool a_outdoors, const Corners& a_corners);
+	// a_gate: a city gate's doorway, taken from further back (its far side is a street, not a room).
+	void Capture(const View& a_view, const Source& a_source, RE::FormID a_door, bool a_outdoors, bool a_gate, const Corners& a_corners);
 
 	// Render, before the portal pass: the capture camera, once after Capture asked for it.
 	std::optional<CaptureCamera> TakeCaptureRequest();
 
-	// The capture camera for a door's doorway (a_corners as Capture's; a_eye the side it is seen from).
+	// The capture camera for a room door's doorway (a_corners as Capture's; a_eye the side it is seen from).
 	CaptureCamera CameraFor(RE::FormID a_door, const Corners& a_corners, const RE::NiPoint3& a_eye);
 
 	// Once, at kDataLoaded: the shaders compiled behind the startup screen, not on the first
@@ -111,8 +112,8 @@ namespace Portal::Snapshot
 	};
 
 	// Render, as Capture: draws the door's picture (or a_plain, without one) into the doorway,
-	// with a_alpha.
-	void Draw(const View& a_view, RE::FormID a_door, bool a_outdoors, const Corners& a_corners, float a_alpha, const RE::NiColor& a_plain, const Adaptation& a_adaptation);
+	// with a_alpha. Through a gate (a_gate) the picture's sky is left to the player's own.
+	void Draw(const View& a_view, RE::FormID a_door, bool a_outdoors, bool a_gate, const Corners& a_corners, float a_alpha, const RE::NiColor& a_plain, const Adaptation& a_adaptation);
 
 	// Render, every frame: pictures taken a few frames ago written to disk. Left to Capture and
 	// Draw, a picture taken just before turning to third person or walking through waited for the

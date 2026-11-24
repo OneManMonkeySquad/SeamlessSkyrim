@@ -19,9 +19,15 @@ then, or the player walked on into whatever stands behind it in their own space.
 A door opens when it is used (the player, or an NPC reaching for it on its way through) and
 shuts 5 s after nobody stands in it; city gates and the doors set to stand open always stand
 open (`DoorUse`, `Wanted` in `PortalManager.cpp`). Until the city behind it is there, a gate
-shows its picture from any distance; one with no picture yet shows the player's own worldspace
-through its gateway (the street worldspace's low-detail copy of the city). A doorway's picture has the doorway's own shape when it is wider than three
-quarters of its height (a gate's is about twice as wide as a door's).
+shows the player's own worldspace through its gateway: its low-detail copy of the city, in 3D,
+under the real sky. Where the two gates stand more than 150 units apart (Solitude's, 370), the
+player's worldspace walls the passage up between them; the gate mask (`StandInGatePassage`)
+hides its shapes through the gateway up to just past the far gate. A gate set to
+(`[DoorFarPicture]`) shows its picture instead. Dropped: the picture for every gate. Taken from
+a fixed camera and reprojected with its depth, it never looked like the street behind (the room
+door's camera gave the city ~90 texels; one 1000 units back smeared the gatehouse from close by).
+A doorway's picture has the doorway's own shape when it is wider than three quarters of its
+height.
 
 ## Overview
 

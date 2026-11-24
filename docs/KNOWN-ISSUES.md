@@ -10,9 +10,6 @@
 - Settings changed in the in-game menu are written into the shipped `SeamlessSkyrim.ini`
   (`Menu.cpp`, `Save`): an update replaces them with the new defaults. The door tunings had the
   same problem and now have their own file (`SeamlessSkyrim_Doors_User.ini`).
-- A doorway's stand-in picture (a city gate seen before the city behind it is there) has no rain,
-  and covers the main view's rain in front of it too (rain writes no depth, ENGINE.md): the rain
-  stops at the picture's outline. Reasoned from the live gate's case, not seen yet.
 - Physics objects and arrows are not carried through a doorway.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.
@@ -113,8 +110,6 @@
   (stand-in, merged 4 s later) or after; nor at Elgrim's Elixirs' door.
 - A locked door opened with its key: the engine's own trip with its loading screen (only a picked
   lock is caught: the door then opens). Not tried.
-- Solitude's gate from afar shows its doorway picture: blurred, the gatehouse's portcullis and an
-  amber haze rather than the street.
 - The game's memory grows by about 2.5 GB with each round trip through Riften's south gate
   (private bytes 15 GB after loading, 31 GB after ten trips; the crashes after many trips came
   with the machine's memory nearly used up). Not SeamlessSkyrim's portals: the same with the
@@ -132,9 +127,6 @@
   it was ready. Not reproduced in about 30 trips since.
 - Through a city gate the view back takes about 5 s (the purge after the trip, then the load):
   walking back through it sooner takes the engine's trip with its loading screen.
-- Riften's south gate's picture (seen from outside before the city is there): a pale smeared band
-  along the bottom of the gateway and its right edge, where the gate passage's floor and wall
-  right behind the plane are drawn from the picture's depth.
 - Without Community Shaders (the native backend) water isn't masked at a merged room's doorway:
   the street's canal shows in the Ratway's doorway over the steps down. `NativeMask` hooks the
   lighting, utility and effect shaders only; the water shader isn't tried.
@@ -144,10 +136,6 @@
   caster beyond the portal's nine cells, distant LOD (not in the portal pass), or the gateway's
   shadows being the soft copy (Volumetric Shadows' VSM, 512 texels a cascade) where the world has
   its crisp shadow mask. The portal's own shadow pass costs about 1 ms of the main thread.
-- Walking out of Solitude's gate and looking back, the doorway's picture of the city was once only
-  the evening sky (peach, faint cloud shapes) for the 4 s before the view back was ready; taken
-  while Community Shaders was still compiling its lighting shaders after a shader change. Not
-  seen in the next two runs.
 - College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
   open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
   the route predates doors opening only when used and doesn't use the door.
