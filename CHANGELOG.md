@@ -57,8 +57,8 @@
 
 ### Doors
 
-- Doors open when you use them, without a loading screen, and shut when used again or a few
-  seconds after nobody stands in them. They no longer open as you walk up.
+- **Doors open when you use them, without a loading screen, and shut when used again or a few
+  seconds after nobody stands in them. They no longer open as you walk up.**
 - Doors swing with a bounce off their stop and frame, and play their own sounds.
 - NPCs open shut doors on their way through and walk straight through open ones.
 - New setting **Doors** (in-game menu, `iForceDoors` in `SeamlessSkyrim.ini`): as set per door,
@@ -79,7 +79,7 @@
 
 ### Looks
 
-- Rain and snow fall in the street seen through a doorway or a city gate.
+- **Rain and snow fall in the street seen through a doorway or a city gate.**
 - A doorway's view is as sharp and smooth as the scene around it with upscaling or TAA, and
   follows the camera when turning.
 - The outdoors seen through a door has the sun's shadows: trees behind a city gate no longer
