@@ -119,7 +119,7 @@
     ]
   },
   "jorrvaskr-door-use": {
-    "note": "Whiterun, Jorrvaskr's left front door (0001A702, opens only when used): look at it shut while its room is merged, use it (swings open with a bounce), wait until it swings shut by itself. Was: shut while merged, the panel was cut away by the doorway mask and the sky showed.",
+    "note": "Whiterun, Jorrvaskr's left front door (0001A702, opens only when used): look at it shut while its room is merged, use it (swings open as the game swings it, by its own Open animation), wait until it swings shut by itself. Was: shut while merged, the panel was cut away by the doorway mask and the sky showed.",
     "steps": [
       {
         "load": "SeamlessTestBelethors"

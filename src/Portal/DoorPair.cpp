@@ -142,9 +142,20 @@ namespace Portal::Doors
 			bool oneSided = false;
 		};
 
+		// How far open (0 shut .. 1 open) a leaf stands through one of its door's own animations,
+		// sampled evenly over its length.
+		constexpr std::size_t kMotionSamples = 64;
+		struct Motion
+		{
+			float              seconds = 0.0f;
+			std::vector<float> amount;
+		};
+
 		struct Geometry
 		{
 			RE::NiPointer<RE::NiAVObject> root;  // the 3D measured; a reloaded door is measured anew
+			// The door's "Open" and "Close" animations, as a door opened by the game plays them.
+			Motion opening, shutting;
 			Box                           panel;  // the leaves; along the thin axis, their faces
 			bool                          thinX = false;
 			bool                          measured = false;  // false: the base object's bounds
@@ -192,6 +203,89 @@ namespace Portal::Doors
 			return turn * a_transform;
 		}
 
+		// NiQuatTransform, which CommonLib only declares: an interpolator's value.
+		struct QuatTransform
+		{
+			RE::NiPoint3     translate;
+			RE::NiQuaternion rotate;
+			float            scale;
+		};
+		static_assert(sizeof(QuatTransform) == 0x20);
+
+		// For a door whose mesh has no animation: the game never moves it, so there is nothing to
+		// copy. Eased both ways over the length of a common door's.
+		Motion StillDoorMotion(bool a_opening)
+		{
+			Motion motion{ 1.0f, std::vector<float>(kMotionSamples) };
+			for (std::size_t i = 0; i < kMotionSamples; ++i) {
+				const float t = static_cast<float>(i) / static_cast<float>(kMotionSamples - 1);
+				const float eased = 0.5f - 0.5f * std::cos(std::numbers::pi_v<float> * t);
+				motion.amount[i] = a_opening ? eased : 1.0f - eased;
+			}
+			return motion;
+		}
+
+		// The door's own "Open" and "Close" animations (its NiControllerManager's sequences) for
+		// a_leaf: how far it has turned from shut, as a share of how far "Open" turns it. A leaf that
+		// slides instead of turning, by how far it has moved.
+		std::optional<std::pair<Motion, Motion>> OwnMotion(RE::NiAVObject* a_root, RE::NiAVObject* a_leaf)
+		{
+			RE::NiControllerManager* manager = nullptr;
+			for (auto* controller = a_root->GetControllers(); controller && !manager; controller = controller->next.get()) {
+				manager = netimmerse_cast<RE::NiControllerManager*>(controller);
+			}
+			auto* open = manager ? manager->GetSequenceByName("Open") : nullptr;
+			auto* close = manager ? manager->GetSequenceByName("Close") : nullptr;
+			if (!open || !close) {
+				return std::nullopt;
+			}
+			const auto interpolatorOf = [&](RE::NiControllerSequence* a_sequence) -> RE::NiInterpolator* {
+				for (std::uint32_t i = 0; i < a_sequence->arraySize; ++i) {
+					if (a_sequence->idTagArray.data()[i].avObjectName == a_leaf->name) {
+						return a_sequence->interpArray.data()[i].interpolator.get();
+					}
+				}
+				return nullptr;
+			};
+			auto* openInterpolator = interpolatorOf(open);
+			auto* closeInterpolator = interpolatorOf(close);
+			if (!openInterpolator || !closeInterpolator) {
+				return std::nullopt;
+			}
+			const auto at = [](RE::NiInterpolator* a_interpolator, float a_time) {
+				QuatTransform value{};
+				a_interpolator->Update1(a_time, nullptr, reinterpret_cast<RE::NiQuatTransform&>(value));
+				return value;
+			};
+			const auto shut = at(openInterpolator, open->beginKeyTime);
+			const auto turned = [&](const QuatTransform& a_value) {
+				const float dot = std::abs(a_value.rotate.w * shut.rotate.w + a_value.rotate.x * shut.rotate.x + a_value.rotate.y * shut.rotate.y + a_value.rotate.z * shut.rotate.z);
+				return 2.0f * std::acos(std::min(dot, 1.0f));
+			};
+			const auto moved = [&](const QuatTransform& a_value) { return a_value.translate.GetDistance(shut.translate); };
+			const auto opened = at(openInterpolator, open->endKeyTime);
+			const bool slides = turned(opened) < RE::deg_to_rad(1.0f);
+			const float full = slides ? moved(opened) : turned(opened);
+			const auto sample = [&](RE::NiControllerSequence* a_sequence, RE::NiInterpolator* a_interpolator) {
+				Motion motion{ (a_sequence->endKeyTime - a_sequence->beginKeyTime) / a_sequence->frequency, std::vector<float>(kMotionSamples) };
+				for (std::size_t i = 0; i < kMotionSamples; ++i) {
+					const float t = static_cast<float>(i) / static_cast<float>(kMotionSamples - 1);
+					const auto  value = at(a_interpolator, a_sequence->beginKeyTime + t * (a_sequence->endKeyTime - a_sequence->beginKeyTime));
+					motion.amount[i] = (slides ? moved(value) : turned(value)) / full;
+				}
+				return motion;
+			};
+			return std::pair{ sample(open, openInterpolator), sample(close, closeInterpolator) };
+		}
+
+		float AmountAt(const Motion& a_motion, float a_t)
+		{
+			const float at = std::clamp(a_t, 0.0f, 1.0f) * static_cast<float>(a_motion.amount.size() - 1);
+			const auto  i = std::min(static_cast<std::size_t>(at), a_motion.amount.size() - 2);
+			const float f = at - static_cast<float>(i);
+			return a_motion.amount[i] + (a_motion.amount[i + 1] - a_motion.amount[i]) * f;
+		}
+
 		Geometry Measure(RE::TESObjectREFR* a_door, RE::NiAVObject* a_root)
 		{
 			const auto id = a_door->GetFormID();
@@ -215,6 +309,14 @@ namespace Portal::Doors
 			for (auto* node : animated) {
 				geometry.leaves.push_back({ RE::NiPointer<RE::NiAVObject>(node), {}, toDoor(node).translate });
 			}
+			if (const auto own = animated.empty() ? std::nullopt : OwnMotion(a_root, animated.front())) {
+				std::tie(geometry.opening, geometry.shutting) = *own;
+			} else {
+				geometry.opening = StillDoorMotion(true);
+				geometry.shutting = StillDoorMotion(false);
+			}
+			logger::info("portal: door {:08X}: opens over {:.2f} s, shuts over {:.2f} s{}", id, geometry.opening.seconds, geometry.shutting.seconds,
+				animated.empty() ? " (not animated)" : "");
 
 			struct Triangle
 			{
@@ -435,8 +537,7 @@ namespace Portal::Doors
 			const RE::NiPoint3 hinge = wideX ? RE::NiPoint3{ hingeEnd, thinMiddle, 0.0f } : RE::NiPoint3{ thinMiddle, hingeEnd, 0.0f };
 			const RE::NiPoint3 free = wideX ? RE::NiPoint3{ span, 0.0f, 0.0f } : RE::NiPoint3{ 0.0f, span, 0.0f };
 			const float        sign = (-free.y * room.x + free.x * room.y) >= 0.0f ? 1.0f : -1.0f;  // the free end turns towards the room
-			// A little past 1: the swing's ease overshoots the stop (Manager's SwingEase).
-			const float        angle = sign * std::clamp(a_amount, 0.0f, 1.2f) * RE::deg_to_rad(degrees);
+			const float        angle = sign * a_amount * RE::deg_to_rad(degrees);
 			const float        c = std::cos(angle), s = std::sin(angle);
 			RE::NiTransform    turn;  // in the door's space
 			turn.rotate = RE::NiMatrix3({ c, -s, 0.0f }, { s, c, 0.0f }, { 0.0f, 0.0f, 1.0f });
@@ -451,6 +552,22 @@ namespace Portal::Doors
 		}
 		RE::NiUpdateData update;
 		door3D->Update(update);
+	}
+
+	float SwingAmount(RE::TESObjectREFR* a_door, float a_t, bool a_opening)
+	{
+		std::scoped_lock lock(geometryLock);
+		const auto&      geometry = GeometryOf(a_door);
+		// a_t is how far open the swing has got, so shutting runs it from 1 down to 0: "Close" is
+		// played from its end backwards in a_t, forwards in time.
+		return a_opening ? AmountAt(geometry.opening, a_t) : AmountAt(geometry.shutting, 1.0f - a_t);
+	}
+
+	float SwingSeconds(RE::TESObjectREFR* a_door, bool a_opening)
+	{
+		std::scoped_lock lock(geometryLock);
+		const auto&      geometry = GeometryOf(a_door);
+		return (a_opening ? geometry.opening : geometry.shutting).seconds;
 	}
 
 	void Unswing(RE::FormID a_door)

@@ -612,67 +612,28 @@ namespace
 		}
 	}
 
-	// A door that is opened swings open, as a door does, over this long (its bounces included,
-	// SwingEase); once the space behind it is there (closed while that loads).
-	constexpr float kSwingSeconds = 1.2f;
-
 	// Far enough past ReleaseRadius (fast travel on horseback), a door still swinging is let go anyway.
 	constexpr float kForceReleaseRadius = 2500.0f;
 	bool            doorWanted = false;  // the portal's door swings towards open (else towards shut): Wanted
 
-	// How far open (of Doors::SwingDegrees) a door is a_t of the way through its swing (0 shut .. 1
-	// open), a_opening or shutting. Either way it starts fast and bounces at the end: opening, past
-	// its stop, back short of it and onto it; shutting, it bangs into the frame and bounces off it
-	// twice. One curve played backwards for shutting put the bounce at its start. A bounce of 4%
-	// of the swing (a few degrees) went unnoticed.
-	float SwingEase(float a_t, bool a_opening)
+	// How far open a_door is a_t of the way through its swing (0 .. 1), a_opening or shutting: its own
+	// animation's (Doors::SwingAmount), as when the game opens it.
+	float SwingEase(RE::TESObjectREFR* a_door, float a_t, bool a_opening)
 	{
-		const float t = std::clamp(a_t, 0.0f, 1.0f);
-		constexpr float pi = std::numbers::pi_v<float>;
-		if (a_opening) {
-			// The swing out to its farthest, slowing to a stop there, then back and forth like a
-			// spring settling: each part a half cosine between two turning points.
-			constexpr float kOut = 0.42f, kPast = 1.15f;  // share of the time; how far
-			constexpr float kBack = 0.30f, kShort = 0.96f;
-			if (t < kOut) {
-				const float u = t / kOut;
-				return kPast * (1.0f - (1.0f - u) * (1.0f - u));
-			}
-			if (t < kOut + kBack) {
-				return kPast + (kShort - kPast) * 0.5f * (1.0f - std::cos(pi * (t - kOut) / kBack));
-			}
-			return kShort + (1.0f - kShort) * 0.5f * (1.0f - std::cos(pi * (t - kOut - kBack) / (1.0f - kOut - kBack)));
-		}
-		const float s = 1.0f - t;  // how far through shutting
-		// Shut at an even speed, so it still hits the frame hard; then bounces like a thrown ball,
-		// each one lower (about half as fast off the frame as onto it) and so shorter.
-		constexpr float kFall = 0.46f;
-		constexpr float kFirst = 0.30f, kFirstHeight = 0.12f;
-		constexpr float kSecond = 0.15f, kSecondHeight = 0.03f;
-		const auto      arc = [](float a_u, float a_height) { return 4.0f * a_height * a_u * (1.0f - a_u); };
-		if (s < kFall) {
-			return 1.0f - s / kFall;
-		}
-		if (s < kFall + kFirst) {
-			return arc((s - kFall) / kFirst, kFirstHeight);
-		}
-		if (s < kFall + kFirst + kSecond) {
-			return arc((s - kFall - kFirst) / kSecond, kSecondHeight);
-		}
-		return 0.0f;
+		return Portal::Doors::SwingAmount(a_door, a_t, a_opening);
 	}
 
-	// One step of a swing's progress towards a_wanted, its direction kept in a_opening. Turned
-	// round half way, the progress is taken from where the other direction's curve is as far open:
-	// kept as it was, the door jumped.
-	float SwingStep(float a_t, bool& a_opening, bool a_wanted, float a_delta)
+	// One step of a_door's swing progress towards a_wanted, its direction kept in a_opening. Turned
+	// round half way, the progress is taken from where the other direction's animation is as far
+	// open: kept as it was, the door jumped.
+	float SwingStep(RE::TESObjectREFR* a_door, float a_t, bool& a_opening, bool a_wanted, float a_delta)
 	{
 		if (a_wanted != a_opening && a_t > 0.0f && a_t < 1.0f) {
-			const float amount = SwingEase(a_t, a_opening);
+			const float amount = SwingEase(a_door, a_t, a_opening);
 			float       best = a_t, bestOff = FLT_MAX;
 			for (int i = 0; i <= 200; ++i) {
 				const float t = static_cast<float>(i) / 200.0f;
-				if (const float off = std::abs(SwingEase(t, a_wanted) - amount); off < bestOff) {
+				if (const float off = std::abs(SwingEase(a_door, t, a_wanted) - amount); off < bestOff) {
 					bestOff = off;
 					best = t;
 				}
@@ -680,17 +641,11 @@ namespace
 			a_t = best;
 		}
 		a_opening = a_wanted;
-		const float step = a_delta / kSwingSeconds;
+		const float step = a_delta / Portal::Doors::SwingSeconds(a_door, a_wanted);
 		return std::clamp(a_t + (a_wanted ? step : -step), 0.0f, 1.0f);
 	}
 
 	bool openDoorOpening = false;  // the direction of openDoorSwing (SwingStep)
-
-	// One step of the portal's door's swing towards doorWanted.
-	float SwingTowardsWanted(float a_swing, float a_delta)
-	{
-		return SwingStep(a_swing, openDoorOpening, doorWanted, a_delta);
-	}
 
 	// A door outdoors, also one whose exterior cell isn't loaded (a persistent door, a game loaded
 	// indoors).
@@ -806,7 +761,8 @@ namespace
 		const bool gate = here && !here->IsInteriorCell() && portal && portal->cell && !portal->cell->IsInteriorCell();
 		auto*      linked = portal ? Lookup(portal->linkedDoor) : nullptr;
 		const bool farSwings = linked && SwingingDoorOf(a_door, linked) == linked->GetFormID();
-		const auto swung = farSwings ? linked->GetFormID() : a_door->GetFormID();
+		auto*      swungDoor = farSwings ? linked : a_door;
+		const auto swung = swungDoor->GetFormID();
 		if (openDoor.door != a_door->GetFormID() || openDoorSwung != swung) {
 			Portal::Doors::Unswing(openDoor.door);
 			Portal::Doors::Unswing(openDoorSwung);
@@ -819,7 +775,9 @@ namespace
 		// Only from shut: the picture that makes a door open from afar is taken while it swings open
 		// the first time, and snapped open then it jumped.
 		const bool wasShut = openDoorSwing <= 0.0f;
-		openDoorSwing = SwingTowardsWanted(openDoorSwing, a_delta);
+		// Timed by the door that swings; the space behind, holding it, may still be loading.
+		auto* timed = swungDoor->Get3D() ? swungDoor : a_door;
+		openDoorSwing = SwingStep(timed, openDoorSwing, openDoorOpening, doorWanted, a_delta);
 		if (doorWanted && wasShut && linked && OpenFromAfar(a_door, linked)) {
 			openDoorSwing = 1.0f;  // stands open: never seen opening
 		}
@@ -854,10 +812,10 @@ namespace
 		if (farSwings) {
 			// Into the space behind, in its own coordinates (the portal pass draws it where it is).
 			if (const auto mapping = Portal::Doors::TryCompute(*portal)) {
-				Portal::Doors::Swing(linked, mapping->toLinked.rotate * mapping->inward, SwingEase(openDoorSwing, openDoorOpening), settings);
+				Portal::Doors::Swing(linked, mapping->toLinked.rotate * mapping->inward, SwingEase(timed, openDoorSwing, openDoorOpening), settings);
 			}
 		} else if (!hide) {
-			Portal::Doors::Swing(a_door, RE::NiPoint3{ -a_inward.x, -a_inward.y, 0.0f }, SwingEase(openDoorSwing, openDoorOpening), settings);
+			Portal::Doors::Swing(a_door, RE::NiPoint3{ -a_inward.x, -a_inward.y, 0.0f }, SwingEase(timed, openDoorSwing, openDoorOpening), settings);
 		} else {
 			Portal::Doors::Unswing(a_door->GetFormID());
 		}
@@ -1158,7 +1116,7 @@ namespace
 				++it;
 				continue;
 			}
-			standIn.swing = SwingStep(standIn.swing, standIn.opening, Wanted(door, standIn.linked, standIn.outdoors), a_delta);
+			standIn.swing = SwingStep(door, standIn.swing, standIn.opening, Wanted(door, standIn.linked, standIn.outdoors), a_delta);
 			if (StandsOpen(door, standIn.linked, standIn.outdoors)) {
 				standIn.swing = 1.0f;
 			}
@@ -1179,7 +1137,7 @@ namespace
 			} else {
 				auto*      linked = Lookup(standIn.linked);
 				const auto settings = linked ? Portal::Doors::CorrectionDoor(door, linked)->GetFormID() : id;
-				Portal::Doors::Swing(door, Portal::Doors::ToShown(door).rotate * standIn.inwardInCell * -1.0f, SwingEase(standIn.swing, standIn.opening), settings);
+				Portal::Doors::Swing(door, Portal::Doors::ToShown(door).rotate * standIn.inwardInCell * -1.0f, SwingEase(door, standIn.swing, standIn.opening), settings);
 			}
 			++it;
 		}
@@ -3765,7 +3723,7 @@ namespace Portal::Manager
 			}
 			letGo.erase(swung->GetFormID());
 			const bool wasShut = a_room.swing <= 0.0f;  // see OpenDoor
-			a_room.swing = SwingStep(a_room.swing, a_room.opening, a_wanted, a_delta);
+			a_room.swing = SwingStep(swung, a_room.swing, a_room.opening, a_wanted, a_delta);
 			if (a_wanted && wasShut && OpenFromAfar(source, linked)) {
 				a_room.swing = 1.0f;  // stands open: never seen opening
 			}
@@ -3777,7 +3735,7 @@ namespace Portal::Manager
 			auto*      shown = shut ? source : swung;
 			Doors::Open(source, a_room.sourceDoor, shown != source, false, shut);
 			Doors::Open(linked, a_room.linkedDoor, shown != linked, false, shut);
-			Doors::Swing(swung, swung == room ? intoRoom : intoRoom * -1.0f, SwingEase(a_room.swing, a_room.opening), settings);
+			Doors::Swing(swung, swung == room ? intoRoom : intoRoom * -1.0f, SwingEase(swung, a_room.swing, a_room.opening), settings);
 			if (!std::exchange(a_room.extraScanned, true)) {
 				HideDoorsInDoorway(a_room, source, mapping.sourceCenter);
 			}

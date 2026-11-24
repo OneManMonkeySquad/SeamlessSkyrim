@@ -120,8 +120,13 @@ namespace Portal::Doors
 	void Open(RE::TESObjectREFR* a_door, OpenState& a_state, bool a_hide, bool a_passable = false, bool a_solid = false);
 	void Close(OpenState& a_state);
 
+	// Main thread: how far open (Swing's a_amount) the door's own animation has it at swing progress
+	// a_t (0 shut .. 1 open; shutting runs it down), opening or shutting, and how long each takes: a door the portal swings moves
+	// as the game moves it. The game plays its "Open" and "Close", not one backwards.
+	[[nodiscard]] float SwingAmount(RE::TESObjectREFR* a_door, float a_t, bool a_opening);
+	[[nodiscard]] float SwingSeconds(RE::TESObjectREFR* a_door, bool a_opening);
 	// Main thread: the door's leaves swung open around their hinges, a_amount from 0 (closed) to 1
-	// (open; a little more while it overshoots), towards a_room (a horizontal world direction: the side it opens into); its frame
+	// (open), towards a_room (a horizontal world direction: the side it opens into); its frame
 	// stays. Placement and everything derived from it keep using the closed door. a_settings: the
 	// pair's correction door, whose angle it takes.
 	void Swing(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_room, float a_amount, RE::FormID a_settings);

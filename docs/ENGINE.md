@@ -105,6 +105,12 @@ Found porting the plugin; each was checked in the code of both.
   through the gateway once the gate is gone: Tamriel holds simple copies of Whiterun's and
   Riften's houses behind their gates, and Whiterun's worldspace its land beyond. Solitude's
   gatehouse is walled up behind its gate on both sides (`SMainGate.nif` in Tamriel).
+- **A door's swing is its NIF's `Open` and `Close` sequences** (on the 3D root's
+  `NiControllerManager`). An interpolator can be sampled at any key time with
+  `NiInterpolator::Update1` into an `NiQuatTransform` (translate, quaternion, scale; CommonLib
+  only declares it). Whiterun's house doors: 0.6 s each; `Open` stands still for the first
+  0.15 s, then eases in and out; `Close` eases in and out. Portal doors replay them
+  (`Doors::SwingAmount`), turned by the pair's own angle and towards the side they open into.
 - **A door's open and close sounds** are its base form's `TESObjectDOOR::openSound` and
   `closeSound`; `BSAudioManager::GetSoundHandle`, then `SetPosition`/`SetObjectToFollow`, `Play`.
 - **A door's model isn't always upright.** Castle Dour's doors (`SDoorJail02Load.nif`, 00025199
