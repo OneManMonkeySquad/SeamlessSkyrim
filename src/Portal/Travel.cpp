@@ -813,6 +813,12 @@ namespace Portal::Travel
 		return arrivalFrame.exchange(false);
 	}
 
+	RE::FormID ArrivalDoor()
+	{
+		std::scoped_lock guard(lock);
+		return arrival ? arrival->door : 0;
+	}
+
 	json SetOptions(const json& a_options)
 	{
 		skipLoadWait = a_options.value("skipLoadWait", skipLoadWait);

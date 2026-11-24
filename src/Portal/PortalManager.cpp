@@ -921,6 +921,10 @@ namespace
 		float                    swing = 0.0f;        // 0..1
 		bool                     opening = false;     // the swing's direction (SwingStep)
 		float                    fade = 1.0f;         // the picture's, once handed over
+		// The door the player just came out of: its picture is of the space they were standing in a
+		// moment ago, and that space fading in over it read as a delay, not as a door opening.
+		// Handed over, the picture goes at once.
+		bool                     cameThrough = false;
 		// Through the door, away from the player, in the door's own cell's coordinates: that cell's 3D
 		// moves when it is merged into another space or handed back. Kept as drawn, the street's doors
 		// seen from inside Belethor's swung into their buildings once the player walked out (the
@@ -1078,6 +1082,7 @@ namespace
 			standIn.linked = candidate.linked;
 			standIn.outdoors = candidate.outdoors;
 			standIn.gate = candidate.outdoors && Outdoors(door);
+			standIn.cameThrough = Portal::Travel::ArrivalDoor() == candidate.door;
 			standIn.swinging = StandInSwinging(door, standIn);
 			const auto taken = TakeOver(standIn.swinging);
 			standIn.swing = taken.amount;
@@ -1125,6 +1130,7 @@ namespace
 				// stand-in left it (the merged room's own door, standing in the same place, among them).
 				LetGoOf(standIn.swinging, standIn.swing, standIn.opening);
 				standIn.handedOver = true;
+				standIn.fade = standIn.cameThrough ? 0.0f : 1.0f;
 				++it;
 				continue;
 			}
@@ -1172,6 +1178,7 @@ namespace
 		for (auto& [id, standIn] : standIns) {
 			if (!standIn.handedOver && standIn.swinging == a_door) {
 				standIn.handedOver = true;
+				standIn.fade = standIn.cameThrough ? 0.0f : 1.0f;
 				letGo.erase(a_door);
 				return { standIn.swing, standIn.opening };
 			}
@@ -4574,7 +4581,7 @@ namespace Portal::Manager
 				 json out = json::array();
 				 for (const auto& [id, standIn] : standIns) {
 					 out.push_back({ { "door", std::format("{:08X}", id) }, { "swinging", std::format("{:08X}", standIn.swinging) }, { "swing", standIn.swing },
-						 { "fade", standIn.fade }, { "handedOver", standIn.handedOver }, { "outdoors", standIn.outdoors } });
+						 { "fade", standIn.fade }, { "handedOver", standIn.handedOver }, { "outdoors", standIn.outdoors }, { "cameThrough", standIn.cameThrough } });
 				 }
 				 return out;
 			 }() },

@@ -47,6 +47,10 @@ namespace Portal::Travel
 	// The next frame drawn is the first in a new space (not consumed).
 	[[nodiscard]] bool ArrivalFramePending();
 
+	// The door the player last came out of through a seamless crossing, in the space they are in;
+	// 0 once they have walked away from it.
+	[[nodiscard]] RE::FormID ArrivalDoor();
+
 	[[nodiscard]] json Status();
 
 	// Diagnostics: sample the main thread's stacks for 1.5 s from the next crossing on (Sampler).
