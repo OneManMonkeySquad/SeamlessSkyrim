@@ -668,13 +668,6 @@ namespace Portal
 		StepWorld(nullptr);
 		auto* root = scene.get();
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
-		for (auto& [object, flags] : stilledClutter) {
-			if (auto* collision = object->collisionObject ? netimmerse_cast<RE::bhkNiCollisionObject*>(object->collisionObject.get()) : nullptr) {
-				*reinterpret_cast<std::uint32_t*>(&collision->flags) = flags;
-				Pristine::FlagsBack(collision);
-			}
-		}
-		stilledClutter.clear();
 		UnmergeCollision();
 		if (std::exchange(merged, false)) {
 			const Perf::Scope scope("release: unmerge cells");
@@ -692,6 +685,18 @@ namespace Portal
 				}
 			}
 		}
+		// Only once the cells are back in place. Driven by their bodies again before the move back,
+		// the update above read each loose item's body where the merge had put it, thousands of units
+		// below the room's floor, and the engine took it for fallen out of the world (ID 19826 ->
+		// ID 19799): an item dropped in the room was deleted, its form ID cleared, on walking out
+		// and back in.
+		for (auto& [object, flags] : stilledClutter) {
+			if (auto* collision = object->collisionObject ? netimmerse_cast<RE::bhkNiCollisionObject*>(object->collisionObject.get()) : nullptr) {
+				*reinterpret_cast<std::uint32_t*>(&collision->flags) = flags;
+				Pristine::FlagsBack(collision);
+			}
+		}
+		stilledClutter.clear();
 		RestoreBounds();
 		// Our lights are copies of the cells' light refs; entering a cell normally re-creates them
 		// in the world scene, so they must not stay registered here too.

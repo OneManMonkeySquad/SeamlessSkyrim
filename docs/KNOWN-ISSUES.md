@@ -10,6 +10,10 @@
 - Settings changed in the in-game menu are written into the shipped `SeamlessSkyrim.ini`
   (`Menu.cpp`, `Save`): an update replaces them with the new defaults. The door tunings had the
   same problem and now have their own file (`SeamlessSkyrim_Doors_User.ini`).
+- Markarth: the market attack at the start of The Forsworn Conspiracy played again, not every
+  time (user). Not reproduced: no save from before the quest. Possibly the same lost-item bug fixed with
+  `belethors-dropped-item-out-and-in`, or the purge of the city's cells after a gate trip
+  (`Travel.cpp`, `PurgeBufferedCells`).
 - Physics objects and arrows are not carried through a doorway.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.

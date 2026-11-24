@@ -84,6 +84,56 @@
       }
     ]
   },
+  "belethors-dropped-item-out-and-in": {
+    "note": "Belethor's: an iron dagger placed at the player's feet, walk out through the portal and back in, stand where it was dropped. It must still be there with its FF form ID (refs_near). Was: its form ID cleared (00000000) on walking back in, lost on saving: releasing the merged room gave the loose items back their physics before moving the room back from the street, and the engine took them for fallen out of the world (user/tester, 2026-11-24).",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "console": "player.placeatme 1397E 1"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "walk": {
+          "pos": [
+            0,
+            -900
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            24080,
+            -8350
+          ],
+          "stop_distance": 20,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "move": [
+          -105,
+          -420,
+          68
+        ]
+      },
+      {
+        "wait": 1
+      }
+    ]
+  },
   "belethors-out-in-bannered-mare": {
     "note": "Loaded in Belethor's, walked out and back in, then looking out through its door at the Bannered Mare's door (0001A6F7, stands open) across the market. Was: that door seen differently in the first frames after walking in (shut, open on its backing panel, open dark).",
     "steps": [

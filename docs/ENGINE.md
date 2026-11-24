@@ -131,6 +131,11 @@ Found porting the plugin; each was checked in the code of both.
   broadphase update (IDs 61802, 64613) is most of moving Riften's street out of the jail on
   walking out (70-270 ms). `NiUpdateData::kDisableCollision` doesn't skip it; ID 78910 returns early
   when a thread-local state (TLS + 0x9E8) is 1, set by whom isn't known.
+- **An update with a loose item's collision active reads its place back from its body** (ID 70539
+  → 78177 → 78382 → ID 19826). If the body is outside the item's cell (in an interior, below its
+  floor), ID 19826 treats the item as fallen out and moves it to another cell (ID 19799). A
+  created item (FF id) has its form ID cleared there (ID 36459) and isn't saved. Put a moved cell
+  back with its loose items stilled, and give them their flags back afterwards (`Release`).
 - **High process:** `Actor::MoveToHigh()` on a remote cell's actors is accepted, and they aren't
   demoted while the cell stays attached.
 - **An NPC's graph `Speed` is pulled, not set:** each graph update reads it from the actor's
