@@ -1,6 +1,7 @@
 #include "Bridge/FrameHooks.h"
 
 #include "Bridge/AgentMode.h"
+#include "Bridge/Perf.h"
 
 #include "Portal/CameraLimit.h"
 #include "Portal/PortalManager.h"
@@ -99,8 +100,11 @@ namespace
 			}
 			func(a_this, a_delta);
 			SteerPlayer(a_this, a_delta);
-			Portal::Manager::Update(a_delta);
-			Portal::Travel::Update();
+			{
+				const Perf::Scope scope("manager update");
+				Portal::Manager::Update(a_delta);
+				Portal::Travel::Update();
+			}
 			const auto approach = Portal::Manager::CameraLimit();
 			const auto leave = Portal::Travel::CameraLimit();
 			Portal::CameraLimit::Set(approach && leave ? std::optional(std::min(*approach, *leave)) : approach ? approach : leave);
@@ -448,6 +452,9 @@ namespace
 				request->done->set_exception(std::current_exception());
 			}
 		}
+		Perf::FrameEnd();
+		// Time spent waiting here is the GPU (or frame generation) holding the main thread back.
+		const Perf::Scope scope("present");
 		return originalPresent(a_swapChain, a_syncInterval, a_flags);
 	}
 

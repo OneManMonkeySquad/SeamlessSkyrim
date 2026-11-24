@@ -3,6 +3,7 @@
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
 #include "Bridge/GpuTrack.h"
+#include "Bridge/Perf.h"
 #include "Bridge/ReverseEngineering.h"
 #include "Bridge/Sampler.h"
 #include "Portal/DoorPair.h"
@@ -1284,6 +1285,7 @@ namespace Bridge
 				 return json{ { "model", model ? model->GetModel() : "" }, { "refFlags", ref->GetFormFlags() }, { "nodes", nodes }, { "chain", chain } };
 			 } } },
 			{ "frame_stats", { [](const json&) { return FrameHooks::FrameStats(); } } },
+			{ "perf", { Perf::Command, false } },
 			// {"start": true} clears and records; {"start": false} stops; no argument just reads.
 			{ "brightness", { [](const json& a) {
 				 if (a.contains("start")) {

@@ -40,7 +40,16 @@ namespace
 		RE::NiPoint3 light;   // a light carried about, or a new light at a freed one's address
 		RE::NiPoint3 door;    // ThroughClosedDoor's door (another door of the same space)
 	};
-	std::unordered_map<Key, Entry, KeyHash> cache;
+	struct LightEntry
+	{
+		const RE::NiLight* light;
+		Entry              entry;
+	};
+	// By shape (Key's light null), its lights side by side: the renderer asks for each of a shape's
+	// shadow-casting lights in a row, every draw. Keyed by pair, each question was a lookup in a
+	// table of thousands of nodes, a cache miss each (~0.25 ms a frame, three rooms merged in Whiterun's market).
+	std::unordered_map<Key, std::vector<LightEntry>, KeyHash> cache;
+	std::size_t                                             cachedPairs = 0;
 	// Spaces come and go; their pairs are dropped only when there are this many.
 	constexpr std::size_t kMaxCached = 200000;
 
@@ -202,8 +211,9 @@ namespace Portal::LightOcclusion
 			++frame;
 			unmeasuredThisFrame = 0;
 			msThisFrame = 0.0;
-			if (cache.size() > kMaxCached) {
+			if (cachedPairs > kMaxCached) {
 				cache.clear();
+				cachedPairs = 0;
 				outsideShell.clear();
 			}
 		}
@@ -217,29 +227,37 @@ namespace Portal::LightOcclusion
 	float Visibility(RE::BSGeometry* a_geometry, RE::NiLight* a_light)
 	{
 		// A shape of a room merged beside the shown one is lit by that room's lights alone. Asked
-		// for each of a shape's shadow-casting lights in a row: the room looked up once per shape
-		// (the lookup takes a lock and searches each room's shapes).
-		static thread_local const RE::BSGeometry* lastShape = nullptr;
-		static thread_local std::uint32_t         lastFrame = 0;
-		static thread_local int                   lastSlot = -1;
+		// for each of a shape's shadow-casting lights in a row: the room, the shape's place and its
+		// lights looked up once per shape. The lights' list stays valid until the cache is cleared,
+		// at the start of a frame (SetWorld).
+		static thread_local const RE::BSGeometry*   lastShape = nullptr;
+		static thread_local std::uint32_t           lastFrame = 0;
+		static thread_local Space*                  lastSpace = nullptr;
+		static thread_local RE::NiPoint3            lastCenter;
+		static thread_local std::vector<LightEntry>* lastLights = nullptr;
 		if (a_geometry != lastShape || frame != lastFrame) {
 			lastShape = a_geometry;
 			lastFrame = frame;
-			lastSlot = a_geometry ? Portal::Manager::MergedRoomOf(a_geometry) : -1;
+			const int slot = a_geometry ? Portal::Manager::MergedRoomOf(a_geometry) : -1;
+			lastSpace = &spaces[slot > 0 && slot < static_cast<int>(spaces.size()) ? slot : 0];
+			lastLights = nullptr;
+			if (lastSpace->world && a_geometry) {
+				lastCenter = lastSpace->toPhysics * a_geometry->worldBound.center;
+				lastLights = &cache[Key{ lastSpace->world, a_geometry, nullptr }];
+			}
 		}
-		const int slot = lastSlot;
-		auto&     space = spaces[slot > 0 && slot < static_cast<int>(spaces.size()) ? slot : 0];
-		if (!space.world || !a_geometry || !a_light) {
+		auto& space = *lastSpace;
+		if (!lastLights || !a_light) {
 			return 1.0f;
 		}
-		const Key  key{ space.world, a_geometry, a_light };
-		const auto center = space.toPhysics * a_geometry->worldBound.center;
-		const auto light = space.toPhysics * a_light->world.translate;
-		const auto door = space.door ? space.door->center : RE::NiPoint3{};
+		const auto&     center = lastCenter;
+		const auto      light = space.toPhysics * a_light->world.translate;
+		const auto      door = space.door ? space.door->center : RE::NiPoint3{};
 		constexpr float kMoved = 25.0f * 25.0f;
-		if (const auto it = cache.find(key); it != cache.end() && it->second.center.GetSquaredDistance(center) < kMoved &&
-											 it->second.light.GetSquaredDistance(light) < kMoved && it->second.door.GetSquaredDistance(door) < kMoved) {
-			return it->second.visibility;
+		auto            cached = std::ranges::find(*lastLights, a_light, &LightEntry::light);
+		if (cached != lastLights->end() && cached->entry.center.GetSquaredDistance(center) < kMoved && cached->entry.light.GetSquaredDistance(light) < kMoved &&
+			cached->entry.door.GetSquaredDistance(door) < kMoved) {
+			return cached->entry.visibility;
 		}
 		RE::BSReadLockGuard lock(space.world->worldLock);
 		if (LightOutside(space, a_light)) {
@@ -252,7 +270,13 @@ namespace Portal::LightOcclusion
 		const auto  started = std::chrono::steady_clock::now();
 		const float visibility = Measure(space, a_geometry, a_light);
 		msThisFrame += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
-		cache[key] = { visibility, center, light, door };
+		const Entry entry{ visibility, center, light, door };
+		if (cached != lastLights->end()) {
+			cached->entry = entry;
+		} else {
+			lastLights->push_back({ a_light, entry });
+			++cachedPairs;
+		}
 		return visibility;
 	}
 
@@ -262,7 +286,7 @@ namespace Portal::LightOcclusion
 		for (const auto& space : spaces) {
 			bySlot.push_back({ { "world", space.world != nullptr } });
 		}
-		return { { "pairs", cache.size() }, { "raysTotal", raysTotal }, { "unmeasuredThisFrame", unmeasuredThisFrame }, { "world", spaces[0].world != nullptr },
+		return { { "pairs", cachedPairs }, { "raysTotal", raysTotal }, { "unmeasuredThisFrame", unmeasuredThisFrame }, { "world", spaces[0].world != nullptr },
 			{ "slots", bySlot } };
 	}
 }

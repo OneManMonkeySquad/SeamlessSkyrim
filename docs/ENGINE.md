@@ -107,6 +107,10 @@ Found porting the plugin; each was checked in the code of both.
 
 ## Simulation
 
+- **An actor's 3D is hung back into its cell every frame:** the 3D position update (ID 37995, for
+  every actor in high process, on the job threads; +0x279) calls ID 19165 (cell, actor, true, ..),
+  which, when the 3D's parent isn't the cell's node for actors (ID 19339), queues the move there
+  (ID 19415, a per-thread queue run by ID 19416 → ID 19414 `AttachChild`).
 - **High process:** `Actor::MoveToHigh()` on a remote cell's actors is accepted, and they aren't
   demoted while the cell stays attached.
 - **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
@@ -168,6 +172,15 @@ Found porting the plugin; each was checked in the code of both.
     resolution. Binding a target with "update viewport" (ID 77453) applies the render scale
     (`BSGraphics::State` ratios), as for the main view, which is drawn into the target's top-left
     part. The main view submits with 0x41.
+- **Scissor:** `RendererShadowState::rasterStateScissorMode` (+0xA4) = 1 with
+  `DIRTY_RASTER_CULL_MODE` (0x20) makes the state apply pick rasterizer states with the scissor on;
+  the rectangle is whatever `RSSetScissorRects` last set on the immediate context (nothing in
+  `SubmitAccumulator` sets one).
+- **A culling camera narrows what is drawn, not where:** a shape the doorway-narrowed cull keeps is
+  shaded across the whole target. At Solitude's gate the portal pass shaded 24 times the doorway's
+  pixels (2.4 of its 3.5 ms GPU) until scissored to the doorway.
+- **Draw submission costs ~1.4 µs per render pass** on the main thread (engine state, Community
+  Shaders' hooks, D3D11), on the one immediate context: it can't move to another thread.
 - **The sun's shadow maps** (`ShadowSceneNode::sunShadowDirLight`, a `BSShadowDirectionalLight`;
   every scene made with ID 106320 has one, sharing the scene's sun `NiDirectionalLight`):
   1. `UpdateCamera(camera)` (vtable +0x80) fits the cascades to the camera (ID 107132 passes the
@@ -183,6 +196,11 @@ Found porting the plugin; each was checked in the code of both.
      `kSHADOWMAPS_ESRAM`, and writes the cascades' `lightTransform`s.
   Community Shaders builds its soft copy (Volumetric Shadows' VSM) from the shadow map bound at
   PS t4 when the main view's shadow mask is drawn, and reads `lightTransform` for t98.
+  - So each cascade is drawn twice: 2 cascades at 2048 were ~27M pixels shaded, 0.8-0.9 ms GPU, for
+    the portal pass. Its maps drawn at half size came out wrong (the ground beyond Solitude's gate
+    all in shadow): the cascades are drawn for the engine's resolution. Fitted to the doorway's
+    narrowed camera instead of the portal camera, the shadows cost 0.3 ms less main thread but
+    0.25 ms more GPU (more pixels per caster).
 - **Vanilla specular has no N·L:** `pow(N·H, shininess)` times the light, so a surface lit at a
   grazing angle (a low sun on tree needles) glints at full strength. In the world the shadow maps
   hide most of it; drawn without them, it shows.

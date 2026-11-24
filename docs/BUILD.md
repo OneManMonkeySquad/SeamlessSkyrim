@@ -218,6 +218,11 @@ Diagnostics:
     graph's always-drawn and pending lists.
 
 Frame rate:
+- `perf {"on": true, "reset": true}`, wait, `perf {"on": false}`: per frame over the last 300,
+  main-thread ms of the portal's and the manager's parts (`cpu`), GPU ms and thousands of pixels
+  shaded of the world draw, the portal pass, its shadows and its submit (`gpu`), and counts. A
+  long `present` means the GPU (or frame generation) holds the main thread back. Off by default:
+  its queries cost a little every frame.
 - `merged_cull` returns frame times (`frames`) and the main thread's time in the player view
   (`viewMs`, culling and draw submission). `{"mode": 3}` hides the merged room, which shows what it
   costs; `{"mode": 2}` puts it back.

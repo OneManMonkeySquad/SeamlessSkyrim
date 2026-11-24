@@ -3,6 +3,7 @@
 
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
+#include "Bridge/Perf.h"
 #include "Hooks.h"
 
 #include "Portal/CameraLimit.h"
@@ -1720,7 +1721,10 @@ namespace
 			// NPCs of a remote interior keep NiAVObject::kNotVisible on their 3D root, and the cull
 			// skips them: in the portal the room was empty. Outdoors the flag was clear.
 			const auto actors = capturing ? HideActorsForCapture(Portal::Manager::RemoteCells()) : ShowActorsForCull(Portal::Manager::RemoteCells());
-			RE::BSCullingProcess::Process(context);
+			{
+				const Perf::Scope scope("portal cull");
+				RE::BSCullingProcess::Process(context);
+			}
 			if (capturing) {
 				ShowActorsAgain(actors);
 			} else {
@@ -1734,7 +1738,10 @@ namespace
 		const bool useBackend = lightDebug.communityShaders;
 		const bool shadowed = useBackend && lightDebug.sunShadows && !a_portal.cell->IsInteriorCell() && ::Render::Backend::CanShadowPortal();
 		if (shadowed) {
+			const Perf::Scope scope("portal shadows");
+			Perf::GpuBegin("gpu portal shadows");
 			RenderPortalShadows(root, portalCamera.get());
+			Perf::GpuEnd("gpu portal shadows");
 		}
 		if (useBackend) {
 			::Render::Backend::SetPortalWorldspace(a_portal.cell->IsInteriorCell() ? nullptr : a_portal.cell->GetRuntimeData().worldSpace);
@@ -1815,9 +1822,29 @@ namespace
 		portalFrame += 1;
 		freedPassesThisSubmit = 0;
 		drawnThisSubmit.clear();
+		// Only the doorway's part of the picture is ever shown, yet each shape the doorway's cull keeps
+		// was shaded across the whole picture: at Solitude's gate 24 times the doorway's pixels. The
+		// doorway's rectangle (with its margin) bounds the quad that shows the picture, at render scale
+		// and jitter alike. The main view's rain drawn into the picture below is cut the same way. A
+		// capture's picture is all of it.
+		const bool scissored = !capturing && !a_fullTarget;
+		if (scissored) {
+			const float     width = DrawingTargets().pictureWidth, height = DrawingTargets().pictureHeight;
+			const D3D11_RECT rect{ static_cast<LONG>(std::floor(a_doorway[0] * width)), static_cast<LONG>(std::floor((1.0f - a_doorway[3]) * height)),
+				static_cast<LONG>(std::ceil(a_doorway[1] * width)), static_cast<LONG>(std::ceil((1.0f - a_doorway[2]) * height)) };
+			d3dContext->RSSetScissorRects(1, &rect);
+			shadowState.rasterStateScissorMode = 1;
+			shadowState.stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RASTER_CULL_MODE);
+		}
 		inPortalSubmit = true;
-		RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), atRenderScale ? LiveRenderFlags() : kRenderFlags);
+		{
+			const Perf::Scope scope("portal submit");
+			Perf::GpuBegin("gpu portal submit");
+			RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), atRenderScale ? LiveRenderFlags() : kRenderFlags);
+			Perf::GpuEnd("gpu portal submit");
+		}
 		inPortalSubmit = false;
+		Perf::AddCount("portal passes", static_cast<double>(drawnThisSubmit.size()));
 		// Not for the main view's rain drawn into the picture next (its own pass, see
 		// DrawMainPrecipitation); EndPortalPass puts the world's shadows back.
 		if (shadowed) {
@@ -1828,6 +1855,10 @@ namespace
 		if (useBackend && lightDebug.precipitation && atRenderScale && !a_portal.cell->IsInteriorCell() &&
 			!RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell()) {
 			DrawMainPrecipitation(root);
+		}
+		if (scissored) {
+			shadowState.rasterStateScissorMode = 0;
+			shadowState.stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RASTER_CULL_MODE);
 		}
 		// A capture isn't for the doorway: the last picture stays on screen this frame. Otherwise the
 		// new one goes on screen at once; a picture held back for drawing fewer passes than usual
@@ -2471,7 +2502,10 @@ namespace
 			// Here, not in the manager's update: the camera has moved since, and this is the last
 			// moment before the engine culls the world.
 			Portal::MergedCull::BeforeView();
-			func(a_main, a_arg2, a_arg3);
+			{
+				const Perf::Scope scope("player view");
+				func(a_main, a_arg2, a_arg3);
+			}
 			Portal::MergedCull::AfterView();
 			HideActorsAgain(hiddenActors);
 			if (body) {
@@ -2630,7 +2664,14 @@ namespace
 				const auto& state = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
 				mainView = { state.posAdjust, state.previousPosAdjust, state.cameraData };
 			}
-			func(a_menuOpen);
+			{
+				const Perf::Scope scope("world draw");
+				Perf::GpuBegin("gpu world draw");
+				func(a_menuOpen);
+				Perf::GpuEnd("gpu world draw");
+			}
+			const Perf::Scope portalScope("portal (all)");
+			Perf::GpuBegin("gpu portal (all)");
 
 			auto portal = PortalToDraw();
 			if (portal && lightDebug.skipPortalPass) {
@@ -2719,6 +2760,7 @@ namespace
 				std::scoped_lock lock(stateLock);
 				lastFrame = std::move(result);
 			}
+			Perf::GpuEnd("gpu portal (all)");
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};

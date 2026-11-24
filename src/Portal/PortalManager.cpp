@@ -204,7 +204,7 @@ namespace
 		bool                    marked = false;  // listed at least once in this merge (MarkMergedShapes)
 		float                   markTimer = 0.0f;
 		std::optional<MarkPass> markPass;
-		Portal::ShapeSet        shapes;  // under mergedShapesLock
+		Portal::ShapeSet        shapes;  // main thread only (see roomsBySlot)
 		// Skinned shapes hidden for their stray bones (see HasStrayBones).
 		std::vector<RE::NiPointer<RE::BSGeometry>> strays;
 		// Shader properties whose "casts shadows" was taken off while merged (FinishMarkPass).
@@ -2107,6 +2107,27 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// The actor's 3D position update (ID 37995, every frame for each actor in high process, on the
+	// job threads) hangs its 3D into its cell's node for actors whenever it hangs elsewhere (ID 19165,
+	// which queues the attach). A merged room's people hang directly under their cell's 3D, where the
+	// scene's cull reaches them (UpdateMerged): the engine moved them back every frame, and they were
+	// hung again every frame. Only UpdateMerged hangs an actor there, so that alone tells them apart,
+	// without asking the manager from a job thread. One walked out into the street has a new cell
+	// and is hung into it as usual.
+	struct ActorHangHook
+	{
+		static void Thunk(RE::TESObjectCELL* a_cell, RE::TESObjectREFR* a_ref, bool a_arg3, bool a_arg4)
+		{
+			auto* loaded = a_cell->GetRuntimeData().loadedData;
+			auto* object = a_ref->Get3D();
+			if (loaded && loaded->cell3D && object && object->parent == loaded->cell3D.get()) {
+				return;
+			}
+			func(a_cell, a_ref, a_arg3, a_arg4);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	// Per frame: the use waiting for the switch into its room.
 	void FinishPendingUse()
 	{
@@ -2352,6 +2373,10 @@ namespace Portal::Manager
 			REL::Relocation<std::uintptr_t> useSite{ REL::RelocationID(39471, 40548), REL::Relocate(0x135, 0x10D) };
 			if (Hooks::CallsTo(useSite.address(), REL::RelocationID(19369, 19796), "portal: use of the picked reference")) {
 				UseHook::func = SKSE::GetTrampoline().write_call<5>(useSite.address(), UseHook::Thunk);
+			}
+			REL::Relocation<std::uintptr_t> hangSite{ REL::RelocationID(36970, 37995), REL::Relocate(0x298, 0x279) };
+			if (Hooks::CallsTo(hangSite.address(), REL::RelocationID(18683, 19165), "portal: actor hung into its cell")) {
+				ActorHangHook::func = SKSE::GetTrampoline().write_call<5>(hangSite.address(), ActorHangHook::Thunk);
 			}
 		}
 		RE::PlayerCharacter::GetSingleton()->AsBGSActorCellEventSource()->AddEventSink(&cellSink);
@@ -3407,17 +3432,19 @@ namespace Portal::Manager
 			}
 		}
 
-		// Rebuilt on the main thread, read by the renderer (same thread in Skyrim, but a lock
-		// costs nothing next to a draw call).
-		std::mutex                            mergedShapesLock;
-		std::vector<const RE::TESObjectCELL*> shownCells;  // under mergedShapesLock
+		// The shown cells are read by the actor cull (ID 40335, ActorCullHook), which also runs off
+		// the main thread.
+		std::mutex                            shownCellsLock;
+		std::vector<const RE::TESObjectCELL*> shownCells;  // under shownCellsLock
 		// The merged rooms by slot, as the renderer asks for them (MergedRoomOf, MergedRoomScene):
 		// set again (PublishRooms) whenever a room is merged, handed from one role to the other, or let
-		// go. Under mergedShapesLock, as is each room's shapes.
+		// go. These, each room's shapes and playerShapes are written in the manager's update and read
+		// by the renderer, both on the main thread, so without a lock: MergedRoomOf is asked several
+		// times for every draw.
 		std::array<const MergedRoom*, ::Render::Backend::kMaxMergedRooms>   roomsBySlot{};
 		std::array<RE::ShadowSceneNode*, ::Render::Backend::kMaxMergedRooms> scenesBySlot{};
-		// The street is merged into an interior (room 0), under mergedShapesLock: the water drawn is
-		// the street's (MergedRoomOf).
+		// The street is merged into an interior (room 0): the water drawn is the street's
+		// (MergedRoomOf).
 		bool streetMerged = false;
 
 		// The kept space a room merged beside the shown one lives in.
@@ -3429,7 +3456,6 @@ namespace Portal::Manager
 
 		void PublishRooms()
 		{
-			std::scoped_lock lock(mergedShapesLock);
 			roomsBySlot.fill(nullptr);
 			scenesBySlot.fill(nullptr);
 			streetMerged = MergedOutdoors();
@@ -3447,7 +3473,7 @@ namespace Portal::Manager
 
 		void SetShownCells(bool a_shown)
 		{
-			std::scoped_lock lock(mergedShapesLock);
+			std::scoped_lock lock(shownCellsLock);
 			shownCells.clear();
 			if (a_shown) {
 				shownCells.assign(remote.Cells().begin(), remote.Cells().end());
@@ -3460,7 +3486,7 @@ namespace Portal::Manager
 				}
 			}
 		}
-		std::unordered_set<const RE::BSGeometry*> playerShapes;  // under mergedShapesLock
+		std::unordered_set<const RE::BSGeometry*> playerShapes;
 
 		// Skinned shapes whose bones are driven by something that doesn't know about the merge (SMP
 		// hair and cloth physics keep simulating where the cell used to be) are stretched from the
@@ -3586,7 +3612,6 @@ namespace Portal::Manager
 				}
 				a_room.unshadowed.clear();
 			}
-			std::scoped_lock lock(mergedShapesLock);
 			a_room.shapes = std::move(shapes);
 			playerShapes = std::move(player);
 		}
@@ -3607,7 +3632,6 @@ namespace Portal::Manager
 				property->flags.set(RE::BSShaderProperty::EShaderPropertyFlag::kCastShadows);
 			}
 			a_room.unshadowed.clear();
-			std::scoped_lock lock(mergedShapesLock);
 			a_room.shapes.clear();
 		}
 
@@ -3773,6 +3797,9 @@ namespace Portal::Manager
 			// directly under the cell's 3D they are culled and drawn like everything else in the
 			// room; they go back where they were when the merge ends. The engine's "not visible"
 			// flag and drawn bits are overridden as well (see ActorCullHook in PortalRender).
+			// The engine would hang them back into the actors' node every frame (ActorHangHook keeps
+			// it from doing so). Listed once each: listed every time they were hung, the list grew by
+			// the room's people every frame (28000 entries after a minute in Whiterun's market).
 			for (auto* cell : a_space.Cells()) {
 				auto* loaded = cell->GetRuntimeData().loadedData;
 				auto* cellNode = loaded && loaded->cell3D ? loaded->cell3D->AsNode() : nullptr;
@@ -3781,8 +3808,9 @@ namespace Portal::Manager
 					if (auto* object = actor ? actor->Get3D() : nullptr) {
 						Render::ShowActor(actor);
 						if (cellNode && object->parent && object->parent != cellNode && object->parent->parent == cellNode) {
-							RE::NiPointer<RE::NiAVObject> keep(object);
-							a_room.actors.emplace_back(keep, RE::NiPointer<RE::NiNode>(object->parent));
+							if (std::ranges::find(a_room.actors, object, [](const auto& a_entry) { return a_entry.first.get(); }) == a_room.actors.end()) {
+								a_room.actors.emplace_back(RE::NiPointer<RE::NiAVObject>(object), RE::NiPointer<RE::NiNode>(object->parent));
+							}
 							object->parent->DetachChild(object);
 							cellNode->AttachChild(object, true);
 						}
@@ -4176,7 +4204,6 @@ namespace Portal::Manager
 
 	int MergedRoomOf(const RE::BSGeometry* a_shape)
 	{
-		std::scoped_lock lock(mergedShapesLock);
 		for (int slot = 0; slot < static_cast<int>(roomsBySlot.size()); ++slot) {
 			if (roomsBySlot[slot] && roomsBySlot[slot]->shapes.contains(a_shape)) {
 				return slot;
@@ -4203,7 +4230,6 @@ namespace Portal::Manager
 
 	RE::ShadowSceneNode* MergedRoomScene(int a_slot)
 	{
-		std::scoped_lock lock(mergedShapesLock);
 		return a_slot >= 0 && a_slot < static_cast<int>(scenesBySlot.size()) ? scenesBySlot[a_slot] : nullptr;
 	}
 
@@ -4221,7 +4247,7 @@ namespace Portal::Manager
 				// as it was paused (left out of this frame's cull, so whole), not missing.
 				beside.unseen = 0.0f;
 				SetBesidePaused(beside, *space, false);
-				std::scoped_lock lock(mergedShapesLock);
+				std::scoped_lock lock(shownCellsLock);
 				shownCells.insert(shownCells.end(), space->Cells().begin(), space->Cells().end());
 			}
 			if (!beside.paused) {
@@ -4232,13 +4258,12 @@ namespace Portal::Manager
 
 	bool IsPlayerShape(const RE::BSGeometry* a_shape)
 	{
-		std::scoped_lock lock(mergedShapesLock);
 		return playerShapes.contains(a_shape);
 	}
 
 	bool IsShownRemoteCell(const RE::TESObjectCELL* a_cell)
 	{
-		std::scoped_lock lock(mergedShapesLock);
+		std::scoped_lock lock(shownCellsLock);
 		return std::ranges::find(shownCells, a_cell) != shownCells.end();
 	}
 
@@ -4289,13 +4314,10 @@ namespace Portal::Manager
 	json MergedShapesReport(const RE::NiPoint3& a_near, float a_far)
 	{
 		std::vector<const RE::BSGeometry*> shapes;
-		{
-			std::scoped_lock lock(mergedShapesLock);
-			for (const auto* room : roomsBySlot) {
-				if (room) {
-					for (const auto* shape : room->shapes) {
-						shapes.push_back(shape);
-					}
+		for (const auto* room : roomsBySlot) {
+			if (room) {
+				for (const auto* shape : room->shapes) {
+					shapes.push_back(shape);
 				}
 			}
 		}
