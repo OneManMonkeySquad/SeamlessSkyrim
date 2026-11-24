@@ -144,6 +144,29 @@
       }
     ]
   },
+  "drunken-huntsman-side-door-from-inside": {
+    "note": "Drunken Huntsman, from the bar walk up to the side door 000165C7 (to the street). Set to stand open: with a street picture it stands open from the load, otherwise shut until the street merges.",
+    "steps": [
+      {
+        "load": "SeamlessTestDrunkenHuntsmanInside"
+      },
+      {
+        "wait": 2
+      },
+      {
+        "frames": 60
+      },
+      {
+        "walk": {
+          "ref": "000165C7",
+          "stop_distance": 150
+        }
+      },
+      {
+        "wait": 2
+      }
+    ]
+  },
   "honningbrew-loaded-inside": {
     "note": "Fresh launch, loaded in Honningbrew Meadery facing its open front door (street not visited this session): after the wait, look out (the dirt road in front of the door was distant land, the door's cell had no land or temporary references); then walking out (it put the player under the world, z -14623).",
     "steps": [

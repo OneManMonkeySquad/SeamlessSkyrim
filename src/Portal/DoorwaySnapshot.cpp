@@ -397,49 +397,54 @@ namespace
 		readbacks.clear();
 	}
 
-	// The door's picture for this part of the day, loaded from disk the first time it is asked
-	// for; another part's when this one was never taken (a door first passed at night).
-	Picture* Find(ID3D11Device* a_device, RE::FormID a_door, bool a_outdoors)
+	// The picture under a_key, loaded from disk the first time it is asked for.
+	Picture* Load(ID3D11Device* a_device, const std::string& a_key, bool a_outdoors)
 	{
 		ForgetAllIfDeleted();
 		ForgetUnused();
-		const int part = PartOfDay();
-		std::array<int, 4> order{ part, (part + 1) % 4, (part + 3) % 4, (part + 2) % 4 };
-		for (int i = 0; i < (a_outdoors ? 4 : 1); ++i) {
-			const auto key = KeyOf(a_door, a_outdoors, order[i]);
-			auto&      picture = pictures[key];
-			picture.used = std::chrono::steady_clock::now();
-			if (!picture.view && !std::exchange(picture.diskTried, true)) {
-				// Whatever size it was taken at: after the size is changed a door shows its old picture
-				// until it is taken again, rather than the plain colour.
-				std::ifstream file(FileOf(key), std::ios::binary);
-				std::uint32_t header[4]{};
-				// No larger than the largest ever written, the capture camera's at the largest size: a
-				// damaged file's header asked for gigabytes of texels before its read could fail.
-				const auto [widest, highest] = SizeFor(kRoomCamera.extent, kMaxHeight, kWidest);  // the room's is the wider
-				if (file.read(reinterpret_cast<char*>(header), sizeof(header)) && header[0] == kMagic && header[1] >= 1 && header[1] <= kVersion && header[2] >= 1 &&
-					header[2] <= widest && header[3] >= 1 && header[3] <= highest) {
-					float      place[4]{};
-					Extent     extent = kDoorwayOnly;
-					const bool depth = header[1] >= 2;
-					if (!depth || (file.read(reinterpret_cast<char*>(place), sizeof(place)) && file.read(reinterpret_cast<char*>(extent.data()), sizeof(extent)))) {
-						std::vector<std::uint16_t> texels(std::size_t{ header[2] } * header[3] * 4);
-						if (file.read(reinterpret_cast<char*>(texels.data()), texels.size() * sizeof(std::uint16_t)) && MakeView(a_device, picture, texels.data(), header[2], header[3])) {
-							picture.depth = depth;
-							picture.takenFrom = { place[0], place[1], place[2] };
-							picture.extent = extent;
-							// 0 in the pictures taken before it was written.
-							picture.lightScale = place[3] > 0.0f ? place[3] : 1.0f;
-							picture.version = header[1];
-							if (!a_outdoors) {
-								picture.brightness = Brightness(texels.data(), header[2], header[3], header[2] * 8, picture.lightScale);
-							}
+		auto& picture = pictures[a_key];
+		picture.used = std::chrono::steady_clock::now();
+		if (!picture.view && !std::exchange(picture.diskTried, true)) {
+			// Whatever size it was taken at: after the size is changed a door shows its old picture
+			// until it is taken again, rather than the plain colour.
+			std::ifstream file(FileOf(a_key), std::ios::binary);
+			std::uint32_t header[4]{};
+			// No larger than the largest ever written, the capture camera's at the largest size: a
+			// damaged file's header asked for gigabytes of texels before its read could fail.
+			const auto [widest, highest] = SizeFor(kRoomCamera.extent, kMaxHeight, kWidest);  // the room's is the wider
+			if (file.read(reinterpret_cast<char*>(header), sizeof(header)) && header[0] == kMagic && header[1] >= 1 && header[1] <= kVersion && header[2] >= 1 &&
+				header[2] <= widest && header[3] >= 1 && header[3] <= highest) {
+				float      place[4]{};
+				Extent     extent = kDoorwayOnly;
+				const bool depth = header[1] >= 2;
+				if (!depth || (file.read(reinterpret_cast<char*>(place), sizeof(place)) && file.read(reinterpret_cast<char*>(extent.data()), sizeof(extent)))) {
+					std::vector<std::uint16_t> texels(std::size_t{ header[2] } * header[3] * 4);
+					if (file.read(reinterpret_cast<char*>(texels.data()), texels.size() * sizeof(std::uint16_t)) && MakeView(a_device, picture, texels.data(), header[2], header[3])) {
+						picture.depth = depth;
+						picture.takenFrom = { place[0], place[1], place[2] };
+						picture.extent = extent;
+						// 0 in the pictures taken before it was written.
+						picture.lightScale = place[3] > 0.0f ? place[3] : 1.0f;
+						picture.version = header[1];
+						if (!a_outdoors) {
+							picture.brightness = Brightness(texels.data(), header[2], header[3], header[2] * 8, picture.lightScale);
 						}
 					}
 				}
 			}
-			if (picture.view) {
-				return &picture;
+		}
+		return picture.view ? &picture : nullptr;
+	}
+
+	// The door's picture for this part of the day; another part's when this one was never taken
+	// (a door first passed at night).
+	Picture* Find(ID3D11Device* a_device, RE::FormID a_door, bool a_outdoors)
+	{
+		const int          part = PartOfDay();
+		std::array<int, 4> order{ part, (part + 1) % 4, (part + 3) % 4, (part + 2) % 4 };
+		for (int i = 0; i < (a_outdoors ? 4 : 1); ++i) {
+			if (auto* picture = Load(a_device, KeyOf(a_door, a_outdoors, order[i]), a_outdoors)) {
+				return picture;
 			}
 		}
 		return nullptr;
@@ -1213,13 +1218,19 @@ namespace Portal::Snapshot
 		return device && !pipeline.failed && Find(device, a_door, a_outdoors);
 	}
 
-	bool CameraPictureWanted(RE::FormID a_door, const Corners& a_corners)
+	bool CameraPictureWanted(RE::FormID a_door, bool a_outdoors, const Corners& a_corners)
 	{
 		auto* device = Device();
 		if (!device || pipeline.failed) {
 			return false;
 		}
-		const auto* picture = Find(device, a_door, false);
+		// The street's for this part of the day: another part's is lit for another hour.
+		const auto* picture = Load(device, KeyOf(a_door, a_outdoors, PartOfDay()), a_outdoors);
+		// The player's view of the street is kept (Capture): the portal pass has no real sky and no
+		// distant LOD.
+		if (a_outdoors && picture && picture->extent == kDoorwayOnly) {
+			return false;
+		}
 		const auto [width, height] = SizeFor(kRoomCamera.extent, pictureHeight.load(), AspectOf(a_corners));
 		return !picture || picture->version < kVersion || picture->extent != kRoomCamera.extent || picture->width != width || picture->height != height;
 	}
@@ -1268,8 +1279,9 @@ namespace Portal::Snapshot
 		const auto key = KeyOf(a_door, a_outdoors, PartOfDay());
 		auto&      picture = pictures[key];
 		picture.used = std::chrono::steady_clock::now();
-		// The player's view sees less than the capture camera did.
-		if (!withCamera && picture.view && picture.extent != kDoorwayOnly) {
+		// The player's view sees less than the capture camera did. Of the street it replaces it all
+		// the same: the portal pass draws a gradient for the sky and no distant LOD.
+		if (!withCamera && !a_outdoors && picture.view && picture.extent != kDoorwayOnly) {
 			return;
 		}
 		const auto now = std::chrono::steady_clock::now();

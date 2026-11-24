@@ -864,6 +864,10 @@ namespace
 	// is drawn with the world, and it is merged as soon as it has loaded. Once per door (the
 	// picture is kept), the merge waits for it: a moment for the room's late lights, then the
 	// frames it takes. Merged anyway if it doesn't come.
+	// The street seen from inside too, once per part of the day: taken only from the player's view,
+	// it needed the whole doorway on screen in first person for a moment, which walking up to a
+	// door hardly ever gave, and without a picture a door set to stand open stayed shut until its
+	// street was merged, then swung open in front of the player (The Drunken Huntsman's two doors).
 	struct PictureWait
 	{
 		RE::FormID                                           door = 0;
@@ -883,13 +887,24 @@ namespace
 		if (pictureWait.door != a_portal.sourceDoor) {
 			pictureWait = { a_portal.sourceDoor };
 		}
-		if (!a_mergeable || a_here->IsInteriorCell() || !a_portal.cell->IsInteriorCell()) {
+		if (!a_mergeable || a_here->IsInteriorCell() == a_portal.cell->IsInteriorCell()) {
 			pictureWait.since.reset();
 			return false;
 		}
 		auto* door = Lookup(a_portal.sourceDoor);
-		if (pictureWait.gaveUp ||
-			!Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor, Portal::Doors::Quad(door, RE::PlayerCharacter::GetSingleton()->GetPosition(), true))) {
+		if (pictureWait.gaveUp || !Portal::Snapshot::CameraPictureWanted(a_portal.sourceDoor, !a_portal.cell->IsInteriorCell(),
+										  Portal::Doors::Quad(door, RE::PlayerCharacter::GetSingleton()->GetPosition(), true))) {
+			return false;
+		}
+		// The street's door is the one swung from inside, and the portal pass draws it: taken before
+		// it was open, the picture showed the door shut in the doorway. A door not opening isn't
+		// waited for: its street would stay unmerged until the wait gave up.
+		// Wanted, not doorWanted: that is false for the frame a door's portal starts.
+		auto*      linked = Lookup(a_portal.linkedDoor);
+		const bool swungInPicture = !a_portal.cell->IsInteriorCell() && SwingingDoorOf(door, linked) == a_portal.linkedDoor;
+		const bool swinging = swungInPicture && !(openDoor.door == a_portal.sourceDoor && openDoorSwing >= 1.0f);
+		if (swinging && !Wanted(door, linked)) {
+			pictureWait.since.reset();
 			return false;
 		}
 		const auto now = std::chrono::steady_clock::now();
@@ -901,7 +916,7 @@ namespace
 			logger::warn("portal: no doorway picture for door {:08X} from the capture camera; merged without", a_portal.sourceDoor);
 			return false;
 		}
-		if (now - *pictureWait.since >= kPictureLightsSettle) {
+		if (!swinging && now - *pictureWait.since >= kPictureLightsSettle) {
 			pictureWanted = a_portal.sourceDoor;
 		}
 		return true;
