@@ -68,8 +68,17 @@ Found porting the plugin; each was checked in the code of both.
   frames after the player goes inside.
   - Loaded at game start, the save has them with 3D.
   - Loaded indoors after the player was outdoors in the same session, those around the door
-    have no 3D, so there is no collision under the door either. `RemoteCell::PersistentIn` loads
-    them, but not doors.
+    have no 3D, so there is no collision under the door either. `RemoteCell::PersistentIn` queues
+    them, but not doors. Launched with a save in Tamriel, so do WhiterunWorld's (137 at its gate).
+  - **Queuing a reference's 3D** as `TESObjectREFR::Enable` (ID 19800) does: ID 13057 (`*ID 400332`
+    the model loader, ref, priority ID 13321 (TES, its cell, 0), false); read on the loader
+    threads, set on the main thread. It counts the reference in its cell's
+    `loadedData->queuedRefCount` (ID 19151): a cell without loaded data (a reference still filed
+    under the persistent cell) crashed there. Both ends of the task (`QueuedReference` vtable
+    slot 12, ID 13022, which sets the 3D, and slot 20 → ID 13023) count it off again (ID 19152),
+    with 3D or without, so a reference whose model doesn't load doesn't hold the cell's count up.
+    `Load3D(true)` is not a request to queue: it is what the loader threads call, and parks the
+    3D in thread-local storage. `Load3D(false)` on the main thread: ~6 ms each from disk.
   - 3D loaded while its cell isn't attached (`Load3D`, also `Set3D` again) hangs nowhere, and the
     engine's later attach of the cell leaves it so: it hangs only the 3D it loads itself. ID 19165
     (cell, ref, true, false) hangs one reference's 3D into its cell, as the cell attach does for
@@ -111,6 +120,11 @@ Found porting the plugin; each was checked in the code of both.
   every actor in high process, on the job threads; +0x279) calls ID 19165 (cell, actor, true, ..),
   which, when the 3D's parent isn't the cell's node for actors (ID 19339), queues the move there
   (ID 19415, a per-thread queue run by ID 19416 → ID 19414 `AttachChild`).
+- **Moving a cell's 3D moves its bodies too:** `NiAVObject::Update` of the cell (ID 70539 →
+  the collision object's ID 78910 → ID 78178) sets its bodies' transforms in Havok, and the
+  broadphase update (IDs 61802, 64613) is most of moving Riften's street out of the jail on
+  walking out (70-270 ms). `NiUpdateData::kDisableCollision` doesn't skip it; ID 78910 returns early
+  when a thread-local state (TLS + 0x9E8) is 1, set by whom isn't known.
 - **High process:** `Actor::MoveToHigh()` on a remote cell's actors is accepted, and they aren't
   demoted while the cell stays attached.
 - **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
@@ -249,7 +263,11 @@ Found porting the plugin; each was checked in the code of both.
 - **Arriving in a cell queues each of its lights twice** in the world scene (Understone Keep: 306
   for 153). The update takes in the first and, finding the second's NiLight active, walks the
   scene for it again. The teleport (ID 40744 + 0x3D2) and every frame (ID 106337 + 0x2B) call the
-  update; after a seamless trip `Travel.cpp` lets it take 32 lights at a time, nearest first.
+  update; after a seamless trip `Travel.cpp` lets it take 32 lights at a time, nearest first, in
+  the world scene and in ours (the space walked out of, attached again with its ~150 lights).
+- **The teleport's cost** (ID 40438, loading screen and waits skipped): 15-40 ms into an interior,
+  25-60 ms out to a street seen before, 150-170 ms out of Belethor's or Riften's jail the first
+  time after a load (the grid change, ID 13317, and its cell attaches, IDs 13427/13428).
 - **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
   (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).

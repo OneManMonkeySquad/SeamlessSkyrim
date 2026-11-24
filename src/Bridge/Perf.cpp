@@ -227,11 +227,19 @@ namespace Perf
 			Context()->End(current.disjoint);
 			current.open = false;
 		}
+		static std::int64_t lastEnd = 0;
+		const auto          now = Ticks();
+		const auto          since = std::exchange(lastEnd, now);
 		if (!on) {
 			return;
 		}
 		std::scoped_lock l(lock);
-		const auto       at = frame++ % kFrames;
+		if (since) {
+			auto& s = Find(cpu, "frame");
+			s.current = TicksToMs(now - since);
+			s.touched = true;
+		}
+		const auto at = frame++ % kFrames;
 		for (auto* list : { &cpu, &counts }) {
 			for (auto& s : *list) {
 				s.values[at] = static_cast<float>(s.current);
@@ -264,6 +272,23 @@ namespace Perf
 		std::scoped_lock l(lock);
 		const auto       frames = std::min(frame, kFrames);
 		json             out{ { "on", on.load() }, { "frames", frames }, { "cpu", Summary(cpu, frames) }, { "counts", Summary(counts, frames) }, { "gpu", Summary(gpu, frames) } };
+		// A moment (a crossing) frame by frame rather than summed up: the CPU scopes and counts of
+		// the last `last` frames, oldest first.
+		if (const auto last = std::min<std::size_t>(a_args.value("last", 0), frames)) {
+			json list = json::array();
+			for (std::size_t i = frame - last; i < frame; ++i) {
+				json row = json::object();
+				for (const auto* series : { &cpu, &counts }) {
+					for (const auto& s : *series) {
+						if (s.seen[i % kFrames]) {
+							row[s.name] = std::round(s.values[i % kFrames] * 100.0) / 100.0;
+						}
+					}
+				}
+				list.push_back(std::move(row));
+			}
+			out["last"] = std::move(list);
+		}
 		if (a_args.value("reset", false)) {
 			for (auto* list : { &cpu, &counts, &gpu }) {
 				for (auto& s : *list) {

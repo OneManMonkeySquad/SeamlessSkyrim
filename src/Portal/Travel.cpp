@@ -3,10 +3,12 @@
 
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
+#include "Bridge/Perf.h"
 #include "Bridge/Sampler.h"
 #include "Hooks.h"
 #include "Paths.h"
 #include "Portal/CameraLimit.h"
+#include "Portal/LightScene.h"
 #include "Portal/NpcTravel.h"
 #include "Probe.h"
 
@@ -190,6 +192,7 @@ namespace
 		trace.running = true;
 		trace.start = trace.lastFrame = Clock::now();
 		trace.door = door->GetFormID();
+		Perf::AddCount("crossing", 1.0);
 		// The white frame came 2-3 frames after the crossing; a second's worth leaves room for slow ones.
 		FrameHooks::GuardFlashes(60);
 		FrameHooks::CaptureEventFrames(L"crossing", 16);
@@ -361,6 +364,10 @@ namespace
 	// takes each in with a cull of the scene for the shapes it lights (~0.27 ms a light): Understone
 	// Keep's ~150 were ~40 ms of the teleport's frame. For a few frames after a seamless trip the
 	// update takes the nearest ones first, a few per frame, and the rest wait in the queue.
+	// Our light scenes too: the space walked out of is attached again in the frame of arrival, and
+	// taking in its lights (Riften's jail ~175, Understone Keep's ~150) was 20-35 ms of it. Only
+	// after a trip, when that space is behind the player: a room shown at its door while the player
+	// looks at it takes its lights in at once, or they came on one after another in the doorway.
 	constexpr int     kLightsPerUpdate = 32;
 	constexpr int     kSpreadFrames = 30;
 	int               spreadFrames = 0;
@@ -370,7 +377,8 @@ namespace
 	template <class F>
 	void UpdateLightsSpread(RE::ShadowSceneNode* a_scene, void* a_arg, F&& a_update)
 	{
-		if (!spreadLights || spreadFrames <= 0 || a_scene != RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0]) {
+		const bool world = a_scene == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		if (!spreadLights || spreadFrames <= 0 || (!world && !Portal::LightScene::IsOurs(a_scene))) {
 			a_update(a_scene, a_arg);
 			return;
 		}
@@ -442,7 +450,8 @@ namespace
 	{
 		static void Thunk(RE::ShadowSceneNode* a_scene, void* a_arg)
 		{
-			const bool world = a_scene == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+			const bool        world = a_scene == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+			const Perf::Scope scope(world ? "lights: world" : "lights: other");
 			UpdateLightsSpread(a_scene, a_arg, [](RE::ShadowSceneNode* a_s, void* a_a) { func(a_s, a_a); });
 			if (world && spreadFrames > 0) {
 				--spreadFrames;
@@ -537,7 +546,10 @@ namespace
 			}
 			const auto  cameraOffset = camera->cameraRoot->world.translate - a_player->GetPosition();
 			const float yawBefore = a_player->GetAngleZ();
-			func(a_player);
+			{
+				const Perf::Scope scope(seamlessTeleport ? "teleport" : "teleport step");
+				func(a_player);
+			}
 			if (std::exchange(seamlessTeleport, false)) {
 				// The engine only resets the flag after its own short teleports. Ours is done now;
 				// left set until the trace ended (3 s), a save loaded or a fast travel in that time
@@ -573,6 +585,7 @@ namespace
 					thirdPerson->currentYaw = cameraPose->yawCurrent + turn;
 				}
 				Note(std::format("heading set to {:.1f}, now {:.1f}", RE::rad_to_deg(*arrivalYaw), RE::rad_to_deg(a_player->GetAngleZ())));
+				const Perf::Scope arrivalScope("arrival");
 				arrivalYaw.reset();
 				// Before the space just left is attached below, which forgets them.
 				Portal::RemoteCell::HangHandedPersistent();
@@ -705,7 +718,10 @@ namespace
 			if (pending) {
 				const auto portal = *pending;
 				pending.reset();
-				Begin(portal, pendingLimitsCamera);
+				{
+					const Perf::Scope scope("crossing begin");
+					Begin(portal, pendingLimitsCamera);
+				}
 				guard.unlock();
 				ProcessTeleportHook::Thunk(RE::PlayerCharacter::GetSingleton());
 			}

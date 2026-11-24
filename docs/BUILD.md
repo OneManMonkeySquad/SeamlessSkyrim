@@ -223,6 +223,19 @@ Frame rate:
   shaded of the world draw, the portal pass, its shadows and its submit (`gpu`), and counts. A
   long `present` means the GPU (or frame generation) holds the main thread back. Off by default:
   its queries cost a little every frame.
+- A crossing frame by frame: `perf {"on": true, "reset": true}`, walk through, then
+  `perf {"last": 300}`: each frame's scopes (`frame` is the time between presents), the crossing's
+  frame marked by the count `crossing`; its parts are `crossing begin` (`release kept`,
+  `release shown`), `teleport` (the engine's) and `arrival`, then `attach`, `merge`,
+  `lights: world` / `lights: other`. The crossing is carried out after its frame's present, so it
+  lands in the frame marked.
+- Route `whiterun-gate-attach` (save `SeamlessTestWhiterunGateOutside`): launched with it, the gate's
+  attach queues WhiterunWorld's persistent references (log: `queued for loading`, `attach took`);
+  loaded again later in the same session there is nothing to queue.
+- The `markarth-understone-*` routes' quicksave is gone. Understone Keep from
+  `SeamlessTestMarkarthMines`: walk out of the house, `player.moveto 16E47`, then the routes' `move`
+  and walk steps. `place_go understone-keep-front` from inside the house only moves the player
+  within the house (its cell is `Wilderness`).
 - `merged_cull` returns frame times (`frames`) and the main thread's time in the player view
   (`viewMs`, culling and draw submission). `{"mode": 3}` hides the merged room, which shows what it
   costs; `{"mode": 2}` puts it back.

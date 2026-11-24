@@ -1,5 +1,6 @@
 #include "Portal/RemoteCell.h"
 
+#include "Bridge/Perf.h"
 #include "Hooks.h"
 #include "Portal/DoorPair.h"
 #include "Portal/LightScene.h"
@@ -112,7 +113,7 @@ namespace Portal
 		       state != CellState::kDetaching;
 	}
 
-	RemoteCell::PersistentByCell RemoteCell::PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells)
+	RemoteCell::PersistentByCell RemoteCell::PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells, std::unordered_set<RE::FormID>& a_queued, int& a_newlyQueued)
 	{
 		PersistentByCell found;
 		auto*            first = a_cells.empty() ? nullptr : a_cells.front();
@@ -127,8 +128,12 @@ namespace Portal
 				byCoordinates.emplace(key(coordinates->cellX, coordinates->cellY), cell);
 			}
 		}
-		int        loaded = 0;
-		const auto started = std::chrono::steady_clock::now();
+		// The engine's model loader, as TESObjectREFR::Enable (ID 19800) queues a reference's 3D:
+		// read on its loader threads, set on the main thread when done.
+		static REL::Relocation<void**>                                                     modelLoader{ REL::RelocationID(514183, 400332) };
+		static REL::Relocation<void (*)(void*, RE::TESObjectREFR*, std::uint32_t, bool)> queueReference{ REL::RelocationID(12910, 13057) };
+		static REL::Relocation<std::uint32_t (*)(RE::TES*, RE::TESObjectCELL*, std::uint32_t)> loadPriority{ REL::RelocationID(13176, 13321) };
+		int queued = 0, loadedHere = 0;
 		world->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
 			if (!a_ref) {
 				return RE::BSContainer::ForEachResult::kContinue;
@@ -141,7 +146,11 @@ namespace Portal
 			// A game loaded indoors after being outdoors in the same session leaves them without 3D
 			// (a fresh start doesn't): Belethor's house with its porch, the paving of Whiterun's
 			// market were missing from the view out, and with no collision under the door the
-			// player walking out was put 135 units down in the stream below the porch. Loaded here.
+			// player walking out was put 135 units down in the stream below the porch. Queued here
+			// for the engine's loader: loaded on the main thread, 137 of them around Whiterun's gate
+			// stopped the game for 0.8 s. The queue counts each in its cell's queued references
+			// (ID 19151), which the readiness in Update waits for, and the loader counts it off when
+			// it is done, with 3D or without (a model it can't load).
 			// Not doors: merged with the street, a door's 3D stands where the interior shows it, and
 			// the doorway mapped from it sent the player walking out of Belethor's to the far side
 			// of Whiterun.
@@ -152,17 +161,30 @@ namespace Portal
 					static_cast<RE::TESObject*>(base)->IsMarker()) {
 					return RE::BSContainer::ForEachResult::kContinue;
 				}
+				// Once per attach: queued again at every look, one the loader finished without 3D would
+				// be counted in its cell anew each time, and the space never counted as loaded.
+				// A reference still filed under a cell without loaded data (the worldspace's persistent
+				// cell) has nowhere to be counted (ID 19151 crashed on it): loaded here.
+				auto* parent = a_ref->GetParentCell();
+				if (parent && parent->GetRuntimeData().loadedData) {
+					if (a_queued.insert(a_ref->GetFormID()).second) {
+						queueReference(*modelLoader, a_ref, loadPriority(RE::TES::GetSingleton(), parent, 0), false);
+						++queued;
+					}
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
 				a_ref->Load3D(false);
 				if (!a_ref->Get3D()) {
 					return RE::BSContainer::ForEachResult::kContinue;
 				}
-				++loaded;
+				++loadedHere;
 			}
 			found[cell->second].push_back(a_ref->GetFormID());
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
-		if (loaded) {
-			logger::info("portal: 3D of {} persistent reference(s) loaded in {:.1f} ms", loaded, std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
+		a_newlyQueued = queued;
+		if (loadedHere) {
+			logger::info("portal: 3D of {} persistent reference(s) without a loaded cell loaded at once", loadedHere);
 		}
 		return found;
 	}
@@ -306,6 +328,7 @@ namespace Portal
 		}
 		generation = ++lastGeneration;
 		adoptedLights = 0;
+		persistentQueued.clear();
 		persistentCheck = 0.0f;
 		roundNext = 0;
 		roundPersistent.clear();
@@ -356,7 +379,12 @@ namespace Portal
 		// All the cells' persistent references in one pass over the worldspace's persistent cell
 		// (thousands of references in a city): done per cell, it was most of an attach.
 		if (!(debugSkip & 1)) {
-			const auto persistent = PersistentIn(cells);
+			const Perf::Scope scope("attach persistent");
+			int               newlyQueued = 0;
+			const auto        persistent = PersistentIn(cells, persistentQueued, newlyQueued);
+			if (newlyQueued) {
+				logger::info("portal: 3D of {} persistent reference(s) queued for loading", newlyQueued);
+			}
 			for (auto* cell : cells) {
 				// Their lights (a lantern on a house) come with them.
 				if (AdoptPersistent(cell, persistent) && !(debugSkip & 4)) {
@@ -628,6 +656,7 @@ namespace Portal
 		stilledClutter.clear();
 		UnmergeCollision();
 		if (std::exchange(merged, false)) {
+			const Perf::Scope scope("release: unmerge cells");
 			// Back under the portal root, unmoved, so the normal release below applies.
 			for (auto* cell : cells) {
 				RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
@@ -666,6 +695,7 @@ namespace Portal
 		}
 		borrowedPersistent.clear();
 		handedOver.clear();
+		const Perf::Scope detachScope("release: detach");
 		for (auto* cell : cells | std::views::reverse) {
 			auto* cell3D = Cell3D(cell);
 			if (handOver && cell3D && cell3D->parent == root && cell->cellState.get() == CellState::kAttached) {
@@ -728,6 +758,7 @@ namespace Portal
 
 	void RemoteCell::Update(float a_delta)
 	{
+		const Perf::Scope scope("remote update");
 		if (!Healthy()) {
 			StepWorld(nullptr);
 			return;
@@ -737,6 +768,7 @@ namespace Portal
 		// load queues alone aren't enough either: right after the attach they are still 0 because
 		// nothing has been queued yet, and drawing then crashed on half-built geometry. So require
 		// them to stay empty for a while.
+		// The persistent references queued for their 3D (PersistentIn) are counted in their cells too.
 		bool quiet = std::ranges::all_of(cells, [](RE::TESObjectCELL* a_cell) {
 			auto* loaded = a_cell->GetRuntimeData().loadedData;
 			return loaded && loaded->queuedRefCount == 0 && loaded->criticalQueuedRefCount == 0;
@@ -783,7 +815,8 @@ namespace Portal
 		if (roundNext == 0 && (persistentCheck -= a_delta) <= 0.0f) {
 			persistentCheck = 0.25f;
 			roundNext = cells.size();
-			roundPersistent = debugSkip & 1 ? PersistentByCell{} : PersistentIn(cells);
+			int newlyQueued = 0;
+			roundPersistent = debugSkip & 1 ? PersistentByCell{} : PersistentIn(cells, persistentQueued, newlyQueued);
 		}
 		RE::TESObjectCELL* checked = nullptr;
 		if (roundNext > 0) {
@@ -1155,8 +1188,9 @@ namespace Portal
 
 	void RemoteCell::StepAtEndOfFrame()
 	{
-		std::scoped_lock lock(stepLock);
-		const auto       started = std::chrono::steady_clock::now();
+		const Perf::Scope scope("remote step");
+		std::scoped_lock  lock(stepLock);
+		const auto        started = std::chrono::steady_clock::now();
 		// Through a city gate both worldspaces' cells are in one world, the player's: the engine
 		// has stepped it this frame.
 		auto*            here = RE::PlayerCharacter::GetSingleton()->GetParentCell();

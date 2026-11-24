@@ -2,6 +2,7 @@
 
 #include "Bridge/AgentMode.h"
 #include "Bridge/FrameHooks.h"
+#include "Bridge/Perf.h"
 #include "Hooks.h"
 #include "Paths.h"
 
@@ -1377,6 +1378,7 @@ namespace
 
 	void UnmergeLOD()
 	{
+		const Perf::Scope scope("unmerge LOD");
 		Portal::StreetLOD::Hide();
 		RestoreSkyMode();
 		if (!mergedLOD) {
@@ -2555,7 +2557,12 @@ namespace Portal::Manager
 			warmAttachTimer = kWarmAttachSeconds;
 			const auto         started = std::chrono::steady_clock::now();
 			Portal::RemoteCell space;
-			if (space.Attach(cell, false, false)) {
+			bool attachedKept = false;
+			{
+				const Perf::Scope scope("attach kept");
+				attachedKept = space.Attach(cell, false, false);
+			}
+			if (attachedKept) {
 				logger::info("portal: attached {} out of sight behind its door ({:.1f} ms)", Probe::DescribeCell(cell),
 					std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
 				warm.push_back(std::move(space));
@@ -2621,7 +2628,11 @@ namespace Portal::Manager
 
 	void ReleaseAll(std::string_view a_reason, float a_holdoff, bool a_handOver)
 	{
-		ReleaseWarm(a_reason);
+		{
+			const Perf::Scope scope("release kept");
+			ReleaseWarm(a_reason);
+		}
+		const Perf::Scope scope("release shown");
 		ReleaseShown(a_reason, a_holdoff, a_handOver);
 	}
 
@@ -2642,6 +2653,7 @@ namespace Portal::Manager
 		CloseDoor();
 		ClosePassage();
 		if (remote.merged) {
+			const Perf::Scope scope("release: end merged");
 			EndMerged(*primaryRoom, 0);
 		}
 		primaryRoom = std::make_unique<MergedRoom>();
@@ -2786,6 +2798,7 @@ namespace Portal::Manager
 				attached = true;
 				logger::info("portal: {} was kept behind its door{}", Probe::DescribeCell(candidate->cell), remote.FullyLoaded() ? ", loaded" : ", still loading");
 			} else {
+				const Perf::Scope scope("attach");
 				attached = remote.Attach(candidate->cell, here->IsInteriorCell() && Mergeable(here, candidate->cell));
 			}
 			logger::info("portal: attach took {:.1f} ms", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - attachStarted).count());
@@ -2836,7 +2849,8 @@ namespace Portal::Manager
 					const auto mergeStarted = std::chrono::steady_clock::now();
 					const auto placement = PlacementOf(*portal, Doors::Compute(*portal));
 					const auto toSource = placement.toSource;
-					const auto result = remote.Merge(placement);
+					const Perf::Scope scope("merge");
+					const auto        result = remote.Merge(placement);
 					if (walkIntoRooms && !MergedOutdoors()) {
 						MergeRoomCollision(*portal, here->GetbhkWorld());
 					}
@@ -3703,6 +3717,7 @@ namespace Portal::Manager
 				if (street) {
 					MergePersistent();
 				}
+				const Perf::Scope scope("mark shapes");
 				MarkMergedShapes(a_room, &a_space, primary, street, true, mapping.sourceCenter);
 			} else if (!a_room.markPass && (a_room.markTimer -= a_delta) <= 0.0f) {
 				a_room.markTimer = 0.5f;

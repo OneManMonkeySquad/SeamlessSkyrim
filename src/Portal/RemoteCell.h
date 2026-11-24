@@ -210,7 +210,10 @@ namespace Portal
 		void                   AttachOne(RE::TESObjectCELL* a_cell);
 		// FormIDs of the worldspace's persistent references with 3D standing in each of a_cells.
 		using PersistentByCell = std::unordered_map<const RE::TESObjectCELL*, std::vector<RE::FormID>>;
-		static PersistentByCell PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells);
+		// Those without 3D are queued for loading, each once (a_queued, by FormID); returns how many
+		// were queued now in a_newlyQueued.
+		static PersistentByCell PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells, std::unordered_set<RE::FormID>& a_queued, int& a_newlyQueued);
+		std::unordered_set<RE::FormID> persistentQueued;  // since the attach
 		// Returns how many were hung under a_cell anew.
 		int                    AdoptPersistent(RE::TESObjectCELL* a_cell, const PersistentByCell& a_persistent);
 		float                  persistentCheck = 0.0f;  // seconds until the next round (Update)

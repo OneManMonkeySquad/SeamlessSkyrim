@@ -774,6 +774,30 @@
       }
     ]
   },
+  "whiterun-gate-attach": {
+    "note": "Tamriel, 1000 units outside Whiterun's gate (0001B1F1). Launched with this save (game_launch save=...), WhiterunWorld's persistent references have no 3D and the gate's attach queues them for the engine's loader (log: 'queued for loading', 'attach took'): 137 of them; loaded on the main thread they took ~57 ms with the files in the OS cache, 800 ms cold. Loaded again later in the same session there is nothing to queue.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            19150,
+            -7424
+          ],
+          "stop_distance": 40,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "wait": 3
+      }
+    ]
+  },
   "windhelm-sadris-walk-in": {
     "note": "Windhelm: walk into Sadri's Used Wares (merged into the street) from the front. Was: stuck 20 units short of the door, the house's collision closing the doorway behind the door never opened.",
     "steps": [
