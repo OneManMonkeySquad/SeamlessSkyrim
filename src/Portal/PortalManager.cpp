@@ -364,6 +364,13 @@ namespace
 		if (static_cast<RE::TESObject*>(base)->IsMarker()) {
 			return nullptr;
 		}
+		// Nor is an automatic door (a cave mouth): nobody uses it, the engine sends the player
+		// through from a distance (ENGINE.md, Simulation). Taken for a seamless door, its activation
+		// was swallowed as a use, and the Mist menu the engine had opened for the trip stayed open
+		// over the HUD and every other menu.
+		if (base->As<RE::TESObjectDOOR>()->flags.any(RE::TESObjectDOOR::Flag::kAutomatic)) {
+			return nullptr;
+		}
 		auto* teleport = a_ref->extraList.GetByType<RE::ExtraTeleport>();
 		auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
 		if (!linked) {
@@ -2206,6 +2213,30 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// An automatic door sends the player through when they come near its 3D (ENGINE.md, Simulation).
+	// The 3D of a space shown behind a doorway stands where the doorway shows it: a cave mouth in
+	// the street merged into a building came within reach of the player inside, who was taken
+	// through a door of a space they weren't in. Only a door in the player's own space does that.
+	struct AutoDoorHook
+	{
+		using Callback = void(RE::NiAVObject*, std::uint32_t, bool);
+
+		static void Near(RE::NiAVObject* a_object, std::uint32_t a_distance, bool a_within)
+		{
+			if (InPlayerSpace(RE::TESObjectREFR::FindReferenceFor3D(a_object), RE::PlayerCharacter::GetSingleton()->GetParentCell())) {
+				engine(a_object, a_distance, a_within);
+			}
+		}
+
+		static void Thunk(RE::NiTimeController* a_controller, Callback* a_callback)
+		{
+			engine = a_callback;
+			func(a_controller, Near);
+		}
+		static inline Callback*                        engine;
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	// The player is about to take a_door the engine's way (its loading screen): the engine gets the
 	// cells it leads into, not ones attached under our scene.
 	void BeforeEngineTrip(RE::TESObjectREFR* a_door)
@@ -2412,6 +2443,10 @@ namespace Portal::Manager
 			REL::Relocation<std::uintptr_t> hangSite{ REL::RelocationID(36970, 37995), REL::Relocate(0x298, 0x279) };
 			if (Hooks::CallsTo(hangSite.address(), REL::RelocationID(18683, 19165), "portal: actor hung into its cell")) {
 				ActorHangHook::func = SKSE::GetTrampoline().write_call<5>(hangSite.address(), ActorHangHook::Thunk);
+			}
+			REL::Relocation<std::uintptr_t> autoDoorSite{ REL::RelocationID(17532, 17934), 0xE4 };
+			if (Hooks::CallsTo(autoDoorSite.address(), REL::RelocationID(39141, 40200), "portal: automatic door's distance callback")) {
+				AutoDoorHook::func = SKSE::GetTrampoline().write_call<5>(autoDoorSite.address(), AutoDoorHook::Thunk);
 			}
 		}
 		RE::PlayerCharacter::GetSingleton()->AsBGSActorCellEventSource()->AddEventSink(&cellSink);
@@ -4499,7 +4534,9 @@ namespace Portal::Manager
 		// A door drawn without its leaves (Pristine): shapes hidden that no opener hid.
 		const auto checkDoor = [&](Part& a_part, RE::TESObjectREFR* a_ref) {
 			auto* base = a_ref->GetBaseObject();
-			if (!base || !base->Is(RE::FormType::Door) || a_ref->IsDisabled() || !a_ref->Get3D() || static_cast<RE::TESObject*>(base)->IsMarker()) {
+			// An automatic door is a box the engine itself hides.
+			if (!base || !base->Is(RE::FormType::Door) || a_ref->IsDisabled() || !a_ref->Get3D() || static_cast<RE::TESObject*>(base)->IsMarker() ||
+				base->As<RE::TESObjectDOOR>()->flags.any(RE::TESObjectDOOR::Flag::kAutomatic)) {
 				return;
 			}
 			++a_part.checked;

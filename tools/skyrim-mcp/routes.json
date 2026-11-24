@@ -263,6 +263,94 @@
       }
     ]
   },
+  "gromms-pass-autoload-walk-in": {
+    "note": "Tamriel 44,-31: run into the cave mouth's automatic load door (0100309C, Update.esm). The engine takes the player into the cave. Was: taken for a seamless door, its activation swallowed, the Mist menu left open (no HUD, menus only a cursor).",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "console": "tgm"
+      },
+      {
+        "console": "cow Tamriel 44 -31"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "move": [
+          180704,
+          -126312,
+          12500
+        ]
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            180708.5,
+            -127417.9
+          ],
+          "run": true,
+          "stop_distance": 40,
+          "timeout_seconds": 12
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "merged": false,
+          "name": "inside",
+          "worldspace": ""
+        }
+      }
+    ]
+  },
+  "helgen-keep-street-autodoor": {
+    "note": "Helgen Keep, inside its street door 000F8238: the street merges, and an automatic load door (00025FB2) stands 166 units from the door outside. The player stays put. Was: that door fired from indoors and moved the player, again at every merge.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "console": "tgm"
+      },
+      {
+        "console": "coc HelgenKeep01"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "move": [
+          1664,
+          6710,
+          394
+        ]
+      },
+      {
+        "wait": 8
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "at the door",
+          "worldspace": ""
+        }
+      }
+    ]
+  },
   "honningbrew-loaded-inside": {
     "note": "Fresh launch, loaded in Honningbrew Meadery facing its open front door (street not visited this session): after the wait, look out (the dirt road in front of the door was distant land, the door's cell had no land or temporary references); then walking out (it put the player under the world, z -14623).",
     "steps": [

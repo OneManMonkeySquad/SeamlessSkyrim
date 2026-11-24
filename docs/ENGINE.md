@@ -151,6 +151,16 @@ Found porting the plugin; each was checked in the code of both.
   `MovementMessageActivateDoor`'s idle call (the door idle hook doesn't see it), sometimes from
   more than 200 units in front of the door. After the move the AI's path goes on from the door's
   marker.
+- **Automatic load doors** (base door flag 2, `AutoLoadDoor01` 00031897: cave mouths, 307 of the
+  2052 load doors in Skyrim.esm and the DLCs): nobody uses them. Loading the door's 3D (ID 17934)
+  puts a `BSPlayerDistanceCheckController` on it with the callback ID 17933: with the player
+  ~350 units from the 3D it opens `Mist Menu` and `Fader Menu`, the fade's callback activates the
+  door for the player, and the arrival closes both menus (no loading screen, 0.5 s).
+  - With the activation swallowed the Mist menu stays open: the HUD and every other menu are no
+    longer drawn (only the cursor), until a game is loaded.
+  - The distance is to the 3D where it stands: the door of a space merged behind a doorway fires
+    from the player's side of it.
+  - Moved into range (`move_to`) the player isn't sent through; walking in from outside is.
 - **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
   ID 18870 / 18897), with `bhkWorld` vfunc 0x32 (arg 0).
   - Stepping a second world from the main thread, beside that job, corrupted memory: it is

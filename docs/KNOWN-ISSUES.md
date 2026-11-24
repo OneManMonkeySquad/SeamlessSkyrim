@@ -153,3 +153,13 @@
   place, not moved to the doorway (`scene_check`): loaded inside The Drunken Huntsman
   (`SeamlessTestDrunkenHuntsmanInside`, 3 of 9 cells), walked into Warmaiden's
   (`warmaidens-back-door-walk-in`). Not looked at on screen.
+- Automatic load doors (cave mouths; ENGINE.md, Simulation) aren't seamless: the engine takes the
+  player through with its fade, as without the plugin (`gromms-pass-autoload-walk-in`).
+- An automatic door of a space shown behind a doorway is kept from firing
+  (`helgen-keep-street-autodoor`); the engine counts the player as near it all the same, so one
+  walked through that doorway already within ~350 units of such a door isn't sent through until
+  they step away and back. Not tried.
+- The automatic doors' hook (`AutoDoorHook`) is not run on SE 1.5.97 or AE 1.6.1170; its call
+  site is at the same offset in both.
+- A user's game (0.5.0, Maids II) hung minutes after an automatic door fired from indoors and
+  left the Mist menu open. The menu is fixed; the hang wasn't reproduced.
