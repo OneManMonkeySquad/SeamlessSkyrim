@@ -93,6 +93,45 @@
       }
     ]
   },
+  "bannered-mare-street-light-in": {
+    "note": "Inside the Bannered Mare at 13:00, clear weather, its front door (00016072) opened, standing 300 units back looking out at the market. For the street's daylight falling in through the doorway onto the entrance's floor and walls ([Portals] fStreetDoorwayLight; bridge portal_merge {streetDoorwayLight: 0} for the before). Then walk out with capture: the entrance's light must not step at the crossing.",
+    "steps": [
+      {
+        "load": "SeamlessTestRainBanneredMare"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "set gamehour to 13"
+      },
+      {
+        "console": "fw 81a"
+      },
+      {
+        "console": "setini \"fAutoVanityModeDelay:Camera\" 100000"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "activate": "00016072"
+      },
+      {
+        "move": [
+          -128,
+          -850,
+          68
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 10
+      }
+    ]
+  },
   "bannered-mare-street-sun-se": {
     "note": "SE 1.5.97 MO2 game (native backend, the 1.5.97 profile's save). Inside the Bannered Mare at 17:30, clear weather, looking out of the door at the market. Was: the street through the doorway in flat light, no shadows (the well and the man beside it without the long shadows they have outside). Now: shadows as outside.",
     "steps": [

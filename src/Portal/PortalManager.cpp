@@ -2517,6 +2517,8 @@ namespace Portal::Manager
 			wchar_t buffer[32]{};
 			::GetPrivateProfileStringW(L"Portals", L"fDoorwayLight", L"4", buffer, static_cast<DWORD>(std::size(buffer)), ini.c_str());
 			SetDoorwayLight(std::wcstof(buffer, nullptr));
+			::GetPrivateProfileStringW(L"Portals", L"fStreetDoorwayLight", L"8", buffer, static_cast<DWORD>(std::size(buffer)), ini.c_str());
+			SetStreetDoorwayLight(std::wcstof(buffer, nullptr));
 		}
 		Portal::RemoteCell::slowLoadMs = static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iSlowLoadMs", 0, ini.c_str()));
 		// Diagnostics: RemoteCell::debugSkip from the start (the bridge's portal_debug sets it later).
@@ -3384,6 +3386,9 @@ namespace Portal::Manager
 		// not at all). 1 is the light as measured, which the tone map leaves all but black where a dim
 		// room meets a bright one: the doorway's sides stayed dark against the bright hall in it.
 		float doorwayLight = 4.0f;
+		// How strongly the street lights a room through its open doorway ([Portals] fStreetDoorwayLight;
+		// 0: not at all), against the outdoor ambient on a wall facing the street.
+		float streetDoorwayLight = 8.0f;
 
 		// Seen from the street, how far a room is drawn as an eye used to the street sees it rather
 		// than as from inside: 0 within a few steps of its doorway, where walking in has to find the
@@ -3455,6 +3460,11 @@ namespace Portal::Manager
 	void SetDoorwayLight(float a_scale)
 	{
 		doorwayLight = a_scale;
+	}
+
+	void SetStreetDoorwayLight(float a_scale)
+	{
+		streetDoorwayLight = a_scale;
 	}
 
 	void SetMergeInteriors(bool a_on)
@@ -4193,6 +4203,23 @@ namespace Portal::Manager
 					// (Snapshot::SpaceLight), so the same light falls the same way whichever room the
 					// player is in, and walking through changes nothing.
 					std::array<float, 3> host{};
+					// Near the doorway, the street's light falls into the room, on either side of it:
+					// lit by its own lights alone, the room's entrance lay dim and warm against the bright
+					// street, from inside and from the steps. The same light from both sides, so walking
+					// through changes nothing; from across the street the street eye's light above takes
+					// over. The outdoor ambient on a wall facing the street rather than the measured
+					// view, which differs between looking out through the doorway and the street all
+					// round.
+					if (!indoors && streetDoorwayLight > 0.0f) {
+						const auto outward = street ? mapping.toLinked.rotate * mapping.inward : mapping.inward * -1.0f;
+						if (const auto ambient = Render::OutdoorAmbient(outward)) {
+							const float strength = SwingEase(swung, a_room.swing, a_room.opening) * streetDoorwayLight * (1.0f - away);
+							auto&       into = street ? host : daylight;
+							into[0] += ambient->red * strength;
+							into[1] += ambient->green * strength;
+							into[2] += ambient->blue * strength;
+						}
+					}
 					if (indoors && doorwayLight > 0.0f) {
 						const float open = SwingEase(swung, a_room.swing, a_room.opening) * doorwayLight;
 						const auto  hereLight = Portal::Snapshot::SpaceLight(RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetFormID());
@@ -4206,7 +4233,7 @@ namespace Portal::Manager
 					a_room.lightOut = host;
 					::Render::Backend::SetMergedDaylight(a_slot, daylight.data());
 					if (primary) {
-						::Render::Backend::SetHostDaylight(indoors ? host.data() : nullptr);
+						::Render::Backend::SetHostDaylight(indoors || street ? host.data() : nullptr);
 					}
 				}
 				auto lighting = a_room.lighting;

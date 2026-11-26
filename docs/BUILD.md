@@ -56,6 +56,12 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   A `cp` into the game's Data folder writes through Vortex's hard links into whichever mod owns
   the file, which is how the fork's files once ended up in the stock mod.
 - `-ClearShaderCache` after a change to a `Common/*.hlsli` (see below).
+- On this machine the mod is the release installed through Vortex, `SeamlessSkyrim 199801 0.3.0
+  2026-11-22T15-32Z xDLPwUPH6`: pass it as `-ModName`. Builds only write into files already
+  deployed, so a file the fork changed since that release never reaches the game until this script
+  adds it and Vortex deploys. Missing `IBL\IBL.hlsli` (2026-11-26): the fork's `Lighting.hlsl` calls
+  its `GetStreetDiffuseIBL`, the shader failed to compile against the stock one, and Community
+  Shaders drew with the game's own shader: every doorway dark, from inside and outside.
 - Vortex shows the version as `?`. A folder it finds in its staging folder gets only a name and
   an install time (`refreshMods` in Vortex's code); version, author and so on come from Nexus
   metadata of the downloaded archive, and no file in the mod folder supplies them. Don't name

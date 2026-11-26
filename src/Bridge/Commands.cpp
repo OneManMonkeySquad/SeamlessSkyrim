@@ -988,6 +988,9 @@ namespace Bridge
 				 if (a.contains("doorwayLight")) {
 					 Portal::Manager::SetDoorwayLight(a.at("doorwayLight").get<float>());
 				 }
+				 if (a.contains("streetDoorwayLight")) {
+					 Portal::Manager::SetStreetDoorwayLight(a.at("streetDoorwayLight").get<float>());
+				 }
 				 if (a.contains("interiors")) {
 					 Portal::Manager::SetMergeInteriors(a.at("interiors").get<bool>());
 				 }

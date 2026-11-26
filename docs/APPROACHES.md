@@ -223,6 +223,13 @@ The game's own renderer draws the view out at full quality.
   and the engine's sun shadow light gets a directional light of its own pointed at the outdoor
   sun. Its shadows fall on the street only; the room keeps its own unshadowed directional light.
 - **Fog:** the street's own fog.
+- **Light through the doorway:** the street lights the room through it (`SetHostDaylight`): the
+  outdoor ambient on a wall facing the street, times `[Portals] fStreetDoorwayLight` (8; at 1-4 it
+  didn't show in the Bannered Mare at noon, at 24 the whole hall was evenly bright), as an area
+  light the doorway's shape, unoccluded and unshadowed. Seen from the street within a few steps of
+  the doorway the room gets the same (`SetMergedDaylight`), so walking through changes nothing.
+  Not the measured view as between interiors: looking out through the doorway and the street all
+  round measure differently, and the light would step at the crossing. Fork only.
 - **Rain and snow:** the engine's precipitation update runs as outdoors while the street is
   merged (`PrecipitationUpdateHook`); the fork's particle shader keeps the rain to the street's
   side of the doorway and lights it with the street's light. Community Shaders fork only.

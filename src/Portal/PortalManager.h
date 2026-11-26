@@ -108,6 +108,9 @@ namespace Portal::Manager
 	// [Portals] fDoorwayLight: how strongly two interiors joined by an open door light each other
 	// through it (1: the light as measured, 0: not at all).
 	void SetDoorwayLight(float a_scale);
+	// [Portals] fStreetDoorwayLight: how strongly the street lights a room through its open doorway,
+	// seen from inside or from close by outside (1: the outdoor ambient on a wall facing the street).
+	void SetStreetDoorwayLight(float a_scale);
 	// [Portals] bMergeInteriors, for A/B comparisons: off, a room behind a door between two interiors
 	// is drawn by the portal pass.
 	void SetMergeInteriors(bool a_on);
