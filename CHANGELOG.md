@@ -1,10 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
-- **Runs on Skyrim AE 1.6.353 (SKSE 2.1.5), which refused to load the plugin.**
+### Support
+
+- **Bottled Shaders 2.0.3 and Community Shaders 2.0.0-rc.2: the installer offers a patch for
+  each next to the one for Community Shaders 1.9.1, and in MO2 picks the one that fits the
+  installed release.** It no longer offers the Community Shaders patch to Bottled Shaders users.
+- **Runs on Skyrim AE 1.6.353 (SKSE 2.1.5), which refused to load the plugin.** A doorway's
+  picture there shows in its doorway instead of floating beside it.
+- The in-game menu is in French, German, Italian, Spanish, Polish, Russian, Japanese and Chinese
+  when the game is. Other languages: see "Translating the in-game menu" in the README. A
+  translation with a mistake in a text leaves that text in English instead of crashing the menu.
+
+### Doors
+
+- **A room seen through a door from another interior looks as it does from inside, its tone
+  blends across the doorway, and the two rooms light each other through it.**
+- A seamless door's prompt says "Open Door" and "Close Door" instead of naming where it leads,
+  and changes as soon as the door is used.
+- The street seen from inside a building is lit by the sky as outside, instead of darker and less
+  blue until walked out into.
+- Fires and other particles in a room seen from the street burn and move instead of standing
+  still or missing.
 - A door set to always open stands open even before its doorway has a picture, showing an
   almost black doorway until the room behind has loaded.
+
+### City gates
+
+- **Walking out through a city gate takes the player out, instead of stopping them short of the
+  gate or sending them straight back in.**
+- Running back into a city right after walking out of its gate takes the player into the city,
+  instead of onto the land mounds of its low-detail copy outside or through a loading screen.
+- Walking behind or above a gate's opening, in line with it, no longer takes the player through
+  the gate with a loading screen.
+
+### Fixes
+
+- People in a room or street walked into stay solid instead of fading in after the crossing.
+- With frame generation on, walking through a doorway no longer shows one smeared frame seen
+  from another place.
+- Walking out of a shop no longer flashes the shop door's prompt for a frame.
+- With ENB, the city seen through its gate has clean shadows instead of faint lines of the
+  outside's low-detail city printed over them.
+- Without Community Shaders:
+  - looking at Whiterun's gate from outside no longer crashes the game;
+  - the street seen from inside a building and the city seen through its gate have their sun
+    shadows instead of lying in flat light, and those shadows no longer flicker;
+  - bushes, grass and leaves seen through a gate or in a doorway's picture have their cut-out
+    shapes instead of showing as solid cards;
+  - a room seen through its doorway no longer loses random shapes for a frame.
 
 ## 0.6.1
 

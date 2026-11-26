@@ -5,15 +5,18 @@ doorway, and the player walks through without a loading screen.
 
 https://www.nexusmods.com/skyrimspecialedition/mods/199801
 
-With Community Shaders it needs a patched Community Shaders 1.9.1, whose source is at
-https://github.com/OneManMonkeySquad/CommunityShaders-Seamless (branch `seamless-portal`).
+With Community Shaders or Bottled Shaders it needs a patched build of that mod, which the
+installer offers for Community Shaders 1.9.1 and 2.0.0-rc.2 and Bottled Shaders 2.0.3. Their
+source is at https://github.com/OneManMonkeySquad/CommunityShaders-Seamless, branches
+`seamless-portal`, `seamless-portal-2.0` and `seamless-portal-bs-2.0`.
 
 Building: `docs/BUILD.md`.
 
 ## Compatibility
 Faster Objects - Compatible, recommended
 Load Screens Hider - Compatible, recommended
-Community Shaders - Compatible
+Community Shaders 1.9.1, 2.0.0-rc.2 - Compatible, with the patch from the installer
+Bottled Shaders 2.0.3 - Compatible, with the patch from the installer
 FSMP - Faster HDT-SMP - Compatible
 Precision - Compatible
 Faster Loadscreens - Compatible
@@ -37,4 +40,4 @@ The plugin is built with code under other licenses, each kept with that code: Co
 (GPL-3.0-or-later with exceptions, parts MIT and BSD) and SKSE Menu Framework (MIT) in `extern/`,
 and through vcpkg DirectXMath, DirectXTK, fmt, nlohmann/json, spdlog (MIT), rapidcsv and xbyak
 (BSD-3-Clause). The release archive's `THIRD-PARTY-NOTICES.txt` holds all their notices, and
-those of the libraries in the patched Community Shaders.
+those of the libraries in the patched Community Shaders and Bottled Shaders.
