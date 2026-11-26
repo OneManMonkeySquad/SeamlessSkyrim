@@ -69,6 +69,9 @@ namespace Render::Backend
 	void               SetGatePassage(float a_depth);
 	// The street merged into an interior gets the sun's shadows.
 	void SetInteriorSun(bool a_on);
+	// The street merged into the interior: its worldspace (nullptr: none) and its placement there,
+	// for Community Shaders 2.0's Physical Sky to draw its sky and distance as outdoors.
+	void SetStreetSky(RE::TESWorldSpace* a_worldspace, const RE::NiTransform& a_toInterior);
 	// The player walked out of a doorway: lighting that builds up over time is settled at once.
 	void SettleSkylighting();
 	// The camera was carried through a doorway into the other space for this frame.

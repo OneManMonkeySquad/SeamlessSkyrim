@@ -10,7 +10,7 @@ facts are in ENGINE.md.
 | Game | `E:\SteamLibrary\steamapps\common\Skyrim Special Edition` |
 | Plugin log | `Documents\My Games\Skyrim Special Edition\SKSE\SeamlessSkyrim.log` |
 | Community Shaders log | same folder, `CommunityShaders.log` (shader compile errors land here) |
-| Crash logs | same folder, `Crashlogs\*.log` (trainwreck); `re_lookup` turns a `SkyrimSE.exe+offset` into an ID |
+| Crash logs | same folder, `Crashlogs\*.log` (trainwreck); `re_lookup` turns a `SkyrimSE.exe+offset` into an ID. On AE 1.7.104 a crash (a null pointer in Community Shaders 2.0, 2026-11-26) left none: the game just vanished; bisect with logging, flushed (`spdlog::default_logger()->flush()`) |
 | Plugin settings | `<game>\Data\SKSE\Plugins\SeamlessSkyrim.ini` |
 | Load order | `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt` |
 | Community Shaders fork | `E:\projects\CommunityShaders-Seamless`, branch `seamless-portal` (COMMUNITY-SHADERS-PATCH.md) |

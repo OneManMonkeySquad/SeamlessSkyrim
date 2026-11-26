@@ -237,6 +237,13 @@ Open bugs and things not tried. A fixed one comes out.
   detected" and installs nothing. Its DLL still exports the fork's functions, so SeamlessSkyrim
   picks the Community Shaders backend and the doorways are drawn by no one. It should fall back to
   the native backend then.
+- Community Shaders 2.0, rain: in the storm save (`bannered-mare-rain-look-out`, `sw 0010A241`) no
+  rain showed, through the Bannered Mare's doorway nor outside, also with the portals off and Rain
+  Refraction off. The precipitation shape is there (density 8, not culled), its emitter reports 0
+  particles. Not compared with stock 2.0 rc.2.
+- Community Shaders 2.0, the street's Physical Sky seen from indoors: no lightning (Physical Sky
+  keeps it off in interiors); the street's own light is the weather's colour, not Physical Sky's sun
+  as outdoors; the medium's height fog and scene settings resolve from the interior's layers.
 
 ## Other
 

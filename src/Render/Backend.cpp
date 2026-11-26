@@ -35,6 +35,7 @@ namespace
 		void (*endPass)() = nullptr;
 		bool (*outdoorSunDirection)(float, const float*, float*) = nullptr;
 		void (*gameLightColor)(const RE::NiLight*, float*) = nullptr;
+		void (*setStreetSky)(RE::TESWorldSpace*, const float*) = nullptr;
 	} fork;
 
 	template <class T>
@@ -65,6 +66,7 @@ namespace
 		Find(a_module, "SeamlessPortal_EndPass", fork.endPass);
 		Find(a_module, "SeamlessPortal_OutdoorSunDirection", fork.outdoorSunDirection);
 		Find(a_module, "SeamlessPortal_GameLightColor", fork.gameLightColor);
+		Find(a_module, "SeamlessPortal_SetStreetSky", fork.setStreetSky);
 	}
 
 	std::string ReadChoice()
@@ -238,6 +240,22 @@ namespace Render::Backend
 			fork.setGatePassage(a_depth);
 		} else if (kind == Kind::kNative) {
 			Render::Native::SetGatePassage(a_depth);
+		}
+	}
+
+	void SetStreetSky(RE::TESWorldSpace* a_worldspace, const RE::NiTransform& a_toInterior)
+	{
+		if (kind == Kind::kCommunityShaders && fork.setStreetSky) {
+			// Rows of the rotation, then interior z = street z * scale + offset.
+			float placement[11]{};
+			for (int row = 0; row < 3; ++row) {
+				for (int column = 0; column < 3; ++column) {
+					placement[row * 3 + column] = a_toInterior.rotate.entry[row][column];
+				}
+			}
+			placement[9] = a_toInterior.scale;
+			placement[10] = a_toInterior.translate.z;
+			fork.setStreetSky(a_worldspace, a_worldspace ? placement : nullptr);
 		}
 	}
 

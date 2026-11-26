@@ -80,10 +80,21 @@ Where 2.0 differs from 1.9.1, and what the port does about it:
   frame generation only, not the upscaler's history (`RequestHistoryReset` would do both).
 - `Particle.hlsl`: refractive rain (`REFRACTIVE_RAIN`, new) in the merged street is lit by the
   street's light too, without the interior's point lights.
+- Physical Sky (with View Atmosphere) draws the sky and the haze over the distance outdoors and is
+  off indoors: through the doorway the street showed the vanilla dome (the Bannered Mare's sky mode
+  2: a flat gradient) and its mountains without haze. `SeamlessPortal_SetStreetSky(TESWorldSpace*,
+  const float[11])`, sent with `SetInteriorSun` (rows of the rotation street to interior, z scale,
+  z offset; `nullptr` = none), lets `PhysicalSky::Reset` run indoors as for its own
+  `forceEnableAllInteriorCells`, with the street's worldspace (whitelist, `zBottom` moved into the
+  interior's coordinates) and the sun and moons from `SkySync::SeamlessStreetDirections` (where they
+  stand outdoors, turned into the interior). Sky Sync itself stays off indoors: it would turn and
+  recolour the interior's directional light. `LinearLighting` keeps its π directional multiplier
+  then, so the interior's light is as before. The medium (`PostWaterComposite`) then fogs the whole
+  frame, the interior's short distances included; at the Bannered Mare the room looked the same with
+  it and without. `globals::game::calendar` can be null there: `Util::Climate::GetCalendar()`.
 - Fog: the merged fog is applied on upstream's vanilla fog path in `Lighting.hlsl`, `Effect.hlsl`
-  and `ISSAOComposite.hlsl`. Not on the paths View Atmosphere and Physical Sky take
-  (`PostWaterComposite`, aerial perspective): with those on, the merged street is fogged as the
-  interior.
+  and `ISSAOComposite.hlsl`. With View Atmosphere composing (`PostWaterComposite`, also with the
+  street's Physical Sky) the street gets the medium instead, as outdoors.
 
 ## DLL
 

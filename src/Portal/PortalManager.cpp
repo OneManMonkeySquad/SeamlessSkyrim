@@ -3597,6 +3597,13 @@ namespace Portal::Manager
 			::Render::Backend::SetInteriorSun(a_on);
 		}
 
+		// And its sky and distance through the doorway as outdoors (Community Shaders' Physical Sky):
+		// the street's worldspace and how the street is placed in the interior (a_toInterior).
+		void SendStreetSky(RE::TESWorldSpace* a_worldspace, const RE::NiTransform& a_toInterior)
+		{
+			::Render::Backend::SetStreetSky(a_worldspace, a_toInterior);
+		}
+
 		// The engine's sun shadow light shares the interior's directional light, so its shadows fall
 		// the way the interior's light shines (in Belethor's: low, from the north-east). While the
 		// street is merged in, the shadow light gets a light of its own pointed like the outdoor sun.
@@ -4099,6 +4106,7 @@ namespace Portal::Manager
 			}
 			if (primary) {
 				SendInteriorSun(street);
+				SendStreetSky(street ? linked->GetWorldspace() : nullptr, mapping.toLinked.Invert());
 			}
 			// (Not when the remote cells' own update did the same this frame, still loading.)
 			if ((a_room.seconds += a_delta) < 3.0f && !a_space.FadeForced()) {
@@ -4231,6 +4239,7 @@ namespace Portal::Manager
 			if (a_slot == 0) {
 				UnmergeLOD();
 				SendInteriorSun(false);
+				SendStreetSky(nullptr, {});
 				SendMergedFog(nullptr);
 				::Render::Backend::SetFrontFog(nullptr);
 				AimSunShadow(nullptr);
