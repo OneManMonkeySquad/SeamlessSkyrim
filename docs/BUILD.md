@@ -24,7 +24,8 @@ tools\build.ps1 -CommunityShaders   # the fork's DLL too (see below)
 ```
 
 The script finds `cmake`, which isn't on `PATH` (it comes with Visual Studio), and stops before
-building when the game is running and the copy would fail.
+building when the game is running and the copy would fail. It doesn't run from the Bash tool
+(execution policy); use the PowerShell tool.
 
 - Output: `build/RelWithDebInfo/SeamlessSkyrim.dll` and `.pdb`.
 - The post-build step copies both into `<game>\Data\SKSE\Plugins` (`SKYRIM_PLUGINS_DIR` in
@@ -70,7 +71,8 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   when `SKSE\Plugins\CommunityShaders.dll` is already installed, and leaves it unselected but
   selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
   the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
-  instead of the native one. It still can't tell Community Shaders versions apart: the option's text says 1.9.1.
+  instead of the native one. It still can't tell Community Shaders versions apart: the option's
+  text says 1.9.1.
 - `LICENSE`, `SOURCE.txt` and `THIRD-PARTY-NOTICES.txt` at the archive's root, outside both
   options: the GPL text, the GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`),
   and the license of every library in both DLLs, gathered from each build tree's
@@ -96,8 +98,8 @@ existing file, which keeps the game's DLL hard link intact, and therefore also c
 mod that file belongs to: once the SeamlessSkyrim mod is deployed that's the right one, before
 it's stock Community Shaders.
 
-Shaders aren't built; the game compiles them from `<game>\Data\Shaders`. After editing one in
-`package/Shaders`, copy it over the game's file:
+Shaders aren't built; the game compiles them from `<game>\Data\Shaders`. After editing one in the
+fork's `package/Shaders`, copy it over the game's file:
 
 ```sh
 cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special Edition/Data/Shaders/"
@@ -105,9 +107,9 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
 
 - Community Shaders only notices a change to a shader's own file. After changing an include
   (`Common/*.hlsli`), delete that shader's folder under `<game>\Data\ShaderCache\` (for example
-  `Lighting`, `Utility`).
-- The lighting shaders then recompile in the background for minutes. Until they're done, the
-  patch doesn't show.
+  `Lighting`, `Utility`), or the old code keeps running.
+- The lighting pixel shaders then recompile in the background for minutes (about 10 s each,
+  queued). Until they're done, the patch doesn't show.
 - A shader that fails to compile is reported in `CommunityShaders.log` ("Failed to compile ...").
 
 ## Driving the game from an agent (tools/skyrim-mcp)
@@ -115,8 +117,6 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
 Launching and the bridge:
 - `game_launch(save=...)` starts the game with the agent bridge and loads the save straight from
   the main menu (`SEAMLESS_AGENT_LOAD`).
-- Never launch or quit while the user is playing: check `Get-Process SkyrimSE` first. A game the
-  user started has no bridge, and the plugin log says `agent mode: off`.
 - Background mode moves the game window to a second virtual desktop **once** per launch and then
   leaves it alone. `game_window_mode("show")` brings it to the front.
 - Launched games are silent (`game_audio` toggles it). The plugin mutes XAudio2 inside the game,
@@ -125,8 +125,7 @@ Launching and the bridge:
 - Changes to `server.py` only apply after the MCP server is reconnected (`/mcp` in Claude Code).
 - A tool returning text and an `Image` in a list needs `@mcp.tool(structured_output=False)`: with
   the `list[Any]` annotation, mcp 1.30 tries to serialize the `Image` and the call fails after
-  the work is done ("Unable to serialize unknown type").
-- `tools\build.ps1` doesn't run from the Bash tool (execution policy); use the PowerShell tool.
+  the work is done ("Unable to serialize unknown type"). `capture_frames` doesn't have it yet.
 
 Tests:
 - A game loaded at launch and one loaded later in the same session are not the same test (the
@@ -135,6 +134,11 @@ Tests:
 - Walking through a door: `walk_to` a position a little past the door along its inward direction.
   Aimed at a door reference in the other space, the player crosses at an angle beside the
   doorway, and the engine moved them out of the frame's collision, under Belethor's porch.
+- Routes whose quicksave is gone: `markarth-understone-walk-in-look-back`,
+  `markarth-understone-walk-out`, `riften-beggars-row-out`, `riften-beggars-row-out-early`.
+  Understone Keep from `SeamlessTestMarkarthMines`: walk out of the house, `player.moveto 16E47`,
+  then the routes' `move` and walk steps. `place_go understone-keep-front` from inside the house
+  only moves the player within the house (its cell is `Wilderness`).
 
 Scripts beside the MCP server (for loops, and commands with no MCP tool such as `shown_rooms`,
 `merged_cull`):
@@ -177,8 +181,6 @@ Test suite (`run_suite`):
   accepted ones; kept in `tools/skyrim-mcp/suite-reference/`, not in git). Look at them: the check
   can't see a wrong colour or a missing person.
 - From a script: `getattr(server.run_suite, "fn", server.run_suite)()`, as for other MCP tools.
-  The MCP tool itself currently fails like `frames_sheet` ("Unable to serialize ... Image"), after
-  running every route: use the script.
 
 Every frame of a moment (a flash on crossing, a door drawn closed once, low detail over the real
 town falls between screenshots):
@@ -188,14 +190,13 @@ town falls between screenshots):
   `{"frames": n}` starts a burst at that point of the route. An NPC carried through the portal's
   door starts an `npc` burst (60 frames).
 - NPCs walking through a door: route `bannered-mare-npcs-evening` (Whiterun at 19:48, timescale
-  60: three or four walk into the Bannered Mare within 30 s). Writing a burst out stalls the game
-  ~2.5 s, which shows in any timing taken across it. Papyrus `Actor.PathToReference` dispatched
-  through the VM (`DispatchMethodCall1`) didn't move anyone; the schedules do.
+  60: three or four walk into the Bannered Mare within 30 s). Papyrus `Actor.PathToReference`
+  dispatched through the VM (`DispatchMethodCall1`) didn't move anyone; the schedules do.
 - `capture_frames(frames, crop)` takes a burst now and returns it as one contact sheet. `crop`
   cuts to the doorway and makes the odd-frame scores more sensitive. The single frames stay in
   the burst's folder at full size.
 - `capture_frames` can fail with "Unable to serialize ... Image" after the frames are saved;
-  `frames_sheet` on the burst's name then shows them (it works now).
+  `frames_sheet` on the burst's name then shows them.
 - A door's swing: bridge `capture_frames {frames, directory}` returns at once, so call it and
   then `activate {ref}` on the door; the MCP `activate` returns too late for the start of the
   swing. It also leaves the camera turned: `camera_view {firstPerson: true}` and
@@ -203,7 +204,7 @@ town falls between screenshots):
   setting for the session (2: every door shut until used).
 - The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
   a row (a weapon drawn black for four) has to be seen.
-- Not while measuring stutter: writing a burst out stalls the game for a moment.
+- Not while measuring stutter or timing anything: writing a burst out stalls the game ~2.5 s.
 
 Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
@@ -237,10 +238,6 @@ Frame rate:
 - Route `whiterun-gate-attach` (save `SeamlessTestWhiterunGateOutside`): launched with it, the gate's
   attach queues WhiterunWorld's persistent references (log: `queued for loading`, `attach took`);
   loaded again later in the same session there is nothing to queue.
-- The `markarth-understone-*` routes' quicksave is gone. Understone Keep from
-  `SeamlessTestMarkarthMines`: walk out of the house, `player.moveto 16E47`, then the routes' `move`
-  and walk steps. `place_go understone-keep-front` from inside the house only moves the player
-  within the house (its cell is `Wilderness`).
 - `merged_cull` returns frame times (`frames`) and the main thread's time in the player view
   (`viewMs`, culling and draw submission). `{"mode": 3}` hides the merged room, which shows what it
   costs; `{"mode": 2}` puts it back.
@@ -261,7 +258,9 @@ Frame rate:
 - `move_to` across the door plane into the merged room teleports into its cell at the street's
   coordinates (the player falls in the void): load the game again.
 
-## SE 1.5.97
+## Other game versions
+
+### SE 1.5.97
 
 A second game at `E:\Oldrim-1.5.97` (SKSE 2.0.20, Address Library `version-1-5-97-0.bin`
 copied from the AE game's plugins folder, trainwreck, no Community Shaders). It shares
@@ -301,9 +300,11 @@ plugins folder, trainwreck). Same shared Documents folder.
   `versionlib` (format 2).
 - Deploy by hand like 1.5.97, into `E:\Oldrim-1.6.1170\Data\SKSE\Plugins`.
 
-Porting an address (every engine address is a `REL::RelocationID(se, ae)`; call sites inside a
-function take `REL::Relocate(seOffset, aeOffset)`, or `Hooks::Offset(se, ae, ae1799)` where AE
-before 1.7.99 differs):
+### Porting an address
+
+Every engine address is a `REL::RelocationID(se, ae)`; call sites inside a function take
+`REL::Relocate(seOffset, aeOffset)`, or `Hooks::Offset(se, ae, ae1799)` where AE before 1.7.99
+differs.
 
 - The 1.5.97 exe on disk is encrypted (Steam's DRM); its code is read from the running game:
   `python tools/se-port/dump.py <pid> build/se-port/SkyrimSE-1.5.97-mem.exe` once at the main
@@ -314,7 +315,7 @@ before 1.7.99 differs):
 - AE->SE candidates: `se_ae.csv`, `se-ae-attempted-match.csv` (save as `attempted.csv`) and
   `offsets-1-6-318-0.csv` from github.com/alandtse/skyrim_vr_address_library into
   `build/se-port`, then `tools/se-port/fullmap.py`. They covered all but 7 of ~100 IDs and were
-  right wherever checked; CommonLib's pairs differ once (77453, below).
+  right wherever checked; CommonLib's pairs differ once (77453, ENGINE.md).
 - `tools/se-port/sepair.py` (run from `tools/skyrim-mcp`): `site` finds a call in SE by its
   callee and position among the calls to it, `refs` votes an SE ID for an AE global by the
   functions referencing it, `dis` shows either side.

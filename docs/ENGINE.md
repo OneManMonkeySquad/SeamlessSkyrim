@@ -1,35 +1,7 @@
 # Engine facts
 
-Skyrim AE 1.7.104, IDs from the Address Library. These were expensive to find. Add new ones in
-the same change that needed them.
-
-## SE 1.5.97 against AE 1.7.104
-
-Found porting the plugin; each was checked in the code of both.
-
-- Mostly the same code at different offsets. Where the compiler inlined differently:
-  `BGSTerrainManager::Update` (SE 31017 / AE 31802) calls the node placement (31041 / 31828) once,
-  where AE calls it three times; SE has the placement's body (a call to 31048 / 31835 with flags
-  7 or 0x27, then three vcalls) inlined at the other two places.
-- `Renderer::SetRenderTarget` AE 77453 is SE 75646, a wrapper that passes the Renderer object
-  (ID 524907, AE 411393) and jumps to 75654. CommonLib pairs 77453 with 75654, which takes `this`
-  in rcx; AE's 77453 ignores rcx and loads 411393 itself. Either way the object a caller passes is
-  unused.
-- Player layout: the actor cull's drawn bits at +0x274 (AE +0x27C); the teleport's queue at
-  +0x640 and its valid flag at +0x682 (AE +0x650, +0x692). TES's worldspace at +0x140 (AE +0x148).
-- Same in both: fog property fields (+0x38..+0x88), task pool (vfunc 0x80, +0xE0, +0xF0), the
-  grid array (+0x10 size, +0x18 cells), ShadowSceneNode allocation 0x308, the Havok step call
-  (`call [rax+0x190]` at +0x18 of SE 18440 / 18466), the actor cull's first 19 bytes, culling
-  process vtable slots.
-- ID 19384 (SE 18972), the reference fade update, takes the reference's 3D
-  (`TESObjectREFR::Get3D2`, vfunc 0x70, at every call site), not the reference.
-
-## AE 1.6.1170 against AE 1.7.104
-
-- Same IDs (all of the plugin's exist in 1.6.1170's table); 5 of 33 hook sites at other offsets
-  (`Hooks::Offset`), the rest identical, and so are the byte patterns the plugin checks.
-- From 1.7.99 the player's runtime data sits 8 bytes later (CommonLib's
-  `RUNTIME_SSE_1_7_99`): the teleport's queue at +0x648 and valid flag at +0x68A on 1.6.1170.
+Skyrim AE 1.7.104, IDs from the Address Library; where SE 1.5.97 and AE 1.6.1170 differ is at
+the end. These were expensive to find. Add new ones in the same change that needed them.
 
 ## Cells and spaces
 
@@ -88,19 +60,64 @@ Found porting the plugin; each was checked in the code of both.
   - Walking out once, Markarth's ground statics (`MrkDocksideLand01`, temporary references of
     MarkarthMines) became persistent references of a runtime cell `FF000A96 'Wilderness'`, whose 3D
     hangs under `TES::objRoot` outdoors. Why isn't known.
+- **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
+  13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
+- **A cell read from the files and never attached** (`LoadCell`, with or without ID 19111's
+  temporary references) crashed the AI update (ID 36031 under 35600 -> 35567), also after
+  loading a game. Attached and detached again (IDs 18976, 19063, 19130) it stays kUnattached like
+  a cell walked past.
+- **A reference's 3D is a copy of a loaded one of the same model, as it is at that moment.** A
+  shape hidden with `SetAppCulled` in the first instance of a model (loading a save inside The
+  Drunken Huntsman: its own two doors) comes hidden in every instance loaded after (every Whiterun
+  dragon door of the street attached next: leaves, handles and backing), through
+  `NiObject::CreateClone` (vfunc 0x17). A collision layer too: `bhkRigidBody`'s CreateClone (ID
+  78068) builds the copy's Havok body from the original's cinfo (Warmaiden's inside door came
+  non-collidable, layer 15, while the inn's door was held walkable). The collision object's flags
+  too: Warmaiden's inner doors, loaded while the inn's (same model) were stilled for its merge
+  (`kActive` and `kSyncOnUpdate` off), came stilled, their bodies left where the inn's doors stand,
+  and couldn't be used. A leaf's turn and a shape drawn two-sided would come the same way (not
+  seen). What the portals change in a door's 3D goes
+  through `Portal::Pristine`, which makes copies as before the change.
+
+## Doors
+
 - **A door's teleport marker isn't always square to the door.** Solitude's gate, city side:
   48° off for one of the two load-door pairs standing there (00101D9D/00101D9E), 1.4° for the
   other (00037F1B/0001C386). Markarth's Smelter Overseer's House, street side: 17°. Whiterun's
   shops: 4-11°. Most doors: under 1°. The doorway mapping takes each door's facing from its panel
   and only the side from the marker (`Doors::Compute`).
-- **City gates are animated doors.** Their meshes have two leaves turned by a
-  `NiMultiTargetTransformController`, like a house door: Whiterun's `WRDoorMainGate01.nif`
-  (`FrontGateDoor06`/`08`), Riften's `RTMainGate01.nif` (`DoorL`/`DoorR`), Solitude's
-  `SGateDoor.nif` (`SGateDoorLeft`/`Right`).
+- **A load door's object bounds (OBND) are not its panel.** Its mesh also carries a box behind the
+  panel that hides the void behind a shut door (`DoorToBlack*` shapes; textured as wood beams in a
+  PBR replacer), handles, sometimes a frame or a piece of wall. Whiterun's `WRShackDoor01` is 51
+  units deep in its bounds for an 8 unit panel, Belethor's dragon door 39 for 7. The two doors of
+  a pair carry the box on opposite sides, so a mapping centred on the bounds put doorways 20-30
+  units off (hand-made "further in" corrections of about -20 were making up for it). The panel is
+  measured from the mesh (`Doors::Measure`): the leaves are the targets of the root's
+  `NiMultiTargetTransformController`; vertices come from `BSGraphics::TriShape::rawVertexData` /
+  `rawIndexData` (kept in memory for these meshes; position first, 4 floats, stride
+  `(vertexDesc & 0xF) * 4`); along the thin axis the faces are the outermost 1-unit slices
+  holding at least a quarter of the most surface facing that way, so handles hardly count.
+- **A door's model isn't always upright.** Castle Dour's doors (`SDoorJail02Load.nif`, 00025199
+  and 000223B2) are modelled lying down, y up; their references are turned 90° about x to stand
+  them up. The door code works in the model turned so its z is up (`Upright` in `DoorPair.cpp`).
+  Bridge `ref_3d` prints each node's local rotation.
 - **A door's mesh can hold the wall around its panel.** Riften's `RiftenRWDoorLoad01` (base
   0006F267, e.g. Elgrim's Elixirs) carries the stone frame filling the room's arch, wider than the
   panel; the room's own wall has an arch-shaped hole. Hiding a door means hiding its leaves (the
   animated nodes), not its whole 3D: hidden whole, the doorway was a hole into the void.
+- **What closes a doorway** (a panel behind the door hiding the void: Belethor's, from a mod; the
+  cap inside Solitude's Hall of the Dead's arch, `SMdDEntSol01.nif`) can be one shape with the
+  frame and reveals round it, so culling shapes takes the frame too. Nothing culls them: beyond the
+  door plane and seen through the doorway, the doorway mask already leaves them out per pixel.
+- **The doorway mask's plane** lies `Render::Doorway::kMargin` (5 units) beyond the door's
+  middle, so the two spaces' frames don't z-fight. A panel shut on the plane is drawn by
+  neither space: the world's shut door was cut away (the sky showed), the merged space's door
+  near shut vanished. Shut, the mask is sent from behind the panel; nearly shut with the merged
+  space's door swinging, from in front of it (`UpdateMerged`).
+- **City gates are animated doors.** Their meshes have two leaves turned by a
+  `NiMultiTargetTransformController`, like a house door: Whiterun's `WRDoorMainGate01.nif`
+  (`FrontGateDoor06`/`08`), Riften's `RTMainGate01.nif` (`DoorL`/`DoorR`), Solitude's
+  `SGateDoor.nif` (`SGateDoorLeft`/`Right`).
 - **Behind a city gate the player's own worldspace has a stand-in** for the other side, seen
   through the gateway once the gate is gone: Tamriel holds simple copies of Whiterun's and
   Riften's houses behind their gates, and Whiterun's worldspace its land beyond. Solitude's
@@ -113,15 +130,68 @@ Found porting the plugin; each was checked in the code of both.
   (`Doors::SwingAmount`), turned by the pair's own angle and towards the side they open into.
 - **A door's open and close sounds** are its base form's `TESObjectDOOR::openSound` and
   `closeSound`; `BSAudioManager::GetSoundHandle`, then `SetPosition`/`SetObjectToFollow`, `Play`.
-- **A door's model isn't always upright.** Castle Dour's doors (`SDoorJail02Load.nif`, 00025199
-  and 000223B2) are modelled lying down, y up; their references are turned 90° about x to stand
-  them up. The door code works in the model turned so its z is up (`Upright` in `DoorPair.cpp`).
-  Bridge `ref_3d` prints each node's local rotation.
-- **Land meshes** are built only when a cell is loaded into the engine's own grid (IDs 13285 and
-  13427 call it right after 19063). A remote cell needs it called itself (`RemoteCell::AttachOne`).
+- **A door's prompt:** `TESObjectDOOR::GetActivateText` (vfunc 0x4C, ID 17923) gets the door
+  reference as its second argument (CommonLib calls it the activator). It writes
+  `"<verb>\n<name>"`, with `"\n<lock word><level>"` after it for a locked door; the name is the
+  destination's for a load door, the reference's display name for any other. The HUD asks again
+  only when the crosshair update (ID 40620) sees the target change and sets
+  `playerFlags.shouldUpdateCrosshair`; setting that flag yourself makes it ask the next frame.
+- **Automatic load doors** (base door flag 2, `AutoLoadDoor01` 00031897: cave mouths, 307 of the
+  2052 load doors in Skyrim.esm and the DLCs): nobody uses them. Loading the door's 3D (ID 17934)
+  puts a `BSPlayerDistanceCheckController` on it with the callback ID 17933: with the player
+  ~350 units from the 3D it opens `Mist Menu` and `Fader Menu`, the fade's callback activates the
+  door for the player, and the arrival closes both menus (no loading screen, 0.5 s).
+  - With the activation swallowed the Mist menu stays open: the HUD and every other menu are no
+    longer drawn (only the cursor), until a game is loaded.
+  - The distance is to the 3D where it stands: the door of a space merged behind a doorway fires
+    from the player's side of it.
+  - Moved into range (`move_to`) the player isn't sent through; walking in from outside is.
+
+## Crossing: the engine's teleport
+
+- **The teleport's cost** (ID 40438, loading screen and waits skipped): 15-40 ms into an interior,
+  25-60 ms out to a street seen before, 60-70 ms out of Belethor's the first time after a load
+  (170 ms before `RemoteCell::Prewarm`).
+- **The change into an exterior** (ID 13317) sets the grid up around the arrival cell
+  (13288 -> 13428 -> 13430) and calls ID 13427 for *every* grid cell: `TESWorldSpace::LoadCell`
+  (from the plugin files if not in memory), the attach if the cell isn't in the grid yet, then
+  `GetLand()` and `LoadVertices(true, true)` on its land, which reads (ID 18748) and builds
+  (ID 18750) a land not loaded yet and leaves a built one alone. A city worldspace's cells take
+  their land from the parent's: `cellLand` is null until `GetLand()` makes it (flags 0x400 with
+  the record found, 0x40F once loaded). It also demands the world map's clouds (ID 53142 + 0x272,
+  `BSModelDB::Demand` into a global emptied indoors; the path from ID 20495, by default
+  `Meshes\Sky\SkyrimWorldMapCloudBank.nif`): ~25 ms from disk.
+  - Coming from an interior, it re-uses the grid buffered when the player went in
+    (`TES::saveGridX/Y`, +0xE0) only if every grid cell is kUnattached (ID 15951, called at
+    13317+0xF4); then it attaches the kUnattached ones and leaves attached ones alone. Otherwise it
+    sets the worldspace up anew and sleeps until the task pool's loads are done (ID 75708, 50 ms
+    at a time). Street cells handed over still attached failed that check and made the walk out
+    slower than detaching them (`GridReadyHook` accepts them).
+- **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
+- **A mod's hook in a profile isn't necessarily the mod's work.** Walking in or out of Whiterun's
+  shops (2026-11-16), ~25 ms of the teleport sat under `po3_LightPlacer` (ID 19411+0x257 ->
+  Light Placer -> ID 40466 -> ID 20039): 20039 dispatches the cell change to every mod's sink.
+  There, ZeroBountyHostilityFix called `PlayerPayCrimeGold` 78 times per cell change, and
+  PlayerPayCrimeGoldTweak re-read its INI and wrote two log lines on each call. Look below 20039
+  before blaming Light Placer.
+- **Each trip through Riften's south gate leaks about 2.5 GB of GPU textures** in the test load
+  order (private bytes 15 GB after loading, 31 GB after ten trips; crashes after many trips came
+  with the machine's memory nearly used up). Not SeamlessSkyrim's: the same with the engine's own
+  trip and its loading screen, the portal hooks not installed, and with Community Shaders, Faster
+  Textures, Engine Fixes' texture patch and 88 of the 91 SKSE plugins removed (left:
+  SeamlessSkyrim for the bridge, trainwreck, HDT-SMP; without HDT-SMP this load order crashes on
+  faces at load, ID 69192). Bridge `gpu_live` shows textures the engine still holds through
+  materials after leaving for an empty cell and `pcb`, and ones whose `NiSourceTexture` and
+  renderer texture are freed but whose D3D texture and view stay alive with no outside reference,
+  also after `ClearState` and `Flush`. Not tried: the game without SKSE.
 
 ## Simulation
 
+- **SMP hair and cloth** (hdtSMP64 / FSMP) keep their last positions after a teleport and are
+  drawn stretched from the old place to the new one; SMP resets on the loading menu closing.
+  `ResetClothPhysics` sends a loading-menu open and close to SMP's own sinks only (the sink's
+  vtable inside `hdtsmp64.dll`): sent to every sink, FasterTextures did its loading-screen work
+  on each trip.
 - **An actor's 3D is hung back into its cell every frame:** the 3D position update (ID 37995, for
   every actor in high process, on the job threads; +0x279) calls ID 19165 (cell, actor, true, ..),
   which, when the 3D's parent isn't the cell's node for actors (ID 19339), queues the move there
@@ -151,16 +221,6 @@ Found porting the plugin; each was checked in the code of both.
   `MovementMessageActivateDoor`'s idle call (the door idle hook doesn't see it), sometimes from
   more than 200 units in front of the door. After the move the AI's path goes on from the door's
   marker.
-- **Automatic load doors** (base door flag 2, `AutoLoadDoor01` 00031897: cave mouths, 307 of the
-  2052 load doors in Skyrim.esm and the DLCs): nobody uses them. Loading the door's 3D (ID 17934)
-  puts a `BSPlayerDistanceCheckController` on it with the callback ID 17933: with the player
-  ~350 units from the 3D it opens `Mist Menu` and `Fader Menu`, the fade's callback activates the
-  door for the player, and the arrival closes both menus (no loading screen, 0.5 s).
-  - With the activation swallowed the Mist menu stays open: the HUD and every other menu are no
-    longer drawn (only the cursor), until a game is loaded.
-  - The distance is to the 3D where it stands: the door of a space merged behind a doorway fires
-    from the player's side of it.
-  - Moved into range (`move_to`) the player isn't sent through; walking in from outside is.
 - **Havok:** the engine steps only the current space's world (`*ID 400440`, in the jobs
   ID 18870 / 18897), with `bhkWorld` vfunc 0x32 (arg 0).
   - Stepping a second world from the main thread, beside that job, corrupted memory: it is
@@ -180,14 +240,6 @@ Found porting the plugin; each was checked in the code of both.
 - **Conditions:** `GetInWorldspace` is ID 21475 and compares exactly. Conditions run through the
   script command table (ID 29924 + 0x691 calls the entry), so replacing the entry answers every
   condition.
-- **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
-- **A door's prompt:** `TESObjectDOOR::GetActivateText` (vfunc 0x4C, ID 17923) gets the door
-  reference as its second argument (CommonLib calls it the activator). It writes
-  `"<verb>\n<name>"`, with `"\n<lock word><level>"` after it for a locked door; the name is the
-  destination's for a load door, the reference's display name for any other. The HUD asks again
-  only when the crosshair update (ID 40620) sees the target change and sets
-  `playerFlags.shouldUpdateCrosshair`; setting that flag yourself makes it ask the next frame.
-
 - **Water:** `TESWaterSystem` (ID 400450) lists water objects (+0x20, each: +0x20 shape, +0x40
   reflection) and reflections (+0x38, each: +0x14 plane, +0x40 the material of the water it was
   made for, a plain pointer). A water joining a reflection reads that material (`AddWater`, ID
@@ -328,29 +380,11 @@ Found porting the plugin; each was checked in the code of both.
   scene for it again. The teleport (ID 40744 + 0x3D2) and every frame (ID 106337 + 0x2B) call the
   update; after a seamless trip `Travel.cpp` lets it take 32 lights at a time, nearest first, in
   the world scene and in ours (the space walked out of, attached again with its ~150 lights).
-- **The teleport's cost** (ID 40438, loading screen and waits skipped): 15-40 ms into an interior,
-  25-60 ms out to a street seen before, 60-70 ms out of Belethor's the first time after a load
-  (170 ms before `RemoteCell::Prewarm`).
-- **The change into an exterior** (ID 13317) sets the grid up around the arrival cell
-  (13288 -> 13428 -> 13430) and calls ID 13427 for *every* grid cell: `TESWorldSpace::LoadCell`
-  (from the plugin files if not in memory), the attach if the cell isn't in the grid yet, then
-  `GetLand()` and `LoadVertices(true, true)` on its land, which reads (ID 18748) and builds
-  (ID 18750) a land not loaded yet and leaves a built one alone. A city worldspace's cells take
-  their land from the parent's: `cellLand` is null until `GetLand()` makes it (flags 0x400 with
-  the record found, 0x40F once loaded). It also demands the world map's clouds (ID 53142 + 0x272,
-  `BSModelDB::Demand` into a global emptied indoors; the path from ID 20495, by default
-  `Meshes\Sky\SkyrimWorldMapCloudBank.nif`): ~25 ms from disk.
-- **A cell read from the files and never attached** (`LoadCell`, with or without ID 19111's
-  temporary references) crashed the AI update (ID 36031 under 35600 -> 35567), also after
-  loading a game. Attached and detached again (IDs 18976, 19063, 19130) it stays kUnattached like
-  a cell walked past.
 - **`ShadowSceneNode::SetPortalGraph` (ID 106385) with a different graph drops every light**
   (`RemoveAllLights`) and both queues. The engine's cell attach (ID 18976 + 0x140) calls it on
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).
   It also frees the old graph's list of occlusion shapes (`BSPortalGraph` + 0x10): before the
   skip, every remote attach left the street without its occlusion planes.
-- **A switch node's hidden child** (`NiSwitchNode`, a coin bag or mushroom picked or not) is never
-  updated: its world transform stays at the origin, and the switch node's bound takes it in.
 
 ## Culling
 
@@ -361,19 +395,6 @@ Found porting the plugin; each was checked in the code of both.
   rooms cull the shared nodes too (`RoomCullHook`): the shapes went into the main view's batches
   twice, a batch's pass list ran in a circle and the game hung in `BSBatchRenderer::RenderBatches`
   (ID 107642). While hung there the node is app-culled (`RemoteCell::Merge`).
-
-- **A reference's 3D is a copy of a loaded one of the same model, as it is at that moment.** A
-  shape hidden with `SetAppCulled` in the first instance of a model (loading a save inside The
-  Drunken Huntsman: its own two doors) comes hidden in every instance loaded after (every Whiterun
-  dragon door of the street attached next: leaves, handles and backing), through
-  `NiObject::CreateClone` (vfunc 0x17). A collision layer too: `bhkRigidBody`'s CreateClone (ID
-  78068) builds the copy's Havok body from the original's cinfo (Warmaiden's inside door came
-  non-collidable, layer 15, while the inn's door was held walkable). The collision object's flags
-  too: Warmaiden's inner doors, loaded while the inn's (same model) were stilled for its merge
-  (`kActive` and `kSyncOnUpdate` off), came stilled, their bodies left where the inn's doors stand,
-  and couldn't be used. A leaf's turn and a shape drawn two-sided would come the same way (not
-  seen). What the portals change in a door's 3D goes
-  through `Portal::Pristine`, which makes copies as before the change.
 - **The main view's cull** (ID 36643) doesn't walk the scene. It hands each loaded cell's 3D to
   jobs slot by slot, leaving out:
   - slots 0, 1 and 4;
@@ -422,17 +443,10 @@ Found porting the plugin; each was checked in the code of both.
 - **The main view's culling process** is a `BSGeometryListCullingProcess` (vtable ID 196460, the
   process in ID 415022), not a `BSCullingProcess` (vtable ID 238422): a hook on one vtable misses
   the other.
-- **The doorway mask's plane** lies `Render::Doorway::kMargin` (5 units) beyond the door's
-  middle, so the two spaces' frames don't z-fight. A panel shut on the plane is drawn by
-  neither space: the world's shut door was cut away (the sky showed), the merged space's door
-  near shut vanished. Shut, the mask is sent from behind the panel; nearly shut with the merged
-  space's door swinging, from in front of it (`UpdateMerged`).
-- **What closes a doorway** (a panel behind the door hiding the void: Belethor's, from a mod; the
-  cap inside Solitude's Hall of the Dead's arch, `SMdDEntSol01.nif`) can be one shape with the
-  frame and reveals round it, so culling shapes takes the frame too. Nothing culls them: beyond the
-  door plane and seen through the doorway, the doorway mask already leaves them out per pixel.
 - **`BSCullingProcess::AppendVirtual`** (vtable slot 0x18) is hooked by SkyrimPrecombines (Faster
   Objects); the original is ID 76556.
+- **A switch node's hidden child** (`NiSwitchNode`, a coin bag or mushroom picked or not) is never
+  updated: its world transform stays at the origin, and the switch node's bound takes it in.
 
 ## The outdoors seen from indoors
 
@@ -461,3 +475,31 @@ Found porting the plugin; each was checked in the code of both.
   - The low 12 bits of `nodeState` hold one nibble per layer: terrain 0x00F, objects 0x0F0,
     trees 0xF00. The values are 2 none, 4 shown, 8 split into the children.
   - Object layers live on the level 16, 8 and 4 nodes, so a level-32 node without one is normal.
+
+## SE 1.5.97 against AE 1.7.104
+
+Found porting the plugin; each was checked in the code of both.
+
+- Mostly the same code at different offsets. Where the compiler inlined differently:
+  `BGSTerrainManager::Update` (SE 31017 / AE 31802) calls the node placement (31041 / 31828) once,
+  where AE calls it three times; SE has the placement's body (a call to 31048 / 31835 with flags
+  7 or 0x27, then three vcalls) inlined at the other two places.
+- `Renderer::SetRenderTarget` AE 77453 is SE 75646, a wrapper that passes the Renderer object
+  (ID 524907, AE 411393) and jumps to 75654. CommonLib pairs 77453 with 75654, which takes `this`
+  in rcx; AE's 77453 ignores rcx and loads 411393 itself. Either way the object a caller passes is
+  unused.
+- Player layout: the actor cull's drawn bits at +0x274 (AE +0x27C); the teleport's queue at
+  +0x640 and its valid flag at +0x682 (AE +0x650, +0x692). TES's worldspace at +0x140 (AE +0x148).
+- Same in both: fog property fields (+0x38..+0x88), task pool (vfunc 0x80, +0xE0, +0xF0), the
+  grid array (+0x10 size, +0x18 cells), ShadowSceneNode allocation 0x308, the Havok step call
+  (`call [rax+0x190]` at +0x18 of SE 18440 / 18466), the actor cull's first 19 bytes, culling
+  process vtable slots.
+- ID 19384 (SE 18972), the reference fade update, takes the reference's 3D
+  (`TESObjectREFR::Get3D2`, vfunc 0x70, at every call site), not the reference.
+
+## AE 1.6.1170 against AE 1.7.104
+
+- Same IDs (all of the plugin's exist in 1.6.1170's table); 5 of 33 hook sites at other offsets
+  (`Hooks::Offset`), the rest identical, and so are the byte patterns the plugin checks.
+- From 1.7.99 the player's runtime data sits 8 bytes later (CommonLib's
+  `RUNTIME_SSE_1_7_99`): the teleport's queue at +0x648 and valid flag at +0x68A on 1.6.1170.

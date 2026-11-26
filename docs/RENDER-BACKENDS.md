@@ -7,7 +7,7 @@ who does that.
 
 | Backend | When | What does the work |
 |---|---|---|
-| Community Shaders (fork) | `CommunityShaders.dll` with the `SeamlessPortal_*` exports | The fork's shaders (COMMUNITY-SHADERS-PATCH.md). Unchanged from before. |
+| Community Shaders (fork) | `CommunityShaders.dll` with the `SeamlessPortal_*` exports | The fork's shaders (COMMUNITY-SHADERS-PATCH.md). |
 | Native | No Community Shaders (vanilla shaders, and ENB, which runs on them) | `src/Render/NativeMask.cpp`, `src/Render/NativeLighting.cpp` |
 | None | A stock Community Shaders (no fork exports) | Nothing: no render-merge; the portal pass is drawn unclipped, with only the sun and ambient the portal code sets. Crossing without a loading screen works. |
 
@@ -78,7 +78,6 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   the doorway were black.
 - Room merged into the street: its cell's own fog on its shapes. The SSAO composite fogs every
   pixel alike and keeps the street's (it takes the merged fog only with the player indoors).
-
 - Street merged into an interior: the sun's shadows. The frame setup (ID 36561 + 0x374) marks an
   interior's frame sunless; while the street is merged, the interior check is skipped and the
   worldspace it reads is one with a sky (as Community Shaders' Interior Sun does, which owns the
@@ -86,7 +85,6 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   street's shapes get `kShadowDir | kDefShadow` added to their technique (they come with an
   interior's, which doesn't read the mask); the interior's shapes don't, so the outdoor sun's
   shadows don't fall on them. The shadow light points at the outdoor sun (`AimSunShadow`).
-
 - Portal pass (a city through its gate): the sun's shadows. The game's lighting shader reads a
   screen-space shadow mask (PS t14, `.x` the sun) that the engine builds only for the main view.
   The portal pass gets one of its own (`NativePortalShadows.cpp`): a depth prepass first (the
@@ -97,10 +95,15 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   (and the engine's put back). Not for a doorway picture's capture. Costs a second cull and a
   depth-only draw of what the gateway shows.
 
-Not done natively: skylighting settle, Sky Sync's sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
-seen from across the street, the street's light through its doorway and the street's fog in front
-of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders. Nor, between
-two interiors, each room's light through the doorway (`SetMergedDaylight`, `SetHostDaylight`).
+Not done natively:
+- Skylighting settle and Sky Sync's sun direction (the computed one is used): Community Shaders
+  features.
+- For a room seen from across the street, the street's light through its doorway and the street's
+  fog in front of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's
+  shaders.
+- Between two interiors, each room's light through the doorway (`SetMergedDaylight`,
+  `SetHostDaylight`).
+- Water masked at a doorway, and more than one merged room (above).
 
 ## ENB
 
@@ -122,7 +125,10 @@ What stays: ENB grades interiors and exteriors with separate settings and switch
 current cell changes, i.e. at the moment of crossing. The view through a doorway is graded as the
 space the player is in.
 
-## Tested (AE 1.7.104, Whiterun: Belethor's, Bannered Mare)
+## Tested
+
+AE 1.7.104, Whiterun (Belethor's, Bannered Mare), except ENB:
+
 
 - Vanilla shaders (CommunityShaders.dll moved aside): auto picks native; street through
   Belethor's doorway and the Bannered Mare's room from the street both masked cleanly; the portal
@@ -131,6 +137,7 @@ space the player is in.
   lights), so without it everything was overexposed, with or without portals.
 - Community Shaders fork: auto picks it; looks as before.
 - CS fork with sBackend=native: mask correct both ways, the room dark (CS ignores pass lights).
-- Not tested: ENB; a stock Community Shaders; performance on a slow GPU (the cut costs a geometry
+- ENB: 0.505 on SE 1.5.97 only (above; what is open is in KNOWN-ISSUES.md).
+- Not tested: a stock Community Shaders; performance on a slow GPU (the cut costs a geometry
   shader on the shapes near the doorway and on every shape of the other space that crosses the
   doorway's edges).

@@ -1,9 +1,9 @@
 # SeamlessSkyrim
 
-An SKSE plugin for Skyrim AE 1.7.104, AE 1.6.1170 and SE 1.5.97 that shows the space behind a load door through its open
-doorway and lets the player walk through without a loading screen. Part of it is a patch to
-Community Shaders, kept in a separate repo: `E:\projects\CommunityShaders-Seamless`, branch
-`seamless-portal`.
+An SKSE plugin for Skyrim AE 1.7.104, AE 1.6.1170 and SE 1.5.97 that shows the space behind a
+load door through its open doorway and lets the player walk through without a loading screen.
+Part of it is a patch to Community Shaders, kept in a separate repo:
+`E:\projects\CommunityShaders-Seamless`, branch `seamless-portal`.
 
 ## Requirements
 
@@ -19,15 +19,18 @@ Read what the task touches, not everything.
 
 | File | Read it for |
 |---|---|
-| `docs/BUILD.md` | Building, deploying, paths on this machine, driving and testing the game |
-| `docs/ENGINE.md` | Engine facts that were expensive to find: cells, simulation, second views, light scenes, culling |
+| `docs/BUILD.md` | Building, deploying, releasing, paths on this machine, driving and testing the game, the other game versions |
+| `docs/ENGINE.md` | Engine facts that were expensive to find: cells, doors, the teleport, simulation, second views, light scenes, culling |
 | `docs/APPROACHES.md` | What is in use for which doors, and what was tried and dropped, before proposing a new approach |
-| `docs/RENDER-BACKENDS.md`, `docs/COMMUNITY-SHADERS-PATCH.md` | Rendering work |
-| `docs/KNOWN-ISSUES.md` | Open bugs |
+| `docs/RENDER-BACKENDS.md` | Rendering work: who masks and lights, with the fork, without Community Shaders, with ENB |
+| `docs/COMMUNITY-SHADERS-PATCH.md` | Work in the fork: its exports and what each change is for. Update it with every change to the fork |
+| `docs/KNOWN-ISSUES.md` | Open bugs, by kind |
+| `docs/future/` | Plans not started |
 
 When a task teaches something that cost time to find out, add it in the same change: an engine
 function's real behaviour or a render flag to `docs/ENGINE.md`, a trap in the tooling to
-`docs/BUILD.md`.
+`docs/BUILD.md`. Put it in the section it belongs to, a few lines, and take out what it makes
+wrong.
 
 ## Building
 

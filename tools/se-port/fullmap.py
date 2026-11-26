@@ -1,6 +1,6 @@
 """Writes build/se-port/ae2se-all.txt (AE id -> SE id, one pair a line) from the public tables.
 
-Inputs in build/se-port (see docs/BUILD.md, "SE 1.5.97"): se-ids.csv (addrlib.py on
+Inputs in build/se-port (see docs/BUILD.md, "Porting an address"): se-ids.csv (addrlib.py on
 version-1-5-97-0.bin), and from github.com/alandtse/skyrim_vr_address_library: se_ae.csv,
 se-ae-attempted-match.csv (saved as attempted.csv) and offsets-1-6-318-0.csv. A candidate, not a
 fact: check each pair against the code (sepair.py) before using it.

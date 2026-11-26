@@ -22,14 +22,14 @@ shuts 5 s after nobody stands in it; city gates and the doors set to stand open 
 open (`DoorUse`, `Wanted` in `PortalManager.cpp`). Until the city behind it is there, a gate
 shows the player's own worldspace through its gateway: its low-detail copy of the city, in 3D,
 under the real sky; its own leaves swing into the side the far gate's do with the portal on
-(not where the gates stand apart: there they would swing into the masked passage). Where the two gates stand more than 150 units apart (Solitude's, 370), the
-player's worldspace walls the passage up between them; the gate mask (`StandInGatePassage`)
-hides its shapes through the gateway up to just past the far gate. A gate set to
-(`[DoorFarPicture]`) shows its picture instead. Dropped: the picture for every gate. Taken from
-a fixed camera and reprojected with its depth, it never looked like the street behind (the room
-door's camera gave the city ~90 texels; one 1000 units back smeared the gatehouse from close by).
-A doorway's picture has the doorway's own shape when it is wider than three quarters of its
-height.
+(not where the gates stand apart: there they would swing into the masked passage). Where the two
+gates stand more than 150 units apart (Solitude's, 370), the player's worldspace walls the
+passage up between them; the gate mask (`StandInGatePassage`) hides its shapes through the
+gateway up to just past the far gate. A gate set to (`[DoorFarPicture]`) shows its picture
+instead. Dropped: the picture for every gate. Taken from a fixed camera and reprojected with its
+depth, it never looked like the street behind (the room door's camera gave the city ~90 texels;
+one 1000 units back smeared the gatehouse from close by). A doorway's picture has the doorway's
+own shape when it is wider than three quarters of its height.
 
 ## Overview
 
@@ -52,7 +52,7 @@ colour and depth targets, then drawn on a quad in the doorway. It follows the en
 for menu 3D (ENGINE.md), since the main pipeline didn't accept a second camera. It has its own
 light scene with the other cell's lights.
 
-Why it falls short: it isn't the game's world render.
+It isn't the game's world render. What it has, lacks and costs:
 - **No deferred lighting:** the pass runs with `inWorld == false`, so Community Shaders' deferred
   path and its effects don't run.
 - **Sun shadows of its own, soft:** an outdoor space's sun shadow light (its light scene's) is run
@@ -201,7 +201,8 @@ through the door, into our own targets.
 - **Precedent:** water reflections render the world a second time every frame, with sky and LOD.
 - **The blocker isn't cost.** Once the player is inside, the game has switched the outdoors off:
   sky and weather, the sun and its shadows, distant LOD, outdoor lights. Community Shaders also
-  takes its per-frame data from a frame's first pass.
+  takes its per-frame data from a frame's first pass. (9 found most of the outdoors survives
+  indoors or can be switched back on, and took this one's place.)
 
 ## 9. The street merged into the interior (in use)
 
@@ -221,8 +222,8 @@ The game's own renderer draws the view out at full quality.
 - **Rain and snow:** the engine's precipitation update runs as outdoors while the street is
   merged (`PrecipitationUpdateHook`); the fork's particle shader keeps the rain to the street's
   side of the doorway and lights it with the street's light. Community Shaders fork only.
-- **Doors:** both door panels are hidden. The interior's shapes standing just beyond the door
-  plane are culled (Belethor's backing panel).
+- **Doors:** both door panels are hidden. What closes the doorway behind the door (Belethor's
+  backing panel) is left to the mask (ENGINE.md, Doors).
 - **Culling:** the street hangs in the interior's statics branch, or in the door's room for an
   interior built of rooms (Riften's jail).
 - **Crossing out** is the portal's, and the street is handed over to the engine attached.

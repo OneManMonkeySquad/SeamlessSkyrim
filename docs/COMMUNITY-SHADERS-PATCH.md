@@ -4,38 +4,32 @@ With Community Shaders installed, SeamlessSkyrim needs this patched version of i
 Community Shaders, on the game's own shaders or ENB, the plugin does the work itself: see
 RENDER-BACKENDS.md). The fork lives in
 `E:\projects\CommunityShaders-Seamless`, branch `seamless-portal`, based on release **1.9.1**
-(commit `265c28f`). The whole patch is one squashed commit on that branch, so
-`git diff 265c28f..seamless-portal` is the complete patch and a rebase onto a newer release is the
-way to carry it forward.
+(commit `265c28f`). `git diff 265c28f..seamless-portal` is the complete patch, and a rebase onto
+a newer release is the way to carry it forward.
 
 Published source (GPL-3.0, required because releases ship the patched DLL):
 https://github.com/OneManMonkeySquad/CommunityShaders-Seamless, branch `seamless-portal`, which
-the local branch tracks (remote `fork`). The patch stays one commit so commit timestamps aren't
-published: fold new work into it (`git commit --amend`, or squash) and force-push.
+the local branch tracks (remote `fork`).
 
 This file says what each change is for, so it can be redone by hand if the code around
 it has moved.
 
-Originals of the installed shader files that were overwritten are kept in
-`backup/CommunityShaders-1.9.1-original/`.
-
-Installed files that differ from stock 1.9.1:
+Installed files that differ from stock 1.9.1 (`git diff --stat 265c28f..seamless-portal -- package
+features` in the fork lists them):
 
 - `Data/SKSE/Plugins/CommunityShaders.dll` (+ `.pdb`)
 - `Data/Shaders/Lighting.hlsl`
 - `Data/Shaders/Common/SharedData.hlsli`
 - `Data/Shaders/Common/Permutation.hlsli`
 - `Data/Shaders/Utility.hlsl`
+- `Data/Shaders/Effect.hlsl`
 - `Data/Shaders/ISSAOComposite.hlsl`
 - `Data/Shaders/Water.hlsl`
 - `Data/Shaders/Particle.hlsl`
+- `Data/Shaders/Skylighting/UpdateProbesCS.hlsl`
 
-Community Shaders keeps compiled shaders in `Data/ShaderCache/<shader>/` and only notices a
-change to the shader's *own* file. After changing an include (`Common/*.hlsli`), delete the cache
-folders of the shaders that include it (`Data/ShaderCache/Lighting`, `.../Utility`), or the old
-code keeps running. This cost a long debugging session once. After the cache is cleared the
-Lighting pixel shaders take minutes to compile in the background (about 10 s each, queued);
-until then the game runs without them and a test shows nothing of the patch.
+After changing an include (`Common/*.hlsli`) the shader cache must be cleared, and the shaders
+then compile for minutes: BUILD.md, "Community Shaders fork".
 
 ## DLL
 
@@ -64,6 +58,8 @@ Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = featur
 SeamlessSkyrim in turn exports functions the fork calls (if present):
 `SeamlessPortal_LightVisibility(BSGeometry*, NiLight*)`,
 `SeamlessPortal_IsMergedShape(BSGeometry*)` (does this shape belong to a merged space),
+`SeamlessPortal_IsUnmaskedShape(BSGeometry*)` (the player's shapes, drawn on both sides of a
+doorway),
 `int SeamlessPortal_MergedRoomOf(BSGeometry*)` (which merged room, 0..3, or -1; without it every
 merged shape is room 0) and `ShadowSceneNode* SeamlessPortal_MergedRoomScene(int room)` (the light
 scene that room's lights are in: rooms merged at once stand in the same place in their own
@@ -140,16 +136,24 @@ Changes by file:
 - `src/Features/TerrainShadows.cpp/.h`: `portalWorldspace`, `IsHeightMapReady(worldspace)` (see
   `SeamlessPortal_SetPortalWorldspace`).
 - `src/Features/SkySync.cpp/.h`: `OutdoorSunDirection`, Sky Sync's sun direction for a given hour
-  without a sky in exterior mode (fork commit `57fdbaa`).
+  without a sky in exterior mode.
 - `src/XSEPlugin.cpp`: the exports.
-- Interior Sun: a New Game crash fix from the first SeamlessSkyrim commit on the branch
-  (`eeed548`), unrelated to portals.
+- `src/Features/InteriorSun.cpp/.h`: `seamlessSun` (see `SeamlessPortal_SetInteriorSun`).
+  `IsSeamlessStreetShape`: the merged street's shapes keep their own sidedness in the shadow maps;
+  drawn two-sided, the walls of the houses around the room shut out the room's own lights. And a
+  New Game crash fix unrelated to portals: with neither an interior cell nor a worldspace, the
+  hook answers "no sun".
+- `src/Features/GrassOptimizations/GrassBucketStore.cpp`: a destroyed grass shape's pending
+  capture is dropped. Applied later it read the freed texture (crash in `DetectComplexGrass`):
+  with a street kept loaded while the player is indoors, grass is captured and destroyed with no
+  grass frame in between.
 
 ## Shaders
 
-- `Common/Permutation.hlsli`: `ExtraFlags::SeamlessRoomShift = 11` (bits 11-12: which merged room).
-  `ExtraFlags::SeamlessRemote = 1 << 7`, `ExtraFlags::SeamlessUnmasked = 1 << 8`
-  (same values in `State::ExtraShaderDescriptors`). `State::UpdateLightingShaderPermutation` sets
+- `Common/Permutation.hlsli`: `ExtraFlags::SeamlessRemote = 1 << 7`, `SeamlessUnmasked = 1 << 8`,
+  `SeamlessPlace = 1 << 9`, `SeamlessOutdoor = 1 << 10` (an outdoor shape seen from inside: lit by
+  the `SeamlessRemote*` light), `SeamlessRoomShift = 11` (bits 11-12: which merged room),
+  `SeamlessLightView = 1 << 13` (same values in `State::ExtraShaderDescriptors`). `State::UpdateLightingShaderPermutation` sets
   `SeamlessUnmasked` for shapes the plugin's `SeamlessPortal_IsUnmaskedShape(BSGeometry*)` names
   (the player's), and the `discard` in `Lighting.hlsl` and `Utility.hlsl` is skipped for them: the
   player walking through a doorway is drawn whole instead of being cut at the door plane.
@@ -168,7 +172,7 @@ Changes by file:
   drawn in one pass against each other: a line of sight
   passes into a room at the first doorway it goes through (from the camera's side, to a point
   beyond the door plane), and a pixel is drawn only if it belongs to the space its line of sight
-  has reached. With one room this is the old rule. Which space the camera is in comes from
+  has reached. Which space the camera is in comes from
   `SeamlessParams.z`, not from the camera's side of the door plane: behind the plane is also the
   ground beside the house, where the camera is still outdoors (the world was masked away there and
   the room drawn in its place). With the camera in room 0 only its own doorway counts, so the other
@@ -180,8 +184,9 @@ Changes by file:
   of the per-geometry `DirLightDirection` in `main` goes through the latter. For a merged shape
   with own lighting: `dirLightColor` from `SeamlessRemoteDirColor`, no world shadow
   (`GetWorldShadow`), `dirDetailedShadow = dirSoftShadow = 1` before the directional light is
-  evaluated (not while `SeamlessParams.w` is set: the merged street keeps the sun's shadows), `directionalAmbientColor` from `SeamlessRemoteAmbientFor`, `skylightingDiffuse = 1`. Then the street's light through the doorway is added to it
-  (`SeamlessRoomDaylight`, see `SeamlessPortal_SetMergedRoomDaylight`); for a shape not merged,
+  evaluated (not while `SeamlessParams.w` is set: the merged street keeps the sun's shadows),
+  `directionalAmbientColor` from `SeamlessRemoteAmbientFor`, `skylightingDiffuse = 1`. Then the
+  street's light through the doorway is added to it (`SeamlessRoomDaylight`, see `SeamlessPortal_SetMergedRoomDaylight`); for a shape not merged,
   room 0's light through its doorway (`SeamlessHostDaylight`, see `SeamlessPortal_SetHostDaylight`).
   For a merged shape (`ExtraFlags::SeamlessRemote`) the world's clustered lights are skipped in the
   LLF light loop: its strict lights (the room's own) light it alone.
@@ -202,8 +207,8 @@ Changes by file:
   set in `UpdateLightingShaderPermutation` when the depth target is a shadow map's
   (`kSHADOWMAPS`, `kSHADOWMAPS_ESRAM`, `kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM`,
   `kPRECIPITATION_OCCLUSION_MAP`). Not by the technique: the engine draws most statics' main-view
-  depth with `RenderShadowmap` (0xC000) too, and those kept their depth through a doorway. The position is rebuilt from
-  `SV_Position` with `CameraViewProjInverse`; **do not add vertex shader outputs here**: it shifts
+  depth with `RenderShadowmap` (0xC000) too, and those kept their depth through a doorway. The
+  position is rebuilt from `SV_Position` with `CameraViewProjInverse`; **do not add vertex shader outputs here**: it shifts
   the vertex shader's rounding, the lighting pass (depth test EQUAL) z-fights with the prepass
   and the ground turns white and scribbled.
 - `Utility.hlsl` vertex shader: the paraboloid shadow-map projection (`RENDER_SHADOWMAP_PB`) is
@@ -219,14 +224,15 @@ Changes by file:
 - `Lighting.hlsl`: with `SeamlessParams.w` set (sun shadows on for the merged street), shapes that
   aren't the merged street get `dirSoftShadow = dirDetailedShadow = 1`: the interior keeps its
   unshadowed directional light.
-
+- `Effect.hlsl`: effects of the street merged into an interior (`SeamlessRemote` or
+  `SeamlessOutdoor`) are fogged with the merged fog (`SeamlessRemoteFog*`), as in `Lighting.hlsl`.
+  The interior's fog turned the mist banks in front of the distant mountains black. Not masked.
 - `Water.hlsl` pixel shader: the same `discard` (`SeamlessDoorClips`, the water's space from its
   permutation), by the water's own position (`WPosition`, the stencil variant's `WorldPosition`):
   the vertex shader pushes the water's depth (`heightMult`, `HorizonFix`), so the one rebuilt
   from `SV_Position` isn't where the water is. The street's canal, a plane running under the
   houses, showed in the Ratway's doorway over the steps down behind it. SeamlessSkyrim places
   water in room 0 while the street is merged into an interior (the water then is the street's).
-
 - `Particle.hlsl` pixel shader, precipitation (`ENVCUBE`) only: the same `discard`
   (`SeamlessDoorClips`, by `SeamlessPixelPosition`), its space from its permutation, which the
   particle shader's `SetupGeometry` hook in `src/Hooks.cpp` now sets
@@ -234,8 +240,8 @@ Changes by file:
   while the street is merged into an interior: they fall only beyond the doorway. Seen from the
   street they are the world's and don't fall in the merged rooms. Through a city gate (room 0
   with `SeamlessParams.y`) they aren't masked: SeamlessSkyrim draws them into the gate's picture
-  too, and where the picture has no far side the world's sky, rain included, shows through. Rain in room 0 with lighting is
-  lit by `SeamlessRemoteDirColor` and `SeamlessRemoteAmbientFor`, without IBL and the clustered
+  too, and where the picture has no far side the world's sky, rain included, shows through. Rain
+  in room 0 with lighting is lit by `SeamlessRemoteDirColor` and `SeamlessRemoteAmbientFor`, without IBL and the clustered
   lights (the interior's): lit as the interior it was dark.
 
-Not patched yet (so not masked in a merge): grass, effects and other particles, distant trees, sky.
+Not masked in a merge: grass, effects and particles other than rain and snow, distant trees, sky.

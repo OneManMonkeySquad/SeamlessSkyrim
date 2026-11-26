@@ -372,7 +372,7 @@ namespace
 			return nullptr;
 		}
 		// Nor is an automatic door (a cave mouth): nobody uses it, the engine sends the player
-		// through from a distance (ENGINE.md, Simulation). Taken for a seamless door, its activation
+		// through from a distance (ENGINE.md, Doors). Taken for a seamless door, its activation
 		// was swallowed as a use, and the Mist menu the engine had opened for the trip stayed open
 		// over the HUD and every other menu.
 		if (base->As<RE::TESObjectDOOR>()->flags.any(RE::TESObjectDOOR::Flag::kAutomatic)) {
@@ -2283,7 +2283,7 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
-	// An automatic door sends the player through when they come near its 3D (ENGINE.md, Simulation).
+	// An automatic door sends the player through when they come near its 3D (ENGINE.md, Doors).
 	// The 3D of a space shown behind a doorway stands where the doorway shows it: a cave mouth in
 	// the street merged into a building came within reach of the player inside, who was taken
 	// through a door of a space they weren't in. Only a door in the player's own space does that.

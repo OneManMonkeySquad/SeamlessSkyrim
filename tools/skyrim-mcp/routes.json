@@ -1133,6 +1133,39 @@
       }
     ]
   },
+  "warmaidens-street-sun-1630-se": {
+    "note": "SE 1.5.97 MO2 game with ENB (the user's save). Inside Warmaiden's at 16:30, looking out of the door at the street. Outside at that hour the street is in the shade of the houses. Was: with ENB's effects on, the street through the doorway lay in full sun (ENB off: in shade, as outside).",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "set gamehour to 16.5"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "coc WhiterunWarmaidens"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "move": [
+          -60,
+          -402,
+          64
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 8
+      }
+    ]
+  },
   "warmaidens-street-sun-se": {
     "note": "SE 1.5.97 MO2 game (native backend, the user's save). Inside Warmaiden's at 17:30, looking out of the door at the street. Was: the street through the doorway in flat light, no shadows (outside: a shadow band across the street from the house on the left). Now: the same shadows as outside. Not for AE (the save is the 1.5.97 profile's).",
     "steps": [
@@ -1261,6 +1294,73 @@
           "stop_distance": 60,
           "timeout_seconds": 15
         }
+      }
+    ]
+  },
+  "whiterun-gate-roundtrip-terrain-se": {
+    "note": "SE 1.5.97 MO2 game with ENB (effects on, EnableTerrainBlending=true). Into an interior (coc Warmaiden's), load the save outside Whiterun's gate, run into the city and back out through the gate, stand by the stables looking at the gate. Was: the ground (landscape) a flat grey-brown, untextured. Not without the interior visit just before the load, not with the engine's own trip through the gate, not with the portal pass skipped (portal_switches skipPortalPass), not with ENB's terrain blending off or its effects toggled off.",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "coc WhiterunWarmaidens"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "set gamehour to 16.5"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 40,
+          "timeout_seconds": 60
+        }
+      },
+      {
+        "wait": 4
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 40,
+          "timeout_seconds": 40
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "move": [
+          17519.6,
+          -7883.2,
+          -3745.5
+        ]
+      },
+      {
+        "heading": 70.5
+      },
+      {
+        "wait": 6
       }
     ]
   },

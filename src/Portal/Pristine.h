@@ -1,7 +1,7 @@
 #pragma once
 
 // The engine builds a reference's 3D as a copy of an already loaded one of the same model, all of
-// it as it is at that moment (ENGINE.md, Culling). What the portals change in a 3D (door shapes
+// it as it is at that moment (ENGINE.md, Cells and spaces). What the portals change in a 3D (door shapes
 // hidden, leaves swung, shapes drawn from both sides, collision made walk-through or still) came
 // along into every reference of that model loaded after, for good, since whoever changes one puts
 // back only what it changed on that one: loading a save inside The Drunken Huntsman hid the leaves
