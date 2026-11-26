@@ -1,5 +1,7 @@
 #pragma once
 
+struct ID3D11ShaderResourceView;
+
 // The native backend (see Render/Backend.h): seamless rendering with the game's own shaders.
 namespace Render::Native
 {
@@ -14,6 +16,26 @@ namespace Render::Native
 	void SetPortalClip(const float* a_plane);
 	void SetPortalPass(bool a_active);
 	[[nodiscard]] json DescribeMask();
+
+	// NativePortalShadows.cpp: the sun's shadows of the portal pass, as a shadow mask of its own built
+	// from its depth (after its depth prepass) and the shadow maps drawn for its camera.
+	struct PortalShadowInputs
+	{
+		ID3D11ShaderResourceView*         depth;
+		ID3D11ShaderResourceView*         shadowMaps;
+		RE::BSShadowDirectionalLight*     light;
+		const RE::BSGraphics::ViewData*   view;       // the renderer's camera data the pass drew with
+		RE::NiPoint3                      posAdjust;  // ... and its camera-relative origin
+		float                             pictureWidth;
+		float                             pictureHeight;
+		std::uint32_t                     targetWidth;
+		std::uint32_t                     targetHeight;
+		float                             bias;
+	};
+	void BuildPortalShadowMask(const PortalShadowInputs& a_in);
+	void EndPortalShadowMask();
+	// The mask the portal pass's lighting draws read (PS t14) while it is drawn; nullptr: none.
+	[[nodiscard]] ID3D11ShaderResourceView* PortalShadowMask();
 
 	// NativeLighting.cpp: the light of the merged space and of the portal pass.
 	void SetMergedLighting(const float* a_lighting);

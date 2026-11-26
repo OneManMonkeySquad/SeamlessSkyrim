@@ -59,7 +59,8 @@ Why it falls short: it isn't the game's world render.
   through the engine's sequence with the portal camera into shadow maps of ours
   (`RenderPortalShadows`), and the fork lights the pass with their soft copy (Volumetric Shadows'
   VSM, 512 texels a cascade), not the world's crisp shadow mask; terrain and cloud shadows as
-  outdoors (the other worldspace's heightmap). Community Shaders fork only.
+  outdoors (the other worldspace's heightmap). With the game's own shaders the same maps make a
+  shadow mask of the portal's own, from a depth prepass of its own (RENDER-BACKENDS.md).
 - **A doorway picture's capture frame** draws the pass with the capture camera into the hidden
   target set, so the doorway shows the previous frame's picture that frame. A picture that never
   came out the size asked for was retaken every other frame for good (Whiterun's gate: the view

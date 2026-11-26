@@ -74,6 +74,8 @@ namespace
 	// Ref-counted owner: the culling context also holds a reference, and when it drops it the
 	// accumulator would otherwise be freed.
 	RE::NiPointer<RE::BSShaderAccumulator> portalAccumulator;
+	// The portal pass's depth prepass (game's own shaders, sun shadows: see RenderPortal).
+	RE::NiPointer<RE::BSShaderAccumulator> portalDepthAccumulator;
 	float                                  defaultNear = 0.0f;
 
 	// The engine's targets whose table entries the portal pass takes over, with textures of its own
@@ -278,6 +280,11 @@ namespace
 			if (inPortalSubmit && a_alphaTest && ::Render::Backend::GameShaders() && a_pass && a_pass->shader &&
 				a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting) {
 				a_technique |= static_cast<std::uint32_t>(RE::BSLightingShader::TechniqueFlag::kDoAlphaTest);
+			}
+			// The portal pass with its own shadow mask (NativePortalShadows): its lighting passes read it.
+			if (inPortalSubmit && ::Render::Native::PortalShadowMask() && a_pass && a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting) {
+				using Flag = RE::BSLightingShader::TechniqueFlag;
+				a_technique |= static_cast<std::uint32_t>(Flag::kShadowDir) | static_cast<std::uint32_t>(Flag::kDefShadow);
 			}
 			// The street merged into an interior: the engine draws the sun's shadow mask indoors while
 			// it is (Native::SetStreetSun), but the street's shapes come with an interior's technique,
@@ -1605,9 +1612,11 @@ namespace
 				// Kept like the retired light scenes (LightScene::Renew): freeing those crashed, and
 				// nothing says the passes cached on shapes don't name their accumulator too.
 				retiredAccumulators.push_back(std::move(portalAccumulator));
+				retiredAccumulators.push_back(std::move(portalDepthAccumulator));
 			}
 			portalFrame = 0;
 			portalAccumulator.reset(RE::BSShaderAccumulator::Create(0x63));  // engine-wide ctor argument
+			portalDepthAccumulator.reset(RE::BSShaderAccumulator::Create(0x63));
 			generation = a_portal.generation;
 		}
 		const auto mapping = Portal::Doors::Compute(a_portal);
@@ -1745,6 +1754,11 @@ namespace
 		if (a_portal.cell->IsInteriorCell()) {
 			context.cullMode = RE::BSCullingProcess::BSCPCullingType::kIgnoreMultiBounds;
 		}
+		// With the game's own shaders the sun's shadows need a mask of the portal's own
+		// (NativePortalShadows), built from its depth: a depth prepass of its own first, as the
+		// engine draws the main view's (Main::RenderDepth). Not for a doorway picture's capture.
+		const bool nativeShadows = lightDebug.communityShaders && lightDebug.sunShadows && !a_portal.cell->IsInteriorCell() && !capturing &&
+		                           ::Render::Backend::Current() == ::Render::Backend::Kind::kNative;
 		{
 			// NPCs of a remote interior keep NiAVObject::kNotVisible on their 3D root, and the cull
 			// skips them: in the portal the room was empty. Outdoors the flag was clear.
@@ -1752,6 +1766,23 @@ namespace
 			{
 				const Perf::Scope scope("portal cull");
 				RE::BSCullingProcess::Process(context);
+			}
+			if (nativeShadows) {
+				// Culled again into an accumulator in the engine's depth mode (the main view's prepass
+				// accumulator's, ID 415008), which makes the passes the engine's prepass draws.
+				static REL::Relocation<RE::BSShaderAccumulator**> engineDepth{ REL::RelocationID(528063, 415008) };
+				auto& depthData = portalDepthAccumulator->GetRuntimeData();
+				depthData.renderMode = (*engineDepth.get())->GetRuntimeData().renderMode;
+				depthData.activeShadowSceneNode = root;
+				depthData.eyePosition = portalCamera->world.translate;
+				ResetAccumulator(portalDepthAccumulator.get());
+				RE::BSCullingProcess::CullingContext depthContext;
+				depthContext.accumulator.reset(portalDepthAccumulator.get());
+				depthContext.camera.reset(cullCamera.get());
+				depthContext.scene.reset(root);
+				depthContext.cullMode = context.cullMode;
+				const Perf::Scope scope("portal depth cull");
+				RE::BSCullingProcess::Process(depthContext);
 			}
 			if (capturing) {
 				ShowActorsAgain(actors);
@@ -1764,7 +1795,7 @@ namespace
 		const auto background = ApplyRemoteLighting(root, a_portal.cell);
 		// Diagnostics switch: without the render backend the portal is lit and clipped as the world.
 		const bool useBackend = lightDebug.communityShaders;
-		const bool shadowed = useBackend && lightDebug.sunShadows && !a_portal.cell->IsInteriorCell() && ::Render::Backend::CanShadowPortal();
+		const bool shadowed = nativeShadows || (useBackend && lightDebug.sunShadows && !a_portal.cell->IsInteriorCell() && ::Render::Backend::CanShadowPortal());
 		if (shadowed) {
 			const Perf::Scope scope("portal shadows");
 			Perf::GpuBegin("gpu portal shadows");
@@ -1878,14 +1909,43 @@ namespace
 			shadowState.rasterStateScissorMode = 1;
 			shadowState.stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RASTER_CULL_MODE);
 		}
+		const auto submitFlags = atRenderScale ? LiveRenderFlags() : kRenderFlags;
+		if (nativeShadows) {
+			{
+				const Perf::Scope scope("portal depth submit");
+				inPortalSubmit = true;
+				RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalDepthAccumulator.get(), submitFlags | 0x20);  // kDepthPrepass
+				inPortalSubmit = false;
+				drawnThisSubmit.clear();
+			}
+			auto*      light = root->GetRuntimeData().sunShadowDirLight;
+			const auto desc = DescOf(DrawingTargets().color.texture);
+			const auto view = shadowState.cameraData.getEye();
+			// The bias the shadow maps are compared with, in their depth units.
+			constexpr float kShadowBias = 0.0003f;
+			::Render::Native::BuildPortalShadowMask({ reinterpret_cast<ID3D11ShaderResourceView*>(DrawingTargets().depth.depthSRV),
+				reinterpret_cast<ID3D11ShaderResourceView*>(portalShadowMaps[0].depthSRV), light, &view, shadowState.posAdjust.getEye(), DrawingTargets().pictureWidth,
+				DrawingTargets().pictureHeight, desc.Width, desc.Height, kShadowBias });
+			// The colour pass then draws on cleared depth, as without the prepass, over a sky drawn
+			// again: tested against the prepass's depth, faces the lighting shader's vertex shader put
+			// a hair further away failed the test, and the prepass's own colour showed there (white
+			// specks along the bridges' shadows behind Whiterun's gate).
+			d3dContext->ClearDepthStencilView(reinterpret_cast<ID3D11DepthStencilView*>(DrawingTargets().depth.views[0]), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+			if (background) {
+				if (auto* skyTarget = reinterpret_cast<ID3D11RenderTargetView*>(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[kColorTarget].RTV)) {
+					DrawSky(d3dContext, skyTarget, portalCamera.get(), *background, DrawingTargets().pictureWidth, DrawingTargets().pictureHeight);
+				}
+			}
+		}
 		inPortalSubmit = true;
 		{
 			const Perf::Scope scope("portal submit");
 			Perf::GpuBegin("gpu portal submit");
-			RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), atRenderScale ? LiveRenderFlags() : kRenderFlags);
+			RE::BSGraphics::Renderer::SubmitAccumulator(portalCamera.get(), portalAccumulator.get(), submitFlags);
 			Perf::GpuEnd("gpu portal submit");
 		}
 		inPortalSubmit = false;
+		::Render::Native::EndPortalShadowMask();
 		Perf::AddCount("portal passes", static_cast<double>(drawnThisSubmit.size()));
 		// Not for the main view's rain drawn into the picture next (its own pass, see
 		// DrawMainPrecipitation); EndPortalPass puts the world's shadows back.
@@ -1942,6 +2002,7 @@ namespace
 		*dirtyStates |= 0x4;
 		RestoreAmbient(mainAmbient);
 		ResetAccumulator(portalAccumulator.get());
+		ResetAccumulator(portalDepthAccumulator.get());
 		linked3D->SetAppCulled(wasCulled);
 		for (auto& [object, culled] : besideCulled) {
 			object->SetAppCulled(culled);

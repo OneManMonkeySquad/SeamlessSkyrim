@@ -305,6 +305,10 @@ namespace
 		++stats.passesCut;
 	}
 
+	// The lighting draw in hand is the portal pass's: it reads the portal's own shadow mask
+	// (NativePortalShadows) in place of the main view's.
+	bool portalLightingDraw = false;
+
 	void BeginPass(const RE::BSRenderPass* a_pass)
 	{
 		job.active = false;
@@ -650,6 +654,29 @@ namespace
 	template <class F>
 	void Masked(ID3D11DeviceContext* a_context, F&& a_draw)
 	{
+		// Bound right at the draw (the engine binds its own mask while setting the pass up) and put
+		// back right after, so the engine's record of what is bound stays true.
+		auto* mask = portalLightingDraw ? Render::Native::PortalShadowMask() : nullptr;
+		ID3D11ShaderResourceView* engineMask = nullptr;
+		if (mask) {
+			a_context->PSGetShaderResources(14, 1, &engineMask);
+			a_context->PSSetShaderResources(14, 1, &mask);
+		}
+		struct Restore
+		{
+			ID3D11DeviceContext*       context;
+			ID3D11ShaderResourceView*& engineMask;
+			bool                       on;
+			~Restore()
+			{
+				if (on) {
+					context->PSSetShaderResources(14, 1, &engineMask);
+					if (engineMask) {
+						engineMask->Release();
+					}
+				}
+			}
+		} restore{ a_context, engineMask, mask != nullptr };
 		++drawCalls;
 		drawCallsInJob += job.active ? 1 : 0;
 		if (!job.active) {
@@ -743,6 +770,9 @@ namespace
 				EnsureHooks(DrawingContext());
 			}
 			if constexpr (Shader == 0) {
+				auto*      accumulator = RE::BSShaderAccumulator::GetCurrentAccumulator();
+				auto*      portalScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[3];
+				portalLightingDraw = portalPass && accumulator && portalScene && accumulator->GetRuntimeData().activeShadowSceneNode == portalScene;
 				const LightingSwap swap(a_shader, a_pass);
 				func(a_shader, a_pass, a_flags);
 			} else {
@@ -759,6 +789,7 @@ namespace
 		{
 			func(a_shader, a_pass, a_flags);
 			EndPass();
+			portalLightingDraw = false;
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};

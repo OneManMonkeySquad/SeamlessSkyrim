@@ -1346,6 +1346,38 @@
       }
     ]
   },
+  "whiterun-gate-shadows-se": {
+    "note": "SE 1.5.97 MO2 game (native backend, the user's save). Outside Whiterun's gate at 16:30, time stopped, looking into the city. Was: the city through the gate in flat light, no shadows. Now: the porches, the guard and the bridge in shadow, as inside. portal_light_debug sunShadows=false shows the before.",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "set gamehour to 16.5"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "heading": 90
+      },
+      {
+        "walk": {
+          "pos": [
+            18800,
+            -7425
+          ],
+          "stop_distance": 30
+        }
+      },
+      {
+        "heading": 90
+      },
+      {
+        "wait": 8
+      }
+    ]
+  },
   "windhelm-sadris-walk-in": {
     "note": "Windhelm: walk into Sadri's Used Wares (merged into the street) from the front. Was: stuck 20 units short of the door, the house's collision closing the doorway behind the door never opened.",
     "steps": [

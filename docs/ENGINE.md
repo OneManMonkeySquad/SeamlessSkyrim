@@ -211,6 +211,12 @@ Found porting the plugin; each was checked in the code of both.
   +0x37D and +0x392). With it clear indoors the engine draws the sun's shadow maps and mask. The
   lighting shader reads the mask only with `kShadowDir` (bit 13) and `kDefShadow` (bit 14) in its
   technique: outdoors every shape has both; indoors shapes have at most `kDefShadow`.
+- **Matrices for a mask of one's own:** `RendererShadowState::cameraData` (`ViewData`) after a submit
+  holds that submit's camera; `viewProjMat` maps camera-relative positions (`posAdjust`) as
+  `v * M` (inverted, the same way back from depth). A `BSShadowDirectionalLight` cascade's
+  `shadowmapDescriptors[i].lightTransform` maps absolute world positions as `v * M` to the map's uv
+  (xy, 0..1) and depth (z); `endSplitDistances` / `startSplitDistances` are view distances along
+  the camera's forward. The main view's depth prepass accumulator is ID 415008 (SE 528063).
 - **Alpha test in the game's own lighting shader:** only the prepass cuts alpha-tested shapes; the
   lighting pass draws them with depth test EQUAL and a technique without `kDoAlphaTest` (bit 20),
   although `SetupAndDrawPass` gets `alphaTest` true and `RendererShadowState::alphaTestEnabled`

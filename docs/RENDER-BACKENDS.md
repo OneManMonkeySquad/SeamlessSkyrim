@@ -87,6 +87,16 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   interior's, which doesn't read the mask); the interior's shapes don't, so the outdoor sun's
   shadows don't fall on them. The shadow light points at the outdoor sun (`AimSunShadow`).
 
+- Portal pass (a city through its gate): the sun's shadows. The game's lighting shader reads a
+  screen-space shadow mask (PS t14, `.x` the sun) that the engine builds only for the main view.
+  The portal pass gets one of its own (`NativePortalShadows.cpp`): a depth prepass first (the
+  portal scene culled again into an accumulator in the engine's depth mode, copied from the main
+  prepass's, ID 415008, and submitted with kDepthPrepass), the shadow maps drawn for the portal
+  camera (`RenderPortalShadows`), then a pass of ours that turns depth and maps into the mask, and
+  the lighting passes get `kShadowDir | kDefShadow` with the mask bound at t14 right at each draw
+  (and the engine's put back). Not for a doorway picture's capture. Costs a second cull and a
+  depth-only draw of what the gateway shows.
+
 Not done natively: skylighting settle, Sky Sync's sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
 seen from across the street, the street's light through its doorway and the street's fog in front
 of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders. Nor, between
