@@ -279,6 +279,15 @@ copied from the AE game's plugins folder, trainwreck, no Community Shaders). It 
   input `press_key` didn't reach it in background mode (`game_window_mode("show")`, `right`,
   `enter`, then back); the bridge's keys (`right`, then `e`) not tried on it yet.
 - Doors start locked in a new game (the Smelter Overseer's House): a locked door gets no portal.
+- The user's mod list runs it through Mod Organizer 2 (`C:\Modding\MO2`, shortcut
+  `moshortcut://Skyrim Special Edition 1.5.97:SKSE`). MO2 must be started with `SEAMLESS_AGENT=1`
+  in its environment, or the game it launches has no bridge: an MO2 the user started has to be
+  closed first. That game has a save of its own (`Autosave1_2E8FEB0C_...`, routes `*-se`).
+- ENB there is deployed by Root Builder: its files are in the game folder only while MO2 runs the
+  game. Its settings are `%LOCALAPPDATA%\ModOrganizer\Skyrim Special Edition 1.5.97\overwrite\Root\enbseries.ini`,
+  read at launch. `ENBSetParameter` refuses `[EFFECT]` switches. Numpad minus (`press_key 0x4A`,
+  OS input) turns all ENB effects off and on in the running game; OS keys can also open the game's
+  menus (Wait, Journal) when it has focus: check `paused` after.
 
 ### AE 1.6.1170
 

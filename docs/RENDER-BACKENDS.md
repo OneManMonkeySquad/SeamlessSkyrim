@@ -108,7 +108,15 @@ two interiors, each room's light through the doorway (`SetMergedDaylight`, `SetH
 reports version and whether effects are on. ENB uses the native backend: no game shader is
 replaced, so ENB's recognition of the game's shaders is untouched, and the mask leaves no depth
 where it cuts, which ENB's screen-space effects read. With ENB the engine's context is ENB's proxy;
-its function table is hooked the same way (untested: no ENB on the test machine).
+its function table is hooked the same way (tested on SE 1.5.97 with ENB 0.505).
+
+With its effects on, ENB binds a screen-sized texture of its own to the lighting pixel shader at
+t37, made for the main view, and reads it where the sun's mask (t14) says shadow. Our mask bound
+there instead turned shadow black, so it is a term on what the shadow leaves. In the portal pass it
+painted the main view's shapes behind a city gate (Tamriel's low-detail Whiterun) faintly over
+the picture's shadows. Turning off ENB's shadow, skylighting, AO, IBL and parallax-shadow effects
+in `enbseries.ini` didn't remove it. The portal pass's lighting draws get a white texture in every
+screen-sized slot from t16 up (`Neutralized` in `NativeMask.cpp`).
 
 What stays: ENB grades interiors and exteriors with separate settings and switches when the
 current cell changes, i.e. at the moment of crossing. The view through a doorway is graded as the

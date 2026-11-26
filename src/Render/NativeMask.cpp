@@ -651,6 +651,118 @@ namespace
 	std::uint64_t drawCalls = 0;       // diagnostics: every draw through the hooks
 	std::uint64_t drawCallsInJob = 0;  // ... of them while a cut was planned
 
+	// Screen-sized textures an injector binds to the lighting shader beyond the game's own slots
+	// (ENB, with its effects on, one at t37: a term of its own that it reads where the sun's mask
+	// says shadow). They are made for the main view: in the portal pass, its shapes behind the gate
+	// (Tamriel's low-detail Whiterun) showed through the picture's shadows, faint and in the wrong
+	// perspective. For the portal pass's lighting draws they are swapped for a white texture of
+	// the same size; the slots are found at its first lighting draw.
+	constexpr UINT kFirstForeignSlot = 16;
+	constexpr UINT kForeignSlots = D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT - kFirstForeignSlot;
+	struct ForeignSlot
+	{
+		UINT                      slot;
+		ID3D11ShaderResourceView* neutral;
+	};
+	std::vector<ForeignSlot> foreignSlots;
+	bool                     foreignScanned = false;
+	struct NeutralTexture
+	{
+		UINT                      width;
+		UINT                      height;
+		ID3D11ShaderResourceView* view;
+	};
+	std::vector<NeutralTexture> neutralTextures;  // kept: a handful of sizes in a session
+
+	ID3D11ShaderResourceView* NeutralOfSize(ID3D11Device* a_device, UINT a_width, UINT a_height)
+	{
+		for (const auto& neutral : neutralTextures) {
+			if (neutral.width == a_width && neutral.height == a_height) {
+				return neutral.view;
+			}
+		}
+		const std::vector<std::uint32_t> white(static_cast<std::size_t>(a_width) * a_height, 0xFFFFFFFFu);
+		const D3D11_TEXTURE2D_DESC       desc{ a_width, a_height, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, { 1, 0 }, D3D11_USAGE_IMMUTABLE, D3D11_BIND_SHADER_RESOURCE, 0, 0 };
+		const D3D11_SUBRESOURCE_DATA     data{ white.data(), a_width * 4, 0 };
+		ID3D11Texture2D*                 texture = nullptr;
+		ID3D11ShaderResourceView*        view = nullptr;
+		const bool made = SUCCEEDED(a_device->CreateTexture2D(&desc, &data, &texture)) && SUCCEEDED(a_device->CreateShaderResourceView(texture, nullptr, &view));
+		SEAMLESS_ASSERT(made);
+		texture->Release();
+		neutralTextures.push_back({ a_width, a_height, view });
+		return view;
+	}
+
+	void ScanForeignSlots(ID3D11DeviceContext* a_context)
+	{
+		foreignScanned = true;
+		const auto before = foreignSlots.size();
+		foreignSlots.clear();
+		D3D11_TEXTURE2D_DESC screen{};
+		reinterpret_cast<ID3D11Texture2D*>(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN].texture)->GetDesc(&screen);
+		ID3D11ShaderResourceView* views[kForeignSlots]{};
+		a_context->PSGetShaderResources(kFirstForeignSlot, kForeignSlots, views);
+		ID3D11Device* device = nullptr;
+		a_context->GetDevice(&device);
+		for (UINT i = 0; i < kForeignSlots; ++i) {
+			if (!views[i]) {
+				continue;
+			}
+			ID3D11Resource* resource = nullptr;
+			views[i]->GetResource(&resource);
+			if (ID3D11Texture2D* texture = nullptr; SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&texture)))) {
+				D3D11_TEXTURE2D_DESC desc{};
+				texture->GetDesc(&desc);
+				if (desc.Width == screen.Width && desc.Height == screen.Height) {
+					foreignSlots.push_back({ kFirstForeignSlot + i, NeutralOfSize(device, desc.Width, desc.Height) });
+				}
+				texture->Release();
+			}
+			resource->Release();
+			views[i]->Release();
+		}
+		device->Release();
+		if (foreignSlots.size() != before) {
+			std::string slots;
+			for (const auto& foreign : foreignSlots) {
+				slots += std::format(" t{}", foreign.slot);
+			}
+			logger::info("render: portal lighting draws: white texture at{}{} (screen-sized, bound by an injector)", slots, foreignSlots.empty() ? " none" : "");
+		}
+	}
+
+	// For the length of one portal lighting draw.
+	struct Neutralized
+	{
+		ID3D11DeviceContext*      context;
+		ID3D11ShaderResourceView* saved[kForeignSlots]{};
+		std::size_t               count = 0;
+
+		explicit Neutralized(ID3D11DeviceContext* a_context) :
+			context(a_context)
+		{
+			if (!portalLightingDraw) {
+				return;
+			}
+			if (!foreignScanned) {
+				ScanForeignSlots(context);
+			}
+			for (const auto& foreign : foreignSlots) {
+				context->PSGetShaderResources(foreign.slot, 1, &saved[count++]);
+				context->PSSetShaderResources(foreign.slot, 1, &foreign.neutral);
+			}
+		}
+		~Neutralized()
+		{
+			for (std::size_t i = 0; i < count; ++i) {
+				context->PSSetShaderResources(foreignSlots[i].slot, 1, &saved[i]);
+				if (saved[i]) {
+					saved[i]->Release();
+				}
+			}
+		}
+	};
+
 	template <class F>
 	void Masked(ID3D11DeviceContext* a_context, F&& a_draw)
 	{
@@ -662,6 +774,7 @@ namespace
 			a_context->PSGetShaderResources(14, 1, &engineMask);
 			a_context->PSSetShaderResources(14, 1, &mask);
 		}
+		Neutralized neutralized(a_context);
 		struct Restore
 		{
 			ID3D11DeviceContext*       context;
@@ -868,6 +981,7 @@ namespace Render::Native
 		portalPass = a_active;
 		if (a_active) {
 			++stats.portalPasses;
+			foreignScanned = false;
 		}
 		job.active = false;
 	}
