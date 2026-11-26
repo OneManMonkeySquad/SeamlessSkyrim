@@ -263,6 +263,9 @@ the end. These were expensive to find. Add new ones in the same change that need
   +0x37D and +0x392). With it clear indoors the engine draws the sun's shadow maps and mask. The
   lighting shader reads the mask only with `kShadowDir` (bit 13) and `kDefShadow` (bit 14) in its
   technique: outdoors every shape has both; indoors shapes have at most `kDefShadow`.
+- **The technique being drawn:** `SetupAndDrawPass` (ID 107644) stores the technique it is given
+  in ID 415272 (with the shader in ID 415273) before the shader's `SetupGeometry`; a hook that
+  changes that argument changes it there, not in the pass's `passEnum`.
 - **Matrices for a mask of one's own:** `RendererShadowState::cameraData` (`ViewData`) after a submit
   holds that submit's camera; `viewProjMat` maps camera-relative positions (`posAdjust`) as
   `v * M` (inverted, the same way back from depth). A `BSShadowDirectionalLight` cascade's

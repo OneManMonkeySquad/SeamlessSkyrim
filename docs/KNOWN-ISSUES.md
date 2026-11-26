@@ -14,6 +14,8 @@ Open bugs and things not tried. A fixed one comes out.
   of the Bannered Mare; the log ends with the release and the `coc`. The thread that ran them waits
   (stale frames near ID 76561, culling); the frame thread waits in HDT-SMP's end-of-frame hook
   (`Hooks::MainHooks::Unk_sub`, under `EndOfFrameHook`); every other thread idle. Twice now.
+  Also on SE 1.5.97 (no HDT-SMP), twice on 2026-11-26: `place_go bannered-mare-door-out` a few
+  seconds after walking out of the Bannered Mare, 0% CPU. From the Tamriel exterior it loads.
 - A hang right after walking out of Arcadia's (2026-11-16, agent game, once in ~17 exits): the main thread waiting for the frame's jobs (ID 35409), one job thread (an audio job, ID 39080 -> 91863) spinning in EngineFixes' `ScrapHeap::Allocate` replacement (ID 68173 -> 68144). Not reproduced; not known whether SeamlessSkyrim plays a part.
 - Loading saves one after another across worldspaces (Whiterun's Belethor's, Riften's jail) with portals on crashes now and then (ID 19165 putting an actor's 3D into a cell without 3D), also without the persistent references' 3D loading. During the sectors work (APPROACHES.md, 5), loading a save, travelling to Swindler's Den and loading again crashed with all of that switched off.
 - Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter

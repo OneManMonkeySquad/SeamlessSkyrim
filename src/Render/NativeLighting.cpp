@@ -58,6 +58,14 @@ namespace
 		return static_cast<std::byte*>(fogOf(*sceneIndex.get()));
 	}
 
+	// The technique SetupAndDrawPass (ID 107644) last set up: the one being drawn, as it was passed
+	// to it, set before the shader's SetupGeometry.
+	std::uint32_t* LastTechnique()
+	{
+		static REL::Relocation<std::uint32_t*> lastTechnique{ REL::RelocationID(528320, 415272) };
+		return lastTechnique.get();
+	}
+
 	// The directional ambient transform the lighting shader's setup reads (rotation, translation, scale).
 	RE::NiTransform& AmbientTransform()
 	{
@@ -296,7 +304,10 @@ namespace Render::Native
 				put(0x54, (*fog)[1]);
 				put(0x84, (*fog)[2]);
 				put(0x88, (*fog)[3]);
-				a_shader->SetupTechnique(a_pass->passEnum);
+				// The technique SetupAndDrawPass set up, not the pass's own (passEnum): the street's
+				// shapes are drawn with the sun's shadow bits added (PortalRender), and set up again
+				// without them, the street through the Bannered Mare's door lay in flat light.
+				a_shader->SetupTechnique(*LastTechnique());
 				++stats.ownFog;
 			}
 		}
@@ -388,8 +399,7 @@ namespace Render::Native
 			std::memcpy(s.fog + kFogBegin, s.fogBytes.data(), s.fogBytes.size());
 			// SetupAndDrawPass (ID 107644) sets a technique up only when it differs from the last
 			// one (ID 415272); forgotten, the next shape sets it up again, with the world's fog.
-			static REL::Relocation<std::uint32_t*> lastTechnique{ REL::RelocationID(528320, 415272) };
-			*lastTechnique.get() = 0;
+			*LastTechnique() = 0;
 		}
 		storageInUse = false;
 	}

@@ -93,6 +93,32 @@
       }
     ]
   },
+  "bannered-mare-street-sun-se": {
+    "note": "SE 1.5.97 MO2 game (native backend, the 1.5.97 profile's save). Inside the Bannered Mare at 17:30, clear weather, looking out of the door at the market. Was: the street through the doorway in flat light, no shadows (the well and the man beside it without the long shadows they have outside). Now: shadows as outside.",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "set gamehour to 17.5"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "fw 81a"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "place": "bannered-mare-door-out"
+      },
+      {
+        "wait": 10
+      }
+    ]
+  },
   "bannered-mare-walk-in": {
     "note": "Loaded in Belethor's, walked out and into the Bannered Mare through portals, standing at its door looking out at the market (low LOD town, ground culling).",
     "steps": [

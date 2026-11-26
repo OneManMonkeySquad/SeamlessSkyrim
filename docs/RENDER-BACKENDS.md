@@ -79,7 +79,8 @@ directional ambient at ID 390984. For the length of the engine's call these are 
 - Street merged into an interior: the street's fog. Fog is uploaded with the technique (ID 107320
   from SetupTechnique), so the scene's fog property is given the street's values, the technique is
   set up again, and afterwards the property is put back and the batch renderer's cached technique
-  (ID 415272) cleared. The SSAO composite (ID 107245 + 0xD26) fogs the picture by depth too and
+  (ID 415272) cleared. Set up again from ID 415272 (the technique being drawn), not the pass's
+  `passEnum`, which lacks the shadow bits added below: the street then lay in flat light. The SSAO composite (ID 107245 + 0xD26) fogs the picture by depth too and
   gets a copy of the fog property with the street's fog; without it the mountains seen through
   the doorway were black.
 - Room merged into the street: its cell's own fog on its shapes. The SSAO composite fogs every
