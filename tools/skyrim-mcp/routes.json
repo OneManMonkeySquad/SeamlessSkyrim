@@ -1207,6 +1207,63 @@
       }
     ]
   },
+  "whiterun-gate-in-out-se": {
+    "note": "SE 1.5.97 MO2 game (the user's load order, with a mod's road meshes). Into Whiterun through its gate and back out. Was: walking out, the player stopped 27 units before the gate (Tamriel's road in the shared Havok world, a step above the city's) and never crossed; and, just out, was sent straight back in with a loading screen ('walked into before the space behind it was there'). Now: 'crossing at depth -24.7' out, and the walk goes on outside.",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 40
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "wait": 6
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18500,
+            -7425
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 15
+        }
+      }
+    ]
+  },
   "whiterun-gate-run-back": {
     "note": "Into Whiterun through its gate, out again, and straight back in at a run before the city is attached again (~2 s). Was: the player ran on through the open gate into Tamriel's low-detail copy of the city and stood on its land mounds. Now: the log says 'walked into before the space behind it was there: taken the engine's way' and the player ends in WhiterunWorld (0001A26F).",
     "steps": [

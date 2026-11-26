@@ -1998,8 +1998,14 @@ namespace
 			const float cameraSide = std::abs(cameraOffset.x * mapping.inward.y - cameraOffset.y * mapping.inward.x);
 			cameraAtPicture = cameraDepth + nearPlane + 2.0f >= pictureDepth && cameraSide <= mapping.halfWidth + 20.0f && inDoorway && approaching;
 		}
+		// Held back short of the threshold, walking into the doorway without getting nearer: through
+		// Whiterun's gate the far side's road (with a mod's road meshes) stands a step above the
+		// city's in the gateway, in the Havok world both share, and stopped the player 13 units
+		// before the crossing, for good.
+		static float heldFor = 0.0f;
+		heldFor = !merged && walkingIn && inDoorway && depth >= -(lead + 30.0f) && !approaching ? heldFor + a_delta : 0.0f;
 		const bool      cross = merged ? (depth >= 15.0f && cameraDepth >= 2.0f) || depth >= kMergedCrossDepth :
-		                                 (depth >= -lead && inDoorway && (approaching || depth >= 0.0f)) || cameraAtPicture;
+		                                 (depth >= -lead && inDoorway && (approaching || depth >= 0.0f)) || cameraAtPicture || heldFor >= 0.2f;
 		if (crossCooldown <= 0.0f && cross && !(Portal::RemoteCell::debugSkip & 2048)) {
 			crossCooldown = 1.0f;
 			attachHoldoff = 3.0f;
@@ -2375,16 +2381,21 @@ namespace
 				}
 				// A gate onto the player's own worldspace holds nobody back: its passage leads on into
 				// that worldspace's low-detail copy of the city, where the player walked on between its
-				// land mounds and stayed. Its side is the stand-in's own (AwayFrom turns with the
-				// player, so the plane could never be passed by it): past the plane, they are taken
-				// through, at whatever height and facing. Run back in right after a trip out, the plane
-				// was passed within the crossing's cooldown, and when it ended the player stood on the
-				// copy's land below the gateway's bottom.
+				// land mounds and stayed. Past its plane they are taken through, at whatever height and
+				// facing. Run back in right after a trip out, the plane was passed within the crossing's
+				// cooldown, and when it ended the player stood on the copy's land below the gateway's
+				// bottom. Its outside is where the far gate's teleport puts whoever comes out (AwayFrom
+				// turns with the player, so the plane could never be passed by it). Not the stand-in's
+				// side as made: made in the frame of a trip out, before the player was moved, it faced
+				// the city, and the player standing outside the gate was sent straight back in.
 				const bool  open = standIn.gate && !standIn.picture;
-				auto        inward = open ? Portal::Doors::ToShown(ref).rotate * standIn.inwardInCell : AwayFrom(ref, position);
+				const auto  center = Portal::Doors::Center(ref);
+				auto        inward = AwayFrom(ref, position);
+				if (open) {
+					inward = center - LinkedOf(ref)->extraList.GetByType<RE::ExtraTeleport>()->teleportData->position;
+				}
 				inward.z = 0.0f;
 				inward.Unitize();
-				const auto  center = Portal::Doors::Center(ref);
 				const auto  size = Portal::Doors::Size(ref);
 				const auto  offset = position - center;
 				const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
