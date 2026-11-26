@@ -126,6 +126,11 @@ namespace Render::Backend
 		logger::info("render: backend {} ({})", Name(), why);
 	}
 
+	bool GameShaders()
+	{
+		return !communityShadersLoaded;
+	}
+
 	Kind Current()
 	{
 		return kind;

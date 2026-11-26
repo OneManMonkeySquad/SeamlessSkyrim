@@ -269,6 +269,15 @@ namespace
 				CutBeforeFreed(a_pass);
 				return;
 			}
+			// The game's own lighting shader leaves alpha-tested shapes (leaves, grass and flower
+			// cards) to the main view's depth prepass, which cuts them, and then draws them with depth
+			// test EQUAL. The portal pass has no prepass: through a gate every bush was a solid card.
+			// The shader's alpha-test variant cuts them itself. Community Shaders' lighting shader
+			// tests alpha in its own pass already.
+			if (inPortalSubmit && a_alphaTest && ::Render::Backend::GameShaders() && a_pass && a_pass->shader &&
+				a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting) {
+				a_technique |= static_cast<std::uint32_t>(RE::BSLightingShader::TechniqueFlag::kDoAlphaTest);
+			}
 			func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 			if (inPortalSubmit && a_pass) {
 				CutBeforeFreed(a_pass);

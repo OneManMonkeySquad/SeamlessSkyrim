@@ -29,6 +29,8 @@ namespace Render::Backend
 
 	[[nodiscard]] Kind        Current();
 	[[nodiscard]] const char* Name();
+	// The game's own shaders draw (no Community Shaders loaded, the fork or not).
+	[[nodiscard]] bool GameShaders();
 
 	// A room can be drawn into the world (render-merge): something masks the two spaces.
 	[[nodiscard]] bool CanMerge();

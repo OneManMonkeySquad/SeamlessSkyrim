@@ -205,6 +205,12 @@ Found porting the plugin; each was checked in the code of both.
   shadow map technique (vertex descriptor 0xC000, RenderShadowmap | Clamped), skinned ones with
   RenderDepth (0x2004). The technique doesn't tell a shadow map from the main view; the depth
   target does (`RendererShadowState::depthStencil`, `kSHADOWMAPS` and the like).
+- **Alpha test in the game's own lighting shader:** only the prepass cuts alpha-tested shapes; the
+  lighting pass draws them with depth test EQUAL and a technique without `kDoAlphaTest` (bit 20),
+  although `SetupAndDrawPass` gets `alphaTest` true and `RendererShadowState::alphaTestEnabled`
+  and `alphaTestRef` are set. A pass without a prepass (the portal pass) draws leaves and grass as
+  solid cards unless bit 20 is added to the technique; the game's shader package has those
+  variants (1.5.97 checked). Community Shaders' lighting shader tests alpha anyway.
 - **Camera data in the frame:** at the start of `RenderPlayerView` the NiCamera has this frame's
   transform but the renderer's camera data (`RendererShadowState::cameraData`) is still the last
   frame's; by `Main::RenderWorld` both are this frame's.
