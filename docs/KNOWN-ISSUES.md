@@ -226,8 +226,7 @@ Open bugs and things not tried. A fixed one comes out.
   tried with an automatic door there or on AE 1.6.1170.
 - Bottled Shaders (a Community Shaders fork, same `CommunityShaders.dll`, no `SeamlessPortal_*`
   exports) gets the "None" backend: no room merged into the street, the portal pass unclipped.
-  Not tried in game. The fork's patch would have to be ported onto it (it tracks Community Shaders
-  2.0 `dev` plus its own changes, daily) or taken into it upstream.
+  Not tried in game. Community Shaders 2.0 is in the same state. Planned: `docs/future/SHADER-BASES.md`.
 
 ## Other
 
