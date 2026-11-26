@@ -30,10 +30,24 @@ namespace
 		return Paths::PluginDirectory() / "SeamlessSkyrim_Translations" / (name + ".json");
 	}
 
-	// A text with more {} than the code passes makes std::vformat throw while the menu is drawn.
-	std::size_t Placeholders(std::string_view a_text)
+	// How many {} the text has; none when std::vformat would throw on it while the menu is drawn: a
+	// lone { or }, or a {0} or {:x} the code's arguments may not fit. Only {} and the escapes {{ and
+	// }} pass.
+	std::optional<std::size_t> Placeholders(std::string_view a_text)
 	{
-		return std::ranges::count(a_text, '{');
+		std::size_t count = 0;
+		for (std::size_t i = 0; i < a_text.size(); ++i) {
+			const char next = i + 1 < a_text.size() ? a_text[i + 1] : '\0';
+			if (a_text[i] == '{' && (next == '{' || next == '}')) {
+				count += next == '}';
+				++i;
+			} else if (a_text[i] == '}' && next == '}') {
+				++i;
+			} else if (a_text[i] == '{' || a_text[i] == '}') {
+				return std::nullopt;
+			}
+		}
+		return count;
 	}
 }
 
@@ -46,6 +60,7 @@ namespace UI::Translation
 		SEAMLESS_ASSERT(english);
 		for (const auto& [key, value] : json::parse(english).items()) {
 			entries.push_back({ key, value.get<std::string>(), {} });
+			SEAMLESS_ASSERT(Placeholders(entries.back().text));
 		}
 
 		const std::string language = RE::GetINISetting("sLanguage:General")->GetString();
@@ -63,8 +78,7 @@ namespace UI::Translation
 					const auto it = std::ranges::find(entries, key, &Entry::key);
 					if (it == entries.end()) {
 						logger::warn("translation: {} has \"{}\", which english.json doesn't", path.filename().string(), key);
-					} else if (!value.is_string() || Placeholders(value.get<std::string>()) != Placeholders(it->text)) {
-						logger::warn("translation: \"{}\" in {} needs the {{}} of english.json; kept in English", key, path.filename().string());
+					} else if (!value.is_string() || Placeholders(value.get<std::string>()) != Placeholders(it->text)) {						logger::warn("translation: \"{}\" in {} needs the {{}} of english.json; kept in English", key, path.filename().string());
 					} else {
 						it->text = value.get<std::string>();
 						++used;
