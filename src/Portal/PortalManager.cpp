@@ -3473,6 +3473,16 @@ namespace Portal::Manager
 	DoorPrompt Prompt(RE::FormID a_door)
 	{
 		auto* door = Lookup(a_door);
+		// The door of a pair that stands in the space behind the doorway (the shop just walked out
+		// of): its partner, in the player's space, is the one to use. The crosshair was on it as the
+		// player crossed, and the HUD showed its engine prompt ("Open Whiterun") for a frame.
+		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		if (door && enabled && here && !InPlayerSpace(door, here)) {
+			auto* partner = LinkedOf(door);
+			if (partner && InPlayerSpace(partner, here)) {
+				return DoorPrompt::kNone;
+			}
+		}
 		auto* linked = door && enabled ? UsedPairOf(door) : nullptr;
 		return !linked                     ? DoorPrompt::kEngine :
 		       StandsOpen(door, linked)    ? DoorPrompt::kNone :
