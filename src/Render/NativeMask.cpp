@@ -75,7 +75,8 @@ namespace
 		std::uint64_t passesWhole = 0;  // of the other space, wholly seen through the doorway
 		std::uint64_t drawsCut = 0;
 		std::uint64_t piecesDrawn = 0;
-		std::uint64_t drawsUncut = 0;  // a cut was wanted but no geometry shader fits
+		std::uint64_t drawsUncut = 0;    // a cut was wanted but no geometry shader fits
+		std::uint64_t drawsDropped = 0;  // left out at the draw call: no geometry shader fits
 		std::uint64_t portalPasses = 0;
 	} stats;
 
@@ -387,7 +388,7 @@ namespace
 
 	// HLSL for a pass-through geometry shader over these outputs, or nothing if they can't be
 	// passed through (already clipping, or nothing to clip with).
-	std::optional<std::string> GeometryShaderSource(std::vector<Element> a_elements, int& a_pieces)
+	std::optional<std::string> GeometryShaderSource(std::vector<Element> a_elements)
 	{
 		std::ranges::sort(a_elements, [](const Element& a, const Element& b) {
 			return a.reg != b.reg ? a.reg < b.reg : std::countr_zero(static_cast<unsigned>(a.mask)) < std::countr_zero(static_cast<unsigned>(b.mask));
@@ -424,35 +425,27 @@ namespace
 			return std::nullopt;
 		}
 		// Each piece is the triangle once more with that piece's clip distances (pieces are disjoint,
-		// so nothing is drawn twice); no pieces is the shape left out. A geometry shader may put out
-		// 1024 scalars per triangle: a vertex shader with many outputs gets fewer pieces.
-		int scalars = 6;
-		for (const auto& e : a_elements) {
-			scalars += std::popcount(static_cast<unsigned>(e.mask));
-		}
-		a_pieces = std::min(kMaxPieces, 1024 / scalars / 3);
-		if (a_pieces < 1) {
-			return std::nullopt;
-		}
+		// so nothing is drawn twice); no pieces is the shape left out. One instance of the shader per
+		// piece: a single invocation may put out only 1024 scalars, which a vertex shader with many
+		// outputs filled with fewer than kMaxPieces triangles, and its shapes went uncut.
 		return std::format(
 			"cbuffer SeamlessClip : register(b0) {{ float4 SeamlessPlanes[{3}]; uint4 SeamlessPieces; }};\n"
 			"struct V {{\n{0}}};\n"
 			"struct G {{\n{0}\tfloat4 seamlessClip0 : SV_ClipDistance0;\n\tfloat2 seamlessClip1 : SV_ClipDistance1;\n}};\n"
-			"[maxvertexcount({4})]\n"
-			"void main(triangle V input[3], inout TriangleStream<G> stream) {{\n"
-			"\t[loop] for (uint k = 0; k < SeamlessPieces.x; ++k) {{\n"
-			"\t\tuint b = k * {5};\n"
-			"\t\t[unroll] for (uint i = 0; i < 3; ++i) {{\n"
-			"\t\t\tG o;\n{1}"
-			"\t\t\tfloat4 p = input[i].f{2};\n"
-			"\t\t\to.seamlessClip0 = float4(dot(SeamlessPlanes[b], p), dot(SeamlessPlanes[b + 1], p), dot(SeamlessPlanes[b + 2], p), dot(SeamlessPlanes[b + 3], p));\n"
-			"\t\t\to.seamlessClip1 = float2(dot(SeamlessPlanes[b + 4], p), dot(SeamlessPlanes[b + 5], p));\n"
-			"\t\t\tstream.Append(o);\n"
-			"\t\t}}\n"
-			"\t\tstream.RestartStrip();\n"
+			"[instance({4})]\n"
+			"[maxvertexcount(3)]\n"
+			"void main(triangle V input[3], uint k : SV_GSInstanceID, inout TriangleStream<G> stream) {{\n"
+			"\tif (k >= SeamlessPieces.x) return;\n"
+			"\tuint b = k * {5};\n"
+			"\t[unroll] for (uint i = 0; i < 3; ++i) {{\n"
+			"\t\tG o;\n{1}"
+			"\t\tfloat4 p = input[i].f{2};\n"
+			"\t\to.seamlessClip0 = float4(dot(SeamlessPlanes[b], p), dot(SeamlessPlanes[b + 1], p), dot(SeamlessPlanes[b + 2], p), dot(SeamlessPlanes[b + 3], p));\n"
+			"\t\to.seamlessClip1 = float2(dot(SeamlessPlanes[b + 4], p), dot(SeamlessPlanes[b + 5], p));\n"
+			"\t\tstream.Append(o);\n"
 			"\t}}\n"
 			"}}\n",
-			members, copies, position, kMaxPieces * kPlanesPerPiece, 3 * a_pieces, kPlanesPerPiece);
+			members, copies, position, kMaxPieces * kPlanesPerPiece, kMaxPieces, kPlanesPerPiece);
 	}
 
 	ID3D11DeviceContext* Context()
@@ -472,27 +465,20 @@ namespace
 		return device;
 	}
 
-	struct Clipper
-	{
-		ID3D11GeometryShader* shader = nullptr;  // nullptr: no cut possible
-		int                   pieces = 0;        // the most pieces it puts out
-	};
-
 	struct ShaderCache
 	{
-		std::unordered_map<const void*, Clipper> byVertexShader;
-		std::unordered_map<std::string, Clipper> bySignature;
-		std::uint32_t                                               compiled = 0;
-		std::uint32_t                                               failed = 0;
-		double                                                      compileMs = 0.0;
+		std::unordered_map<const void*, ID3D11GeometryShader*> byVertexShader;  // nullptr: no cut possible
+		std::unordered_map<std::string, ID3D11GeometryShader*> bySignature;
+		std::uint32_t                                          compiled = 0;
+		std::uint32_t                                          failed = 0;
+		double                                                 compileMs = 0.0;
 	} shaders;
 
-	Clipper Build(const std::vector<Element>& a_outputs)
+	ID3D11GeometryShader* Build(const std::vector<Element>& a_outputs)
 	{
-		int        pieces = 0;
-		const auto source = GeometryShaderSource(a_outputs, pieces);
+		const auto source = GeometryShaderSource(a_outputs);
 		if (!source) {
-			return {};
+			return nullptr;
 		}
 		const auto started = std::chrono::steady_clock::now();
 		ID3DBlob*  code = nullptr;
@@ -506,7 +492,7 @@ namespace
 			if (errors) {
 				errors->Release();
 			}
-			return {};
+			return nullptr;
 		}
 		if (errors) {
 			errors->Release();
@@ -539,19 +525,19 @@ namespace
 			++shaders.compiled;
 		}
 		code->Release();
-		return { shader, shader ? pieces : 0 };
+		return shader;
 	}
 
-	Clipper GeometryShaderFor(const RE::BSGraphics::VertexShader* a_vertexShader)
+	ID3D11GeometryShader* GeometryShaderFor(const RE::BSGraphics::VertexShader* a_vertexShader)
 	{
 		if (!a_vertexShader) {
-			return {};
+			return nullptr;
 		}
 		if (const auto it = shaders.byVertexShader.find(a_vertexShader); it != shaders.byVertexShader.end()) {
 			return it->second;
 		}
-		Clipper     shader;
-		const auto* bytecode = a_vertexShader->rawBytecode;
+		ID3D11GeometryShader* shader = nullptr;
+		const auto*           bytecode = a_vertexShader->rawBytecode;
 		const auto            size = a_vertexShader->byteCodeSize;
 		// The engine keeps the bytecode right behind the shader; DXBC starts with its magic.
 		if (size > 4 && std::memcmp(bytecode, "DXBC", 4) == 0) {
@@ -610,8 +596,9 @@ namespace
 	// ID3D11DeviceContext slots: DrawIndexed 12, Draw 13, DrawIndexedInstanced 20, DrawInstanced 21.
 	constexpr std::size_t kDrawIndexed = 12, kDraw = 13, kDrawIndexedInstanced = 20, kDrawInstanced = 21;
 
-	// Only for the white textures of a portal lighting draw (Neutralized, ENB's slots); the cut and
-	// the shadow mask don't go through the draw calls (see Bound). The immediate context's function
+	// Only for the white textures of a portal lighting draw (Neutralized, ENB's slots) and the few
+	// shapes left out that no geometry shader fits (dropDraws); the cut and the shadow mask don't go
+	// through the draw calls (see Bound). The immediate context's function
 	// table lives in the context object itself and the runtime writes it again, several times a
 	// frame. So the table is checked, and the hooks put back, before each portal lighting pass; what
 	// each table held before is kept per table. A draw after a rewrite still goes past them.
@@ -790,9 +777,15 @@ namespace
 		}
 	};
 
+	// A shape to be left out whose vertex shader has no geometry shader to drop it (BindPass).
+	bool dropDraws = false;
+
 	template <class F>
 	void Masked(ID3D11DeviceContext* a_context, F&& a_draw)
 	{
+		if (dropDraws) {
+			return;
+		}
 		Neutralized neutralized(a_context);
 		a_draw();
 	}
@@ -824,6 +817,9 @@ namespace
 
 	void BindPass(const RE::BSRenderPass* a_pass)
 	{
+		// Each SetupGeometry has its RestoreGeometry before the next: otherwise the geometry shader
+		// saved as the previous one would be our own, and stay bound for every draw after.
+		SEAMLESS_ASSERT(!bound.cut && !bound.mask && !dropDraws);
 		auto& state = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
 		if (auto* mask = portalLightingDraw ? Render::Native::PortalShadowMask() : nullptr) {
 			bound.mask = true;
@@ -834,10 +830,20 @@ namespace
 		if (!job.active) {
 			return;
 		}
-		const auto clipper = Triangles(a_pass->geometry) ? GeometryShaderFor(state.currentVertexShader) : Clipper{};
-		const int  pieces = job.skip ? 0 : job.pieces;
-		if (!clipper.shader || pieces > clipper.pieces || !EnsurePlaneBuffer()) {
-			++stats.drawsUncut;
+		auto* const clipper = Triangles(a_pass->geometry) ? GeometryShaderFor(state.currentVertexShader) : nullptr;
+		const int   pieces = job.skip ? 0 : job.pieces;
+		if (!clipper || !EnsurePlaneBuffer()) {
+			if (job.skip) {
+				// Drawn whole, the shape showed where it is masked away (in the doorway, or the room's
+				// through the street's walls). Dropped at the draw call instead: those hooks miss a draw
+				// now and then (Bound), so this is the fallback for the few shapes no geometry shader
+				// fits (lines, vertex shaders with clip distances of their own), not the rule.
+				dropDraws = true;
+				EnsureHooks(DrawingContext());
+				++stats.drawsDropped;
+			} else {
+				++stats.drawsUncut;
+			}
 			return;
 		}
 		auto*                    context = DrawingContext();
@@ -849,7 +855,7 @@ namespace
 		context->Unmap(planeBuffer, 0);
 		context->GSGetShader(&bound.previousShader, nullptr, nullptr);
 		context->GSGetConstantBuffers(0, 1, &bound.previousBuffer);
-		context->GSSetShader(clipper.shader, nullptr, 0);
+		context->GSSetShader(clipper, nullptr, 0);
 		context->GSSetConstantBuffers(0, 1, &planeBuffer);
 		bound.cut = true;
 		++stats.drawsCut;
@@ -858,6 +864,7 @@ namespace
 
 	void UnbindPass()
 	{
+		dropDraws = false;
 		if (std::exchange(bound.cut, false)) {
 			auto* context = DrawingContext();
 			context->GSSetShader(bound.previousShader, nullptr, 0);
@@ -1055,6 +1062,7 @@ namespace Render::Native
 			{ "drawsCut", stats.drawsCut },
 			{ "piecesDrawn", stats.piecesDrawn },
 			{ "drawsUncut", stats.drawsUncut },
+			{ "drawsDropped", stats.drawsDropped },
 			{ "portalPasses", stats.portalPasses },
 			{ "geometryShaders", shaders.compiled },
 			{ "geometryShaderFailures", shaders.failed },
