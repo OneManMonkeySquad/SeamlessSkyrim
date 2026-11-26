@@ -219,6 +219,17 @@
       -2182.92919921875
     ]
   },
+  "whiterun-belethors-picture-floating": {
+    "cell": "WhiterunPlainsDistrict04",
+    "headingDeg": 223.6227569580078,
+    "interior": false,
+    "note": "Whiterun market near the Bannered Mare, looking SW at the passage left of the guard. After walking out of the Bannered Mare (1.6.353, native backend): a blurry picture of Belethor's interior floated in the passage (Belethor's door 0001A6F5 stand-in, its room not loaded), until Belethor's merged.",
+    "pos": [
+      25000.619140625,
+      -7743.2314453125,
+      -3391.778564453125
+    ]
+  },
   "whiterun-gate-from-warmaidens": {
     "cell": "WhiterunPLainsDistrict03",
     "headingDeg": 275.0,

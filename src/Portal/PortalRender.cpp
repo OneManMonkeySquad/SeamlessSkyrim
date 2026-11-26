@@ -65,9 +65,14 @@ namespace
 	// resolution).
 	std::array<float, 2> RenderScale()
 	{
-		const auto& state = RE::BSGraphics::State::GetSingleton()->GetRuntimeData();
-		return { state.dynamicResolutionWidthRatio > 0.0f ? state.dynamicResolutionWidthRatio : 1.0f,
-			state.dynamicResolutionHeightRatio > 0.0f ? state.dynamicResolutionHeightRatio : 1.0f };
+		// Not CommonLib's State::GetRuntimeData: before 1.6.629 it takes SE's layout, but AE's starts 8
+		// bytes later in 1.6.353 too. Read 8 bytes early, the width ratio was one of the jitter's
+		// Halton points (5/9): doorway pictures were placed at 56% of the screen's width, floating
+		// beside their doors.
+		auto*       state = RE::BSGraphics::State::GetSingleton();
+		const auto& data = *reinterpret_cast<const RE::BSGraphics::State::RUNTIME_DATA*>(reinterpret_cast<std::uintptr_t>(state) + Hooks::Offset(0x58, 0x60, 0x60, 0x70));
+		return { data.dynamicResolutionWidthRatio > 0.0f ? data.dynamicResolutionWidthRatio : 1.0f,
+			data.dynamicResolutionHeightRatio > 0.0f ? data.dynamicResolutionHeightRatio : 1.0f };
 	}
 
 	RE::NiPointer<RE::NiCamera> portalCamera;
@@ -2448,9 +2453,9 @@ namespace
 		if (scene.texture) {
 			reinterpret_cast<ID3D11Texture2D*>(scene.texture)->GetDesc(&desc);
 		}
-		const auto& graphicsState = RE::BSGraphics::State::GetSingleton()->GetRuntimeData();
-		out.width = desc.Width * (graphicsState.dynamicResolutionWidthRatio > 0.0f ? graphicsState.dynamicResolutionWidthRatio : 1.0f);
-		out.height = desc.Height * (graphicsState.dynamicResolutionHeightRatio > 0.0f ? graphicsState.dynamicResolutionHeightRatio : 1.0f);
+		const auto [widthScale, heightScale] = RenderScale();
+		out.width = desc.Width * widthScale;
+		out.height = desc.Height * heightScale;
 		out.fog = WorldFog();
 		return out;
 	}

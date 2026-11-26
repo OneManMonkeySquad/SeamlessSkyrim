@@ -224,6 +224,11 @@ Open bugs and things not tried. A fixed one comes out.
   1.5.97): not tried.
 - The automatic doors' hook (`AutoDoorHook`) installs on SE 1.5.97 without error but hasn't been
   tried with an automatic door there or on AE 1.6.1170.
+- AE 1.6.353, once: walking from the market into the Bannered Mare, the player stopped at the
+  open doorway (25737,-7629) and didn't cross; the room had been merged half a second before. The
+  same walk crossed every later time. Not reproduced.
+- AE 1.6.353 is checked only as far as the commits that brought it in: CommonLib reads two
+  structs wrongly there (ENGINE.md), and other accessors it gates at 1.6.629 may be wrong too.
 - Bottled Shaders (a Community Shaders fork, same `CommunityShaders.dll`, no `SeamlessPortal_*`
   exports) gets the "None" backend: no room merged into the street, the portal pass unclipped.
   Not tried in game. Community Shaders 2.0 is in the same state. Planned: `docs/future/SHADER-BASES.md`.

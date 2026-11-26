@@ -515,6 +515,9 @@ Found porting the plugin; each was checked in the code of both.
   death +0x328, position +0x380); CommonLib's `AsBGSActorCellEventSource` says +0x2D8 for every AE
   before 1.7.99. Through it, `AddEventSink` spun forever on a lock word that wasn't one: the game
   hung before the main menu.
+- `BSGraphics::State`'s runtime data starts at +0x60 as on 1.6.1170 (Halton points at +0xC4,
+  dynamic resolution ratios at +0x104); CommonLib's `GetRuntimeData` takes SE's +0x58 before
+  1.6.629 and reads a Halton point (5/9) as the width ratio.
 - SKSE 2.1.5 refuses a declaration with `kVersionIndependent_StructsPost629`; SKSE 2.2 refuses one
   without it on 1.6.629+ unless it says no struct use (`kVersionIndependentEx_NoStructUse`). One DLL
   for both declares no struct use, as Community Shaders does.
