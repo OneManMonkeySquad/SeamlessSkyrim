@@ -2659,10 +2659,10 @@ namespace
 		// them, and the function starts with a jump to the thunk.
 		static void Install()
 		{
-			// The function writes the drawn bits at +0x27C (SE: +0x274); ShowActor writes them through
-			// CommonLib's layout, which must agree.
+			// The function writes the drawn bits at +0x27C (SE and AE before 1.6.629: +0x274);
+			// ShowActor writes them through CommonLib's layout, which must agree.
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetActorRuntimeData().unk274) - reinterpret_cast<std::uintptr_t>(player) == REL::Relocate(0x274, 0x27C));
+			SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetActorRuntimeData().unk274) - reinterpret_cast<std::uintptr_t>(player) == Hooks::Offset<std::uintptr_t>(0x274, 0x274, 0x27C, 0x27C));
 			REL::Relocation<std::uintptr_t> target{ REL::RelocationID(39262, 40335) };
 			static constexpr std::uint8_t   expected[19] = { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x30 };
 			if (std::memcmp(reinterpret_cast<const void*>(target.address()), expected, sizeof(expected)) != 0) {
@@ -2915,7 +2915,7 @@ namespace Portal::Render
 	void Install()
 	{
 		auto& trampoline = SKSE::GetTrampoline();
-		REL::Relocation<std::uintptr_t> renderWorld{ REL::RelocationID(35560, 36559), Hooks::Offset(0x831, 0x841, 0x85E) };
+		REL::Relocation<std::uintptr_t> renderWorld{ REL::RelocationID(35560, 36559), Hooks::Offset(0x831, 0x841, 0x841, 0x85E) };
 		REL::Relocation<std::uintptr_t> drawPass{ REL::RelocationID(100852, 107642), REL::Relocate(0x29E, 0x28F) };
 		REL::Relocation<std::uintptr_t> refraction{ REL::RelocationID(99938, 106583), REL::Relocate(0x3C5, 0x3B4) };
 		REL::Relocation<std::uintptr_t> worldDepth{ REL::RelocationID(100741, 107522), REL::Relocate(0x6A, 0x6A) };

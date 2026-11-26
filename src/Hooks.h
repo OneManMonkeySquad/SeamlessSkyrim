@@ -5,15 +5,21 @@
 namespace Hooks
 {
 	// An offset that moves between builds: inside an engine function, or into a struct the plugin
-	// checks CommonLib against. SE 1.5.97; AE before 1.7.99 (read off 1.6.1170); AE from 1.7.99
-	// (read off 1.7.104), where the player's runtime data moved by 8 bytes (CommonLib's
-	// RUNTIME_SSE_1_7_99) and functions moved with it.
-	inline std::ptrdiff_t Offset(std::ptrdiff_t a_se, std::ptrdiff_t a_ae, std::ptrdiff_t a_ae1799)
+	// checks CommonLib against. SE 1.5.97; AE before 1.6.629 (read off 1.6.353), where references
+	// are 8 bytes shorter (CommonLib's RUNTIME_SSE_1_6_629); AE before 1.7.99 (read off 1.6.1170);
+	// AE from 1.7.99 (read off 1.7.104), where the player's runtime data moved by another 8 bytes
+	// (RUNTIME_SSE_1_7_99). Functions moved with each.
+	template <class T = std::ptrdiff_t>
+	T Offset(std::type_identity_t<T> a_se, std::type_identity_t<T> a_ae353, std::type_identity_t<T> a_ae, std::type_identity_t<T> a_ae1799)
 	{
 		if (!REL::Module::IsAE()) {
 			return a_se;
 		}
-		return REL::Module::get().version() >= SKSE::RUNTIME_SSE_1_7_99 ? a_ae1799 : a_ae;
+		const auto version = REL::Module::get().version();
+		if (version < SKSE::RUNTIME_SSE_1_6_629) {
+			return a_ae353;
+		}
+		return version >= SKSE::RUNTIME_SSE_1_7_99 ? a_ae1799 : a_ae;
 	}
 
 	// Whether the call at a_site, which we are about to redirect, is the one we reversed: a

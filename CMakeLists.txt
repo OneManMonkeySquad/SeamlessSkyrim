@@ -27,9 +27,8 @@ set(SKYRIM_PLUGINS_DIR
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
 
-# Plain add_library instead of CommonLib's add_commonlibsse_plugin(): its generated declaration
-# can't express "uses post-1.6.629 structs", so SKSE disabled the plugin on 1.7.104. The
-# declaration lives in src/main.cpp instead.
+# Plain add_library instead of CommonLib's add_commonlibsse_plugin(): the SKSE declaration lives in
+# src/main.cpp, where the flags that let both AE struct layouts load it are explained.
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(

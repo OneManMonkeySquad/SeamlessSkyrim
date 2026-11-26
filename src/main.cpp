@@ -7,16 +7,17 @@
 #include "UI/Menu.h"
 #include "Probe.h"
 
-// Runs on SE 1.5.97 and on AE from 1.6.629. We read engine structs directly (cells, TES, process
-// lists), so declare the post-1.6.629 layout honestly: AE's SKSE then refuses to load us on the
-// earlier AE layout, which we never tested, instead of letting us read garbage. SE's SKSE ignores
-// this declaration and loads us through SKSEPlugin_Query.
+// Runs on SE 1.5.97 and on AE from 1.6.353, on both of AE's struct layouts (before and after
+// 1.6.629): CommonLib picks the layout at runtime. SKSE's declaration can only name one layout, and
+// SKSE 2.1.5 (for 1.6.353) refuses the flag that names the later one, so we declare no struct use,
+// as Community Shaders does, and turn away the AE builds before 1.6.353 ourselves in
+// SKSEPluginLoad. SE's SKSE ignores this declaration and loads us through SKSEPlugin_Query.
 SKSEPluginInfo(
 	.Version = REL::Version{ PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH, 0 },
 	.Name = PLUGIN_NAME,
 	.Author = "bloodline",
-	.StructCompatibility = SKSE::StructCompatibility::Dependent,
-	.RuntimeCompatibility = SKSE::PluginDeclaration::RuntimeCompatibility(SKSE::VersionIndependence::AddressLibrary, true))
+	.StructCompatibility = SKSE::StructCompatibility::Independent,
+	.RuntimeCompatibility = SKSE::PluginDeclaration::RuntimeCompatibility(SKSE::VersionIndependence::AddressLibrary))
 
 namespace
 {
@@ -73,6 +74,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	// Every line written through: a game killed on exit (a crash in another mod's shutdown) lost
 	// the end of the log, which was where a test's findings were.
 	spdlog::default_logger()->flush_on(spdlog::level::trace);
+	// The first AE builds were never checked against our hook sites and struct offsets.
+	if (REL::Module::IsAE() && REL::Module::get().version() < SKSE::RUNTIME_SSE_1_6_353) {
+		logger::error("{} needs Skyrim 1.5.97, or 1.6.353 or later; this is {}", SKSE::GetPluginName(), REL::Module::get().version().string());
+		return false;
+	}
 	SKSE::AllocTrampoline(2048);
 	if (auto* serialization = SKSE::GetSerializationInterface()) {
 		serialization->SetUniqueID('SMLS');

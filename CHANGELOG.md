@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Runs on Skyrim AE 1.6.353 (SKSE 2.1.5), which refused to load the plugin.**
+
 ## 0.6.1
 
 ### Fixes

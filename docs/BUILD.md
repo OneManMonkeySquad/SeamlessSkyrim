@@ -97,6 +97,12 @@ cp build/ALL/Release/CommunityShaders.dll build/ALL/Release/CommunityShaders.pdb
    "/e/SteamLibrary/steamapps/common/Skyrim Special Edition/Data/SKSE/Plugins/"
 ```
 
+The Community Shaders 2.0 port (`seamless-portal-2.0`, COMMUNITY-SHADERS-PATCH.md) is a git
+worktree with its own build tree: `tools\build.ps1 -CommunityShaders -CsFork
+E:\projects\CommunityShaders-Seamless-2.0`. A fresh tree is configured with `cmake --preset ALL`
+from the worktree with `VCPKG_ROOT` set to Visual Studio's vcpkg (`C:\Program Files\Microsoft
+Visual Studio\18\Community\VC\vcpkg`), about 4 minutes.
+
 CMake's build of the fork doesn't copy anything into the game, so do it by hand as above, or run
 `tools/build.ps1 -CommunityShaders` or `tools/deploy-vortex-mod.ps1`. `cp` writes into the
 existing file, which keeps the game's DLL hard link intact, and therefore also changes the Vortex
@@ -323,11 +329,27 @@ plugins folder, trainwreck). Same shared Documents folder.
   `versionlib` (format 2).
 - Deploy by hand like 1.5.97, into `E:\Oldrim-1.6.1170\Data\SKSE\Plugins`.
 
+### AE 1.6.353
+
+A game at `E:\Oldrim-1.6.353` (SKSE 2.1.5, `versionlib-1-6-353-0.bin`, trainwreck, no Community
+Shaders), its folder copied from another install. Same shared Documents folder.
+
+- The `ContentCatalog.txt` trap of 1.6.1170 applies: move it aside around the launch. From a
+  script, `game_launch` with `SKYRIM_GAME_DIR=E:\Oldrim-1.6.353` as in `start-1170.ps1 -Bridge`;
+  the MCP server's own tools then reach it through the bridge.
+- It hung at startup on Creation Club files saved with a 1.71 header (newer than it reads):
+  seven of them are taken out of its `Skyrim.ccc` (the original is `Skyrim.ccc.before-353-test`).
+- AE 1.7.104 saves load (`SeamlessTestBelethors` and the Whiterun routes worked).
+- SKSE 2.1.5 shows a dialog for a plugin it refuses ("unsupported version independence method")
+  and waits on it.
+- Exe encrypted: `dump.py` as above, into `build/se-port/SkyrimSE-1.6.353-mem.exe`;
+  `build/se-port/check353.py` compares every hook site and checked byte pattern with 1.6.1170.
+
 ### Porting an address
 
 Every engine address is a `REL::RelocationID(se, ae)`; call sites inside a function take
-`REL::Relocate(seOffset, aeOffset)`, or `Hooks::Offset(se, ae, ae1799)` where AE before 1.7.99
-differs.
+`REL::Relocate(seOffset, aeOffset)`, or `Hooks::Offset(se, ae353, ae, ae1799)` where AE before
+1.6.629 or from 1.7.99 differs.
 
 - The 1.5.97 exe on disk is encrypted (Steam's DRM); its code is read from the running game:
   `python tools/se-port/dump.py <pid> build/se-port/SkyrimSE-1.5.97-mem.exe` once at the main

@@ -2560,7 +2560,7 @@ namespace Portal::Manager
 			DoorActivateHook::func = vtable.write_vfunc(0x37, DoorActivateHook::Thunk);
 		}
 		{
-			REL::Relocation<std::uintptr_t> pickSite{ REL::RelocationID(39534, 40620), Hooks::Offset(0x214, 0x1D5, 0x1E7) };
+			REL::Relocation<std::uintptr_t> pickSite{ REL::RelocationID(39534, 40620), Hooks::Offset(0x214, 0x1D5, 0x1D5, 0x1E7) };
 			if (Hooks::CallsTo(pickSite.address(), REL::RelocationID(25591, 26127), "portal: crosshair pick")) {
 				CrosshairPickHook::func = SKSE::GetTrampoline().write_call<5>(pickSite.address(), CrosshairPickHook::Thunk);
 			}
@@ -2577,7 +2577,12 @@ namespace Portal::Manager
 				AutoDoorHook::func = SKSE::GetTrampoline().write_call<5>(autoDoorSite.address(), AutoDoorHook::Thunk);
 			}
 		}
-		RE::PlayerCharacter::GetSingleton()->AsBGSActorCellEventSource()->AddEventSink(&cellSink);
+		// Not CommonLib's AsBGSActorCellEventSource: it says +0x2D8 for every AE before 1.7.99, but
+		// before 1.6.629 the source is at +0x2D0 as on SE (read off a 1.6.353 player), and its lock
+		// read 8 bytes off never came free: the game hung before the main menu.
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* cellEvents = reinterpret_cast<RE::BSTEventSource<RE::BGSActorCellEvent>*>(reinterpret_cast<std::uintptr_t>(player) + Hooks::Offset(0x2D0, 0x2D0, 0x2D8, 0x2E0));
+		cellEvents->AddEventSink(&cellSink);
 		logger::info("portal: manager installed, {} ({})", enabled ? "enabled" : "disabled", ini.string());
 	}
 

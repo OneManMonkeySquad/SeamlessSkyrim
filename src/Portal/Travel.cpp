@@ -751,10 +751,10 @@ namespace Portal::Travel
 			}
 		}
 		// The engine's teleport (ID 40438) reads its queue at +0x650 and the valid flag at +0x692 (SE:
-		// +0x640, +0x682; AE before 1.7.99: +0x648, +0x68A); CommonLib's layout must agree, or Begin
-		// writes elsewhere.
+		// +0x640, +0x682, and so does AE before 1.6.629; AE before 1.7.99: +0x648, +0x68A);
+		// CommonLib's layout must agree, or Begin writes elsewhere.
 		auto* player = RE::PlayerCharacter::GetSingleton();
-		SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetPlayerRuntimeData().queuedTargetLoc.isValid) - reinterpret_cast<std::uintptr_t>(player) == Hooks::Offset(0x682, 0x68A, 0x692));
+		SEAMLESS_ASSERT(reinterpret_cast<std::uintptr_t>(&player->GetPlayerRuntimeData().queuedTargetLoc.isValid) - reinterpret_cast<std::uintptr_t>(player) == Hooks::Offset<std::uintptr_t>(0x682, 0x682, 0x68A, 0x692));
 		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(35565, 36564), REL::Relocate(0x53, 0x6E) };
 		if (!Hooks::CallsTo(site.address(), REL::RelocationID(39366, 40438), "travel: teleport")) {
 			logger::error("travel: walking through doors uses the normal transition");
@@ -787,7 +787,7 @@ namespace Portal::Travel
 		} else {
 			logger::warn("travel: loading screen close call not found");
 		}
-		REL::Relocation<std::uintptr_t> endOfFrame{ REL::RelocationID(35565, 36564), Hooks::Offset(0x5E8, 0xAAD, 0xABF) };
+		REL::Relocation<std::uintptr_t> endOfFrame{ REL::RelocationID(35565, 36564), Hooks::Offset(0x5E8, 0xAA8, 0xAAD, 0xABF) };
 		if (callsTo(endOfFrame.address(), REL::RelocationID(34554, 35409))) {
 			EndOfFrameHook::func = SKSE::GetTrampoline().write_call<5>(endOfFrame.address(), EndOfFrameHook::Thunk);
 			endOfFrameHooked = true;

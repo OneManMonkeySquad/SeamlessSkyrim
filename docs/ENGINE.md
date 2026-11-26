@@ -1,6 +1,6 @@
 # Engine facts
 
-Skyrim AE 1.7.104, IDs from the Address Library; where SE 1.5.97 and AE 1.6.1170 differ is at
+Skyrim AE 1.7.104, IDs from the Address Library; where SE 1.5.97, AE 1.6.1170 and AE 1.6.353 differ is at
 the end. These were expensive to find. Add new ones in the same change that needed them.
 
 ## Cells and spaces
@@ -503,3 +503,18 @@ Found porting the plugin; each was checked in the code of both.
   (`Hooks::Offset`), the rest identical, and so are the byte patterns the plugin checks.
 - From 1.7.99 the player's runtime data sits 8 bytes later (CommonLib's
   `RUNTIME_SSE_1_7_99`): the teleport's queue at +0x648 and valid flag at +0x68A on 1.6.1170.
+
+## AE 1.6.353 against AE 1.6.1170
+
+- Same IDs; 5 of 36 hook sites at other offsets (the terrain update's placement calls, Main::Update's
+  end-of-frame call), the rest and the byte patterns the plugin checks identical.
+- Before 1.6.629 references are 8 bytes shorter, so the player's offsets are SE's: drawn bits at
+  +0x274, teleport queue +0x640, valid flag +0x682.
+- TES's worldspace is at +0x140 before 1.6.1130 (CommonLib's TES split), +0x148 after.
+- PlayerCharacter's `BSTEventSource<BGSActorCellEvent>` is at +0x2D0 as on SE (0x58 each, then
+  death +0x328, position +0x380); CommonLib's `AsBGSActorCellEventSource` says +0x2D8 for every AE
+  before 1.7.99. Through it, `AddEventSink` spun forever on a lock word that wasn't one: the game
+  hung before the main menu.
+- SKSE 2.1.5 refuses a declaration with `kVersionIndependent_StructsPost629`; SKSE 2.2 refuses one
+  without it on 1.6.629+ unless it says no struct use (`kVersionIndependentEx_NoStructUse`). One DLL
+  for both declares no struct use, as Community Shaders does.

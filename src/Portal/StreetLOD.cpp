@@ -267,15 +267,16 @@ namespace Portal::StreetLOD
 	{
 		// All or none: the job let through indoors without the update's cell taken over crashed.
 		const REL::RelocationID kJob(38145, 39102), kUpdate(31017, 31802), kPlaceAround(31041, 31828), kPlaceAroundAll(31048, 31835);
-		REL::Relocation<std::uintptr_t> worldSite{ kJob, Hooks::Offset(0x1E, 0x1E, 0x2F) };
-		REL::Relocation<std::uintptr_t> updateSite{ kJob, Hooks::Offset(0x5D, 0x5D, 0x6E) };
+		REL::Relocation<std::uintptr_t> worldSite{ kJob, Hooks::Offset(0x1E, 0x1E, 0x1E, 0x2F) };
+		REL::Relocation<std::uintptr_t> updateSite{ kJob, Hooks::Offset(0x5D, 0x5D, 0x5D, 0x6E) };
 		// SE inlines two of the update's three calls to kPlaceAround, leaving calls to kPlaceAroundAll
 		// in their place: those are hooked as the update's cell (all) instead.
 		std::vector<REL::Relocation<std::uintptr_t>> allSites, placeSites;
-		for (const auto offset : REL::Relocate(std::vector{ 0x22C, 0x2C6, 0x381 }, std::vector{ 0x260 })) {
+		using Offsets = std::vector<int>;
+		for (const auto offset : Hooks::Offset<Offsets>({ 0x22C, 0x2C6, 0x381 }, { 0x221 }, { 0x260 }, { 0x260 })) {
 			allSites.emplace_back(kUpdate, offset);
 		}
-		for (const auto offset : REL::Relocate(std::vector{ 0x26D }, std::vector{ 0x2A1, 0x2F5, 0x37E })) {
+		for (const auto offset : Hooks::Offset<Offsets>({ 0x26D }, { 0x262, 0x2C5, 0x34E }, { 0x2A1, 0x2F5, 0x37E }, { 0x2A1, 0x2F5, 0x37E })) {
 			placeSites.emplace_back(kUpdate, offset);
 		}
 		bool ok = Hooks::CallsTo(worldSite.address(), REL::RelocationID(19389, 19816), "street LOD: the job's worldspace") &&
@@ -286,9 +287,11 @@ namespace Portal::StreetLOD
 		for (const auto& site : placeSites) {
 			ok = ok && Hooks::CallsTo(site.address(), kPlaceAround, "street LOD: the update's cell");
 		}
-		// The whole function is "mov rax, [rcx+148h]; ret" (SE: +140h): replaced, not called.
+		// The whole function is "mov rax, [rcx+148h]; ret" (SE and AE before 1.6.1130: +140h, where
+		// CommonLib's TES layout changes): replaced, not called.
 		REL::Relocation<std::uintptr_t> tesWorld{ REL::RelocationID(13169, 13314) };
-		const std::array<std::uint8_t, 8> kTesWorldCode{ 0x48, 0x8B, 0x81, REL::Relocate<std::uint8_t>(0x40, 0x48), 0x01, 0x00, 0x00, 0xC3 };
+		const bool                        tes1130 = REL::Module::IsAE() && REL::Module::get().version() >= SKSE::RUNTIME_SSE_1_6_1130;
+		const std::array<std::uint8_t, 8> kTesWorldCode{ 0x48, 0x8B, 0x81, std::uint8_t(tes1130 ? 0x48 : 0x40), 0x01, 0x00, 0x00, 0xC3 };
 		if (std::memcmp(reinterpret_cast<const void*>(tesWorld.address()), kTesWorldCode.data(), kTesWorldCode.size()) != 0) {
 			logger::error("hooks: street LOD: TES's worldspace getter isn't the one reversed (another mod's hook, or a different game build)");
 			ok = false;
