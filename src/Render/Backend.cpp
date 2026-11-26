@@ -241,6 +241,8 @@ namespace Render::Backend
 	{
 		if (kind == Kind::kCommunityShaders && fork.setInteriorSun) {
 			fork.setInteriorSun(a_on);
+		} else if (kind == Kind::kNative) {
+			Render::Native::SetStreetSun(a_on);
 		}
 	}
 

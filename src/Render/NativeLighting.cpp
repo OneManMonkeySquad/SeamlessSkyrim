@@ -137,6 +137,70 @@ struct Render::Native::LightingSwap::Saved
 namespace
 {
 	// SetupGeometry calls never nest; one set of saved state does.
+	// ---- the street's sun shadows indoors ----
+	// The engine draws the sun's shadow maps and the screen's shadow mask only outdoors: the frame
+	// setup (ID 36561 + 0x374) marks the frame sunless when TES has an interior cell, or when the
+	// worldspace has no sky. Through a shop's doorway the street then lay in flat light, without
+	// a shadow of its own. While the street is merged in, the interior check is skipped and the
+	// worldspace asked instead is one with a sky, as Community Shaders' Interior Sun does for an
+	// interior flagged for it (the shadow light is pointed at the outdoor sun by the manager,
+	// AimSunShadow). Without Community Shaders only: its Interior Sun hooks the same sites.
+	std::atomic<bool> streetSun = false;
+	bool              streetSunHooked = false;
+
+	RE::TESWorldSpace* FakeWorldSpace(bool a_sky)
+	{
+		// Only its flags are read there.
+		alignas(RE::TESWorldSpace) static std::byte sky[sizeof(RE::TESWorldSpace)]{};
+		alignas(RE::TESWorldSpace) static std::byte noSky[sizeof(RE::TESWorldSpace)]{};
+		static const bool once = [] {
+			reinterpret_cast<RE::TESWorldSpace*>(noSky)->flags.set(RE::TESWorldSpace::Flag::kNoSky, RE::TESWorldSpace::Flag::kFixedDimensions);
+			return true;
+		}();
+		(void)once;
+		return reinterpret_cast<RE::TESWorldSpace*>(a_sky ? sky : noSky);
+	}
+
+	struct SunWorldSpaceHook
+	{
+		static RE::TESWorldSpace* Thunk(RE::TES* a_tes)
+		{
+			if (a_tes->interiorCell) {
+				return FakeWorldSpace(streetSun);
+			}
+			// Starting a new game there is briefly neither an interior nor a worldspace; the patched
+			// site reads the flags unconditionally.
+			auto* world = func(a_tes);
+			return world ? world : FakeWorldSpace(false);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	void InstallStreetSunHooks()
+	{
+		if (::GetModuleHandleW(L"CommunityShaders.dll")) {
+			return;
+		}
+		const REL::Relocation<std::uintptr_t> setup{ REL::RelocationID(35562, 36561) };
+		const auto interiorJump = setup.address() + REL::Relocate(0x397, 0x37B);
+		const auto firstCall = setup.address() + REL::Relocate(0x399, 0x37D);
+		const auto secondCall = setup.address() + REL::Relocate(0x3AE, 0x392);
+		const REL::RelocationID getWorldSpace{ 13169, 13314 };
+		if (*reinterpret_cast<const std::uint8_t*>(interiorJump) != 0x75) {
+			logger::error("native backend: street sun: no jump at the frame setup's interior check");
+			return;
+		}
+		if (!Hooks::CallsTo(firstCall, getWorldSpace, "native backend: street sun (1)") || !Hooks::CallsTo(secondCall, getWorldSpace, "native backend: street sun (2)")) {
+			return;
+		}
+		auto& trampoline = SKSE::GetTrampoline();
+		SunWorldSpaceHook::func = trampoline.write_call<5>(firstCall, SunWorldSpaceHook::Thunk);
+		trampoline.write_call<5>(secondCall, SunWorldSpaceHook::Thunk);
+		REL::safe_fill(interiorJump, REL::NOP, 2);
+		streetSunHooked = true;
+		logger::info("native backend: street sun hooks installed");
+	}
+
 	Render::Native::LightingSwap::Saved storage;
 	bool                                storageInUse = false;
 
@@ -342,8 +406,19 @@ namespace Render::Native
 		}
 	}
 
+	void SetStreetSun(bool a_on)
+	{
+		streetSun = a_on;
+	}
+
+	bool StreetSunOn()
+	{
+		return streetSunHooked && streetSun;
+	}
+
 	void InstallLightingHooks()
 	{
+		InstallStreetSunHooks();
 		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(100520, 107245), REL::Relocate(0xC37, 0xD26) };
 		if (Hooks::CallsTo(site.address(), REL::RelocationID(98984, 105637), "native backend: SSAO composite's fog")) {
 			CompositeFogHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), CompositeFogHook::Thunk);

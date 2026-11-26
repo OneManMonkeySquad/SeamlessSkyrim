@@ -18,6 +18,9 @@ namespace Render::Native
 	// NativeLighting.cpp: the light of the merged space and of the portal pass.
 	void SetMergedLighting(const float* a_lighting);
 	void SetMergedFog(const float* a_fog);
+	// The street merged into the interior: the engine draws the sun's shadows as outdoors.
+	void SetStreetSun(bool a_on);
+	[[nodiscard]] bool StreetSunOn();
 	void InstallLightingHooks();
 	[[nodiscard]] bool MergedDoorSet();  // NativeMask.cpp: a space is merged in this frame
 	[[nodiscard]] json DescribeLighting();

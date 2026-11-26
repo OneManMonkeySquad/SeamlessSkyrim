@@ -67,7 +67,7 @@ namespace Render::Backend
 	// gate stands in the world; 0 when room 0 isn't a gate. Only when CanMaskGate().
 	[[nodiscard]] bool CanMaskGate();
 	void               SetGatePassage(float a_depth);
-	// The street merged into an interior gets the sun's shadows. Community Shaders only.
+	// The street merged into an interior gets the sun's shadows.
 	void SetInteriorSun(bool a_on);
 	// The player walked out of a doorway: lighting that builds up over time is settled at once.
 	void SettleSkylighting();

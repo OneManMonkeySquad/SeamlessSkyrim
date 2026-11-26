@@ -1,4 +1,5 @@
 #include "Portal/PortalRender.h"
+#include "Render/Native.h"
 #include "Portal/Travel.h"
 
 #include "Bridge/AgentMode.h"
@@ -277,6 +278,16 @@ namespace
 			if (inPortalSubmit && a_alphaTest && ::Render::Backend::GameShaders() && a_pass && a_pass->shader &&
 				a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting) {
 				a_technique |= static_cast<std::uint32_t>(RE::BSLightingShader::TechniqueFlag::kDoAlphaTest);
+			}
+			// The street merged into an interior: the engine draws the sun's shadow mask indoors while
+			// it is (Native::SetStreetSun), but the street's shapes come with an interior's technique,
+			// without the bits that make the lighting shader read the mask: in full sun, without a
+			// shadow of their own. They get the bits the same shapes have outdoors; the interior's own
+			// shapes stay without them, unshadowed by a sun that doesn't shine inside.
+			if (!inPortalSubmit && ::Render::Native::StreetSunOn() && a_pass && a_pass->geometry && a_pass->shader &&
+				a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting && Portal::Manager::IsMergedShape(a_pass->geometry)) {
+				using Flag = RE::BSLightingShader::TechniqueFlag;
+				a_technique |= static_cast<std::uint32_t>(Flag::kShadowDir) | static_cast<std::uint32_t>(Flag::kDefShadow);
 			}
 			func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 			if (inPortalSubmit && a_pass) {

@@ -79,8 +79,15 @@ directional ambient at ID 390984. For the length of the engine's call these are 
 - Room merged into the street: its cell's own fog on its shapes. The SSAO composite fogs every
   pixel alike and keeps the street's (it takes the merged fog only with the player indoors).
 
-Not done natively: Interior Sun (the street's sun shadows inside), skylighting settle, Sky Sync's
-sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
+- Street merged into an interior: the sun's shadows. The frame setup (ID 36561 + 0x374) marks an
+  interior's frame sunless; while the street is merged, the interior check is skipped and the
+  worldspace it reads is one with a sky (as Community Shaders' Interior Sun does, which owns the
+  same sites when it is loaded), so the engine draws the sun's shadow maps and mask indoors. The
+  street's shapes get `kShadowDir | kDefShadow` added to their technique (they come with an
+  interior's, which doesn't read the mask); the interior's shapes don't, so the outdoor sun's
+  shadows don't fall on them. The shadow light points at the outdoor sun (`AimSunShadow`).
+
+Not done natively: skylighting settle, Sky Sync's sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
 seen from across the street, the street's light through its doorway and the street's fog in front
 of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders. Nor, between
 two interiors, each room's light through the doorway (`SetMergedDaylight`, `SetHostDaylight`).

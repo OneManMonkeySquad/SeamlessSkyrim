@@ -205,6 +205,12 @@ Found porting the plugin; each was checked in the code of both.
   shadow map technique (vertex descriptor 0xC000, RenderShadowmap | Clamped), skinned ones with
   RenderDepth (0x2004). The technique doesn't tell a shadow map from the main view; the depth
   target does (`RendererShadowState::depthStencil`, `kSHADOWMAPS` and the like).
+- **Sun shadows indoors:** the frame setup (ID 36561, SE 35562) sets a "no sun" flag in the frame's
+  render data (+0x51 of what ID 107121 returns) when `TES::interiorCell` is set (jne at +0x37B),
+  or when `TES::GetWorldSpace` (ID 13314, SE 13169) has flag 0x40 or ID 20481 says so (calls at
+  +0x37D and +0x392). With it clear indoors the engine draws the sun's shadow maps and mask. The
+  lighting shader reads the mask only with `kShadowDir` (bit 13) and `kDefShadow` (bit 14) in its
+  technique: outdoors every shape has both; indoors shapes have at most `kDefShadow`.
 - **Alpha test in the game's own lighting shader:** only the prepass cuts alpha-tested shapes; the
   lighting pass draws them with depth test EQUAL and a technique without `kDoAlphaTest` (bit 20),
   although `SetupAndDrawPass` gets `alphaTest` true and `RendererShadowState::alphaTestEnabled`
