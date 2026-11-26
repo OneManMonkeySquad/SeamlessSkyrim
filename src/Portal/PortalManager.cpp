@@ -2376,6 +2376,9 @@ namespace
 		// reach through); someone further in than this past it was already in the copy.
 		constexpr float kGateStop = 30.0f;
 		constexpr float kGateDeep = 150.0f;
+		// Further in than this, someone in line with the gate is elsewhere in the worldspace (beyond
+		// the city's walls, under an arch further along the road), not in its passage.
+		constexpr float kGateDeepMax = 600.0f;
 		constexpr float kGateHoldMax = 8.0f;  // the purge waits 4 s at most, the attach follows
 		RE::FormID  door = 0;
 		float       depth = 0.0f;
@@ -2404,7 +2407,9 @@ namespace
 				const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
 				const float side = std::abs(offset.x * inward.y - offset.y * inward.x);
 				const float stop = -(size.halfDepth + kGateStop);
-				if (side > size.halfWidth || d <= stop) {
+				// Feet within the opening's height: not on the wall above it, nor in a river below.
+				const float bottom = center.z - size.halfHeight;
+				if (side > size.halfWidth || d <= stop || d > stop + kGateDeepMax || position.z < bottom - 64.0f || position.z > center.z + size.halfHeight) {
 					continue;
 				}
 				if (d > stop + kGateDeep || gateHeld >= kGateHoldMax) {
