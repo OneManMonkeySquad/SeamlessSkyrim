@@ -1,8 +1,9 @@
 # Plan: the fork on Community Shaders 1.9.1, 2.0 and Bottled Shaders 2.0.3
 
-Written 2026-11-26. Step 1 ported and built, not yet run in the game (COMMUNITY-SHADERS-PATCH.md, "On
-Community Shaders 2.0"). Goal: one release whose installer patches any of Community
-Shaders 1.9.1, Community Shaders 2.0 and Bottled Shaders 2.0.3. Today: 1.9.1 only.
+Written 2026-11-26. Steps 1 and 2 are ported (COMMUNITY-SHADERS-PATCH.md, "On Community Shaders
+2.0" and "On Bottled Shaders 2.0.3"), and the installer and `tools/make-release.ps1` offer all
+three. Goal: one release whose installer patches any of Community Shaders 1.9.1, Community
+Shaders 2.0 and Bottled Shaders 2.0.3.
 
 ## The bases
 
@@ -40,8 +41,9 @@ for; where a base differs, it says so there.
   we change, as for Community Shaders, so each option fits one exact release; a Bottled Shaders
   update brings its own DLL back and SeamlessSkyrim falls to the "None" backend until our next
   release.
-- Which commit 2.0.3 was built from has to be found: GitHub has no tag for it (`CMakeLists.txt`
-  says 2.0.0). Comparing the archive's shaders with `Bottle-Compendium`'s history should find it.
+- 2.0.3 is `Bottle-Compendium` `e022b1c7` (no tag; `CMakeLists.txt` says 2.0.0): found by
+  comparing the archive's shaders with the branch's history, all equal there. Its DLL is newer than
+  the commit before and older than that one. The next release is found the same way.
 - GPL-3.0: publish the branch, as for the Community Shaders fork (`SOURCE.txt`).
 
 ## Installer
@@ -49,13 +51,13 @@ for; where a base differs, it says so there.
 One group, exactly one of: Community Shaders 1.9.1, Community Shaders 2.0, Bottled Shaders 2.0.3,
 none. Each option is its own folder in the archive.
 
-- MO2 can preselect with `fileDependency`: Bottled Shaders by `Shaders\Features\SnowCover.ini`
-  (in use since `baa3733`); Community Shaders 2.0 against 1.9 by a feature file only one of them
-  installs (to find). Vortex can't (it answers from its plugin list), so the option texts must
-  name the exact version.
-- `tools/make-release.ps1` builds and gathers each branch (today one `-CsFork`/`-CsBase`), and
-  `tools/build.ps1 -CommunityShaders` / `deploy-vortex-mod.ps1` need to know which branch the test
-  game has.
+- MO2 preselects with `fileDependency`: Bottled Shaders by `Shaders\Features\SnowCover.ini`
+  (in use since `baa3733`), 2.0 against 1.0 by `Rainbows.ini`; Community Shaders 2.0 against 1.9
+  by `ViewAtmosphere.ini` or `SceneManager.ini`. Vortex can't (it answers from its plugin list), so
+  the option texts name the exact version.
+- `tools/make-release.ps1` builds and gathers each branch (`$forks`). `tools/build.ps1
+  -CommunityShaders -CsFork <worktree>` builds the one the test game has; `deploy-vortex-mod.ps1`
+  stages one fork into the SeamlessSkyrim mod (`-CsFork`, `-CsBase`, 1.9.1 by default).
 
 ## Testing
 

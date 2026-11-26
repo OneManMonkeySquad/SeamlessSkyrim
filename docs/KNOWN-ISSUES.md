@@ -9,7 +9,11 @@ Open bugs and things not tried. A fixed one comes out.
   `coc`). Not tried on AE.
 - AE: `place_go` (`coc RiftenBeggarsRow`) from Riften's street just after walking out of Beggar's
   Row hung the game during the load: no CPU, every thread waiting; the log ends with the room's
-  door opened again (`Doors::Open`) after the release. Once.
+  door opened again (`Doors::Open`) after the release. Again 2026-11-26 (Bottled Shaders fork):
+  `place_go bannered-mare-door-out` (`coc WhiterunBanneredMare`) a few seconds after walking out
+  of the Bannered Mare; the log ends with the release and the `coc`. The thread that ran them waits
+  (stale frames near ID 76561, culling); the frame thread waits in HDT-SMP's end-of-frame hook
+  (`Hooks::MainHooks::Unk_sub`, under `EndOfFrameHook`); every other thread idle. Twice now.
 - A hang right after walking out of Arcadia's (2026-11-16, agent game, once in ~17 exits): the main thread waiting for the frame's jobs (ID 35409), one job thread (an audio job, ID 39080 -> 91863) spinning in EngineFixes' `ScrapHeap::Allocate` replacement (ID 68173 -> 68144). Not reproduced; not known whether SeamlessSkyrim plays a part.
 - Loading saves one after another across worldspaces (Whiterun's Belethor's, Riften's jail) with portals on crashes now and then (ID 19165 putting an actor's 3D into a cell without 3D), also without the persistent references' 3D loading. During the sectors work (APPROACHES.md, 5), loading a save, travelling to Swindler's Den and loading again crashed with all of that switched off.
 - Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter
@@ -229,9 +233,9 @@ Open bugs and things not tried. A fixed one comes out.
   same walk crossed every later time. Not reproduced.
 - AE 1.6.353 is checked only as far as the commits that brought it in: CommonLib reads two
   structs wrongly there (ENGINE.md), and other accessors it gates at 1.6.629 may be wrong too.
-- Bottled Shaders (a Community Shaders fork, same `CommunityShaders.dll`, no `SeamlessPortal_*`
-  exports) gets the "None" backend: no room merged into the street, the portal pass unclipped.
-  Not tried in game. Community Shaders 2.0 is in the same state. Planned: `docs/future/SHADER-BASES.md`.
+- Bottled Shaders other than 2.0.3 (a Community Shaders fork, same `CommunityShaders.dll`, no
+  `SeamlessPortal_*` exports) gets the "None" backend: no room merged into the street, the portal
+  pass unclipped. Each Bottled Shaders release needs the port moved onto it.
 - Community Shaders 2.0 switches itself off when it finds a DLL on its incompatible list (new
   there: `NMN_DeformableTerrain.dll`, Dynamic Terrain Deformation): it logs "Incompatible DLL ...
   detected" and installs nothing. Its DLL still exports the fork's functions, so SeamlessSkyrim
@@ -240,7 +244,14 @@ Open bugs and things not tried. A fixed one comes out.
 - Community Shaders 2.0, rain: in the storm save (`bannered-mare-rain-look-out`, `sw 0010A241`) no
   rain showed, through the Bannered Mare's doorway nor outside, also with the portals off and Rain
   Refraction off. The precipitation shape is there (density 8, not culled), its emitter reports 0
-  particles. Not compared with stock 2.0 rc.2.
+  particles. Not compared with stock 2.0 rc.2. With Bottled Shaders 2.0.3 the same route shows the
+  rain falling in the street through the doorway.
+- Bottled Shaders 2.0.3, the street seen from inside a building (Bannered Mare):
+  - Snow Cover isn't on it: indoors Snow Cover takes the interior's config (none), so the
+    mountains through the doorway are bare rock where outside they are snowed. Taking the street's
+    config indoors would also need the snow's world positions moved back out of the interior.
+  - At 19:30 the houses through the doorway are lit bright orange; outside they are dark grey.
+    Cause not found; not compared with Community Shaders 2.0 at that hour.
 - Community Shaders 2.0, the street's Physical Sky seen from indoors: no lightning (Physical Sky
   keeps it off in interiors); the street's own light is the weather's colour, not Physical Sky's sun
   as outdoors; the medium's height fog and scene settings resolve from the interior's layers.

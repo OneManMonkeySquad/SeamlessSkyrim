@@ -96,6 +96,27 @@ Where 2.0 differs from 1.9.1, and what the port does about it:
   and `ISSAOComposite.hlsl`. With View Atmosphere composing (`PostWaterComposite`, also with the
   street's Physical Sky) the street gets the medium instead, as outdoors.
 
+## On Bottled Shaders 2.0.3
+
+Branch `seamless-portal-bs-2.0`, in the worktree `E:\projects\BottledShaders-Seamless-2.0` (same
+repository, remote `bottled` = `InTheBottle/Bottled-Shaders`), based on `Bottle-Compendium` at
+`e022b1c7`: the commits of `seamless-portal-2.0` cherry-picked onto it. 2.0.3 has no tag; its
+archive's shaders are that commit's (the DLL was built 40 minutes before it was committed, from
+the same tree). Bottled Shaders is Community Shaders 2.0 `dev` (merged up to `v2.0.0-rc.2`) plus
+its own features, so everything in "On Community Shaders 2.0" holds; on top of it:
+
+- `ExtraShaderDescriptor` bits up to 23 are Bottled Shaders': ours are `SeamlessRemote` 24,
+  `SeamlessUnmasked` 25, `SeamlessPlace` 26, `SeamlessOutdoor` 27, `SeamlessRoom` 28-29,
+  `SeamlessLightView` 30.
+- `Lighting.hlsl`: Skin's contact and normal-map shadows take `seamlessDirLightDirection`; Snow
+  Cover leaves `SeamlessRemote` shapes alone (its settings are the player's space's, so a room
+  merged into a snowy street would be snowed on). The world shadow takes upstream's cloud argument, and the
+  directional shadow's two `DEFERRED` forms both take the portal pass.
+- `Particle.hlsl`: its refractive rain has no directional term; only its point lights are left out
+  in the merged street.
+- `ScreenSpaceShadows`: the raymarch is still compiled ahead (`PrecompileRaymarch`); the denoise
+  and mask filter shaders, new here, are compiled on first use.
+
 ## DLL
 
 Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = feature off):

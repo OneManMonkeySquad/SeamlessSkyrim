@@ -69,14 +69,15 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
 
 - `Core/`, always installed: the plugin (Release, no PDB) and `package/`'s two ini, the in-game
   door tunings folded in first (commit them).
-- `CommunityShaders-1.9.1/` and `CommunityShaders-2.0/`, one installer choice with "None of
-  these": each fork's DLL and the files it changed against its base (`-CsBase`, `-CsBase20`). A
-  patch fits one release only: over another, or without Community Shaders, its DLL runs without
-  the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
-  instead of the native one. Told apart by feature files: Bottled Shaders (same DLL name) by
-  `SnowCover.ini` or `HairBacklighting.ini`, which only it installs (both patches unusable, "None"
-  recommended); 2.0 by `ViewAtmosphere.ini` or `SceneManager.ini`, new in 2.0 (its patch
-  recommended, 1.9.1's unusable); otherwise an installed `CommunityShaders.dll` is taken for 1.9.1.
+- `CommunityShaders-1.9.1/`, `CommunityShaders-2.0/` and `BottledShaders-2.0.3/`, one installer
+  choice with "None of these": each fork's DLL and the files it changed against its base
+  (`-CsBase`, `-CsBase20`, `-BsBase`). A patch fits one release only: over another, or without the
+  mod it patches, its DLL runs without the shaders and data it expects, rendering breaks, and
+  SeamlessSkyrim picks the fork backend instead of the native one. Told apart by feature files:
+  Bottled Shaders (same DLL name) by `SnowCover.ini` or `HairBacklighting.ini`, which only it
+  installs, and its 2.0 by `Rainbows.ini` with `SnowCover.ini` (its patch recommended; Bottled
+  Shaders 1.0 gets "None"); Community Shaders 2.0 by `ViewAtmosphere.ini` or `SceneManager.ini`,
+  new in 2.0; otherwise an installed `CommunityShaders.dll` is taken for 1.9.1.
   All of this is MO2 only: Vortex answers `fileDependency` from its plugin list, so there the
   option texts, which name the exact versions, are all the user gets.
 - Each fork's branch must be on GitHub as built (SOURCE.txt links it): the script warns when the
@@ -102,7 +103,8 @@ cp build/ALL/Release/CommunityShaders.dll build/ALL/Release/CommunityShaders.pdb
 
 The Community Shaders 2.0 port (`seamless-portal-2.0`, COMMUNITY-SHADERS-PATCH.md) is a git
 worktree with its own build tree: `tools\build.ps1 -CommunityShaders -CsFork
-E:\projects\CommunityShaders-Seamless-2.0`. A fresh tree is configured with `cmake --preset ALL`
+E:\projects\CommunityShaders-Seamless-2.0`; the Bottled Shaders port likewise
+(`seamless-portal-bs-2.0`, `E:\projects\BottledShaders-Seamless-2.0`). A fresh tree is configured with `cmake --preset ALL`
 from the worktree with `VCPKG_ROOT` set to Visual Studio's vcpkg (`C:\Program Files\Microsoft
 Visual Studio\18\Community\VC\vcpkg`), about 4 minutes.
 

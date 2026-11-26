@@ -5,15 +5,17 @@
 		<folder source="Core" destination="" />
 	</requiredInstallFiles>
 	<installSteps order="Explicit">
-		<installStep name="Community Shaders">
+		<installStep name="Community Shaders or Bottled Shaders">
 			<optionalFileGroups order="Explicit">
 				<!-- A forced choice: Vortex answers fileDependency from its plugin list, which never holds
 				     these files, so only MO2 can preselect the right answer; the texts name the versions.
 				     Each patch replaces the DLL and some shaders and fits one release exactly.
 				     Told apart by feature files (patterns: the first match wins):
 				     - Bottled Shaders (same CommunityShaders.dll): Snow Cover, Hair Backlighting, only it has.
+				     - Bottled Shaders 2.0 against 1.0: Rainbows, new in 2.0 (with Snow Cover, in case
+				       Community Shaders takes it over).
 				     - Community Shaders 2.0 against 1.9: View Atmosphere, Scene Manager, new in 2.0. -->
-				<group name="Which Community Shaders do you use?" type="SelectExactlyOne">
+				<group name="Which Community Shaders or Bottled Shaders do you use?" type="SelectExactlyOne">
 					<plugins order="Explicit">
 						<plugin name="Community Shaders 1.9.1">
 							<description>Installs a patch for Community Shaders 1.9.1 that draws the rooms behind doors with their own light. SeamlessSkyrim must win its file conflicts with Community Shaders and Skylighting. Not for any other version of Community Shaders, nor Bottled Shaders: it replaces their DLL and shaders with Community Shaders 1.9.1's and breaks them.</description>
@@ -76,13 +78,46 @@
 								</dependencyType>
 							</typeDescriptor>
 						</plugin>
+						<plugin name="Bottled Shaders 2.0.3">
+							<description>Installs a patch for Bottled Shaders 2.0.3 that draws the rooms behind doors with their own light. SeamlessSkyrim must win its file conflicts with Bottled Shaders. Not for any other version of Bottled Shaders, nor Community Shaders: it replaces their DLL and shaders with Bottled Shaders 2.0.3's and breaks them. Bottled Shaders switches itself off when Dynamic Terrain Deformation (NMN_DeformableTerrain.dll) is installed, and the rooms behind doors are then drawn by no one.</description>
+							<files>
+								<folder source="BottledShaders-2.0.3" destination="" />
+							</files>
+							<typeDescriptor>
+								<dependencyType>
+									<defaultType name="Optional" />
+									<patterns>
+										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="Shaders\Features\SnowCover.ini" state="Active" />
+												<fileDependency file="Shaders\Features\Rainbows.ini" state="Active" />
+											</dependencies>
+											<type name="Recommended" />
+										</pattern>
+										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="SKSE\Plugins\CommunityShaders.dll" state="Active" />
+											</dependencies>
+											<type name="NotUsable" />
+										</pattern>
+									</patterns>
+								</dependencyType>
+							</typeDescriptor>
+						</plugin>
 						<plugin name="None of these">
-							<description>No Community Shaders, another version of it, or Bottled Shaders. Doors still open without a loading screen, but the rooms behind them aren't drawn into the street.</description>
+							<description>No Community Shaders or Bottled Shaders, or a version not listed. Doors still open without a loading screen, but the rooms behind them aren't drawn into the street.</description>
 							<files />
 							<typeDescriptor>
 								<dependencyType>
 									<defaultType name="Optional" />
 									<patterns>
+										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="Shaders\Features\SnowCover.ini" state="Active" />
+												<fileDependency file="Shaders\Features\Rainbows.ini" state="Active" />
+											</dependencies>
+											<type name="Optional" />
+										</pattern>
 										<pattern>
 											<dependencies operator="Or">
 												<fileDependency file="Shaders\Features\SnowCover.ini" state="Active" />

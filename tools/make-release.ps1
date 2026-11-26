@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Builds the release archive: a FOMOD installer with SeamlessSkyrim and, as options, the patched
-Community Shaders for each release the fork is ported to.
+Community Shaders or Bottled Shaders for each release the fork is ported to.
 
 .DESCRIPTION
 The archive holds:
@@ -14,13 +14,14 @@ The archive holds:
   CommunityShaders-1.9.1\...               every file that fork changed or added under package\
                                            and features\*\ since -CsBase
   CommunityShaders-2.0\...                 the same for the 2.0 port (-CsFork20, -CsBase20)
+  BottledShaders-2.0.3\...                 the same for the Bottled Shaders port (-BsFork, -BsBase)
   LICENSE, SOURCE.txt                      the GPL text and where the source of both parts is
   THIRD-PARTY-NOTICES.txt                  the licenses of the libraries built into both DLLs
 
-Each Community Shaders part is a separate option because it is only a patch: installed over
-another release, or without Community Shaders, its DLL runs with shaders and data it doesn't
-expect and rendering breaks. In MO2 the installer recommends the one for the installed release,
-blocks the other, and blocks both when Bottled Shaders is installed (same DLL name).
+Each shader part is a separate option because it is only a patch: installed over another
+release, or without the mod it patches, its DLL runs with shaders and data it doesn't expect and
+rendering breaks. In MO2 the installer recommends the one for the installed release and blocks
+the others (all have the same DLL name).
 
 Door tunings made in game (the game's SeamlessSkyrim_Doors_User.ini) are moved into package\'s
 SeamlessSkyrim_Doors.ini first (tools\fold-door-tunings.ps1; commit them there). The user file is
@@ -39,6 +40,10 @@ param(
 	# The port to Community Shaders 2.0 (a worktree of the same repository) and its base.
 	[string]$CsFork20 = 'E:\projects\CommunityShaders-Seamless-2.0',
 	[string]$CsBase20 = 'v2.0.0-rc.2',
+	# The port to Bottled Shaders 2.0.3 (a worktree of the same repository) and its base: the
+	# Bottle-Compendium commit 2.0.3 was built from, which has no tag.
+	[string]$BsFork = 'E:\projects\BottledShaders-Seamless-2.0',
+	[string]$BsBase = 'e022b1c7',
 	# Build SeamlessSkyrim (Release) and each fork's CommunityShaders target first.
 	[switch]$Build,
 	# Written into the archive's SOURCE.txt.
@@ -53,8 +58,9 @@ $plugins = 'SKSE\Plugins'
 
 # One installer option each; Folder is the option's folder in the archive (ModuleConfig.xml).
 $forks = @(
-	[pscustomobject]@{ Name = 'Community Shaders 1.9.1'; Folder = 'CommunityShaders-1.9.1'; Path = $CsFork; Base = $CsBase; Branch = 'seamless-portal' }
-	[pscustomobject]@{ Name = 'Community Shaders 2.0'; Folder = 'CommunityShaders-2.0'; Path = $CsFork20; Base = $CsBase20; Branch = 'seamless-portal-2.0' }
+	[pscustomobject]@{ Name = 'Community Shaders 1.9.1'; Folder = 'CommunityShaders-1.9.1'; Path = $CsFork; Base = $CsBase; Branch = 'seamless-portal'; Upstream = 'Community Shaders' }
+	[pscustomobject]@{ Name = 'Community Shaders 2.0'; Folder = 'CommunityShaders-2.0'; Path = $CsFork20; Base = $CsBase20; Branch = 'seamless-portal-2.0'; Upstream = 'Community Shaders' }
+	[pscustomobject]@{ Name = 'Bottled Shaders 2.0.3'; Folder = 'BottledShaders-2.0.3'; Path = $BsFork; Base = $BsBase; Branch = 'seamless-portal-bs-2.0'; Upstream = 'Bottled Shaders' }
 )
 
 function Invoke-Git([string]$Repo) {
@@ -185,7 +191,7 @@ copyright notice and license follow.
 $(Get-Notices (Join-Path $repo 'build\vcpkg_installed\x64-windows-static-md\share') (Join-Path $repo 'extern'))
 $(foreach ($fork in $forks) {
 	"`n####  In CommunityShaders.dll (the $($fork.Name) option)  ####`n"
-	Get-Notices (Join-Path $fork.Path 'build\ALL\vcpkg_installed\x64-windows-static-md-release\share') (Join-Path $fork.Path 'extern') @{ 'Community Shaders' = (Join-Path $fork.Path 'EXCEPTIONS.md') }
+	Get-Notices (Join-Path $fork.Path 'build\ALL\vcpkg_installed\x64-windows-static-md-release\share') (Join-Path $fork.Path 'extern') @{ $fork.Upstream = (Join-Path $fork.Path 'EXCEPTIONS.md') }
 })
 "@
 
@@ -208,7 +214,7 @@ into CommunityShaders.dll, and their licenses: see THIRD-PARTY-NOTICES.txt.
 
 Source of SeamlessSkyrim:
   $SourceUrl
-Source of the patched Community Shaders, in the branch of each option:
+Source of the patched Community Shaders and Bottled Shaders, in the branch of each option:
 $(($forks | ForEach-Object { "  $($_.Name): $CsSourceUrl/tree/$($_.Branch)" }) -join "`n")
 
 "@)
