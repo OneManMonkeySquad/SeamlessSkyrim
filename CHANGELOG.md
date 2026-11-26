@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1
+
+- Trapdoors and hatches stay ordinary doors with their loading screen instead of being made
+  seamless, and the door menu names them as a trapdoor.
+- People across the street seen from inside a building stay drawn instead of vanishing and
+  reappearing every half second.
+- Without Community Shaders, the street seen from inside a building has its sun shadows instead
+  of lying in flat light.
+
 ## 0.7.0
 
 ### Support
