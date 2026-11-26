@@ -1421,12 +1421,6 @@ namespace Portal::Snapshot
 		}
 	}
 
-	bool HasPicture(RE::FormID a_door, bool a_outdoors)
-	{
-		auto* device = Device();
-		return device && !pipeline.failed && Find(device, a_door, a_outdoors);
-	}
-
 	bool CameraPictureWanted(RE::FormID a_door, const Corners& a_corners)
 	{
 		auto* device = Device();

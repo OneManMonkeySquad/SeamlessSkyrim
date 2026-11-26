@@ -33,7 +33,7 @@
 	"door.save": "Enregistrer les réglages de la porte",
 	"door.portal": "Porte sans chargement (désactivé : une porte ordinaire avec écran de chargement)",
 	"door.opens_inward": "S'ouvre vers l'intérieur (désactivé : vers l'extérieur, sur la rue)",
-	"door.always_open": "Toujours ouverte (pas seulement à l'utilisation ; dès que son embrasure a une image)",
+	"door.always_open": "Toujours ouverte (pas seulement à l'utilisation)",
 	"door.picture_from_afar": "Couleur unie tant qu'elle n'a pas d'image (une porte murée derrière)",
 	"door.turn_help": "Si la pièce derrière l'embrasure ne s'aligne pas avec l'extérieur, tournez-la ici. Elle suit le curseur en direct.",
 	"door.turn": "Tourner l'intérieur (degrés)",

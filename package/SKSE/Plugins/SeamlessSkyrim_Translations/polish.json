@@ -33,7 +33,7 @@
 	"door.save": "Zapisz ustawienia drzwi",
 	"door.portal": "Drzwi bez wczytywania (wyłączone: zwykłe drzwi z ekranem wczytywania)",
 	"door.opens_inward": "Otwierają się do środka (wyłączone: na zewnątrz, na ulicę)",
-	"door.always_open": "Zawsze otwarte (nie tylko przy użyciu; gdy ich przejście ma już obraz)",
+	"door.always_open": "Zawsze otwarte (nie tylko przy użyciu)",
 	"door.picture_from_afar": "Jednolity kolor, dopóki nie mają obrazu (brama zamurowana od tyłu)",
 	"door.turn_help": "Jeśli pomieszczenie za przejściem nie pasuje do strony zewnętrznej, obróć je tutaj. Podąża za suwakiem na żywo.",
 	"door.turn": "Obróć wnętrze (stopnie)",

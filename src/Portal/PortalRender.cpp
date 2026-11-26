@@ -2425,8 +2425,9 @@ namespace
 
 	// ---- doorways before the space behind them is there (Portal::Snapshot) -------------------
 
-	// An interior never seen through its door: a dim grey, a little lighter than a dark room.
-	constexpr RE::NiColor kPlainInside{ 0.08f, 0.08f, 0.08f };
+	// An interior never seen through its door: almost black, a dark room. A door set to stand open
+	// always shows it from afar until the room has loaded.
+	constexpr RE::NiColor kPlainInside{ 0.01f, 0.01f, 0.01f };
 
 	Portal::Snapshot::View SnapshotView()
 	{

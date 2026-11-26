@@ -682,8 +682,8 @@ namespace
 	// ---- what opens a door -------------------------------------------------------------------
 	// A door doesn't open as the player comes near. It opens when someone uses it (DoorUse: the
 	// player, an NPC reaching for it) and shuts a few seconds after; it stands open for good when
-	// it is a city gate, set to stand open always (once its doorway has a picture to show from
-	// afar: never seen open, it showed the plain colour), or every door is to (the global force).
+	// it is a city gate, set to stand open always (never seen open, its doorway shows the plain
+	// colour until the space behind is there), or every door is to (the global force).
 	// Forced shut, only a use opens it.
 
 	// A city gate: outdoors on both sides.
@@ -727,7 +727,7 @@ namespace
 		const bool outdoors = Outdoors(a_door);
 		const auto key = Portal::Doors::CorrectionDoor(a_door->GetFormID(), outdoors, a_linked, a_linkedOutdoors);
 		return (outdoors && a_linkedOutdoors) ||
-		       (!StreetShownLive(a_door, a_linkedOutdoors) && Portal::Doors::AlwaysOpen(key) && Portal::Snapshot::HasPicture(a_door->GetFormID(), a_linkedOutdoors));
+		       (!StreetShownLive(a_door, a_linkedOutdoors) && Portal::Doors::AlwaysOpen(key));
 	}
 
 	bool OpenFromAfar(RE::TESObjectREFR* a_door, RE::TESObjectREFR* a_linked)
@@ -736,9 +736,8 @@ namespace
 	}
 
 	// The pair stands open whoever uses it (it can't be shut): from afar, or set to stand open always
-	// and its space shown. The picture is only taken of a doorway seen open: from inside Understone
-	// Keep, never seen open from there, the doors stood shut for good. Such a door was seen shut
-	// until its space came, so it swings open then (OpenFromAfar's are shown open at once).
+	// and its space shown. A door out of a building has no stand-in (StreetShownLive), so it is seen
+	// shut until its street comes and swings open then (OpenFromAfar's are shown open at once).
 	bool StandsOpen(RE::TESObjectREFR* a_door, RE::FormID a_linked, bool a_linkedOutdoors)
 	{
 		if (OpenFromAfar(a_door, a_linked, a_linkedOutdoors)) {

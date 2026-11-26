@@ -33,7 +33,7 @@
 	"door.save": "保存门的设置",
 	"door.portal": "无缝门（关闭：带加载画面的普通门）",
 	"door.opens_inward": "向内打开（关闭：向外，朝向街道）",
-	"door.always_open": "常开（不仅在使用时；门洞有图像之后）",
+	"door.always_open": "常开（不仅在使用时）",
 	"door.picture_from_afar": "有图像前显示纯色（背后被封死的城门）",
 	"door.turn_help": "如果门洞后的房间与外面对不齐，请在这里旋转它。它会实时跟随滑块。",
 	"door.turn": "旋转内部（度）",

@@ -33,7 +33,7 @@
 	"door.save": "Salva le impostazioni della porta",
 	"door.portal": "Porta senza caricamento (disattivato: una porta normale con schermata di caricamento)",
 	"door.opens_inward": "Si apre verso l'interno (disattivato: verso l'esterno, sulla strada)",
-	"door.always_open": "Sempre aperta (non solo quando usata; una volta che il suo vano ha un'immagine)",
+	"door.always_open": "Sempre aperta (non solo quando usata)",
 	"door.picture_from_afar": "Colore pieno finché non ha un'immagine (un portone murato dietro)",
 	"door.turn_help": "Se la stanza dietro il vano non è allineata con l'esterno, ruotala qui. Segue il cursore in tempo reale.",
 	"door.turn": "Ruota l'interno (gradi)",

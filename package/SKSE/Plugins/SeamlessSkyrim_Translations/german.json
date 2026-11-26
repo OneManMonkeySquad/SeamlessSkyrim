@@ -33,7 +33,7 @@
 	"door.save": "Türeinstellungen speichern",
 	"door.portal": "Nahtlose Tür (aus: eine gewöhnliche Tür mit Ladebildschirm)",
 	"door.opens_inward": "Öffnet nach innen (aus: nach außen, auf die Straße)",
-	"door.always_open": "Immer offen (nicht nur bei Benutzung; sobald ihr Durchgang ein Bild hat)",
+	"door.always_open": "Immer offen (nicht nur bei Benutzung)",
 	"door.picture_from_afar": "Schlichte Farbe, bis sie ein Bild hat (ein dahinter zugemauertes Tor)",
 	"door.turn_help": "Wenn der Raum hinter dem Durchgang nicht zur Außenseite passt, dreh ihn hier. Er folgt dem Regler sofort.",
 	"door.turn": "Innenraum drehen (Grad)",

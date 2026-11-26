@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Runs on Skyrim AE 1.6.353 (SKSE 2.1.5), which refused to load the plugin.**
+- A door set to always open stands open even before its doorway has a picture, showing an
+  almost black doorway until the room behind has loaded.
 
 ## 0.6.1
 

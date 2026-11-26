@@ -33,7 +33,7 @@
 	"door.save": "Save door settings",
 	"door.portal": "Seamless door (off: an ordinary door with a loading screen)",
 	"door.opens_inward": "Opens inward (off: outward, into the street)",
-	"door.always_open": "Always open (not only when used; once its doorway has a picture)",
+	"door.always_open": "Always open (not only when used)",
 	"door.picture_from_afar": "Plain colour until it has a picture (a gate walled up behind)",
 	"door.turn_help": "If the room behind the doorway doesn't line up with the outside, turn it here. It follows the slider live.",
 	"door.turn": "Turn the inside (degrees)",
