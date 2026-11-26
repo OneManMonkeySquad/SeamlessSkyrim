@@ -321,6 +321,16 @@ namespace Portal::NpcTravel
 	// (the engine then moves them at once), they stay opaque meanwhile, and the fade-in is skipped.
 	void NoFades()
 	{
+		// The people of a space the player has just walked into were on screen all along: the engine,
+		// raising them to high process as it takes the space over, faded them in again (in
+		// Warmaiden's, the smith behind the counter see-through for most of a second). Outdoors the
+		// cells around the player's are taken over too.
+		const auto inShownSpace = [&](const RE::TESObjectCELL* a_cell) {
+			return a_cell && std::ranges::any_of(shownCells, [&](const auto& a_shown) {
+				const auto* shown = a_shown.first;
+				return shown == a_cell || (!shown->IsInteriorCell() && !a_cell->IsInteriorCell() && shown->GetRuntimeData().worldSpace == a_cell->GetRuntimeData().worldSpace);
+			});
+		};
 		for (auto& handle : RE::ProcessLists::GetSingleton()->highActorHandles) {
 			auto  actor = handle.get();
 			auto* process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
@@ -332,7 +342,8 @@ namespace Portal::NpcTravel
 			if (high->fadeState == Fade::kTeleportOut) {
 				high->fadeAlpha = std::min(high->fadeAlpha, 0.01f);
 				KeepVisible(actor.get());
-			} else if (high->fadeState == Fade::kTeleportIn || (high->fadeState == Fade::kIn && keptVisible.contains(actor->GetFormID()))) {
+			} else if (high->fadeState == Fade::kTeleportIn ||
+					   (high->fadeState == Fade::kIn && (keptVisible.contains(actor->GetFormID()) || inShownSpace(actor->GetParentCell())))) {
 				// The plain fade-in only as the end of a door's (seen fading out, or carried through):
 				// it is also how a script or a summoning lets someone appear, anywhere.
 				KeepVisible(actor.get());
