@@ -2346,18 +2346,23 @@ namespace
 	} activateSink;
 
 	// A doorway standing open while the space behind it isn't there to walk into (a stand-in: its
-	// picture, or a gate onto the player's own worldspace; the space still loading, or not loaded
-	// at all after a trip through a city gate, where the view back waits for the purge) is walked
-	// through all the same. Its door stays solid, or the player walked on into whatever stands
-	// behind it in their own space (past a city gate, the street worldspace's low-detail copy of
-	// the city); walking into it, they are taken through the engine's way, with its loading
-	// screen. Without this they could only stand at the open doorway and wait.
+	// picture, the space still loading) is walked through all the same. Its door stays solid;
+	// walking into it, the player is taken through the engine's way, with its loading screen.
+	// Without this they could only stand at the open doorway and wait.
+	//
+	// A city gate onto the player's own worldspace (the view back right after a trip through it, which
+	// waits for the purge, Travel) holds nobody back: its passage leads on into that worldspace's
+	// low-detail copy of the city. There the player is held in the gateway, short of its plane,
+	// until the city is there (seconds); a loading screen for it read worse than a short stop. Only
+	// someone already well past the plane (beyond the hold's reach) or held for longer than any
+	// purge takes is taken the engine's way.
 	struct Pressing
 	{
 		RE::FormID door = 0;
 		float      depth = 0.0f;
 		float      held = 0.0f;  // seconds walked into it without getting nearer
 	} pressing;
+	float gateHeld = 0.0f;  // seconds held in a gateway in a row
 
 	void WalkIntoStandIns(RE::PlayerCharacter* a_player, RE::TESObjectCELL* a_here, float a_delta)
 	{
@@ -2367,49 +2372,71 @@ namespace
 		// Held back (by the door, or anything in front of it) rather than still walking up to it.
 		constexpr float kHeldSpeed = 30.0f;
 		constexpr float kHeldSeconds = 0.15f;
+		// A gate: where the player is held, before its panel (a capsule's width, so the body doesn't
+		// reach through); someone further in than this past it was already in the copy.
+		constexpr float kGateStop = 30.0f;
+		constexpr float kGateDeep = 150.0f;
+		constexpr float kGateHoldMax = 8.0f;  // the purge waits 4 s at most, the attach follows
 		RE::FormID  door = 0;
 		float       depth = 0.0f;
 		bool        past = false;
+		bool        heldInGate = false;
 		const float yaw = a_player->GetAngleZ();
 		const auto  facing = RE::NiPoint3{ std::sin(yaw), std::cos(yaw), 0.0f };
 		const auto  position = a_player->GetPosition();
-		if (crossCooldown <= 0.0f) {
-			for (const auto& [id, standIn] : standIns) {
-				auto* ref = Lookup(id);
-				if (standIn.handedOver || standIn.swing < 0.5f || !ref || !ref->Get3D() || !InPlayerSpace(ref, a_here) || ref->IsLocked()) {
-					continue;
-				}
-				// A gate onto the player's own worldspace holds nobody back: its passage leads on into
-				// that worldspace's low-detail copy of the city, where the player walked on between its
-				// land mounds and stayed. Past its plane they are taken through, at whatever height and
-				// facing. Run back in right after a trip out, the plane was passed within the crossing's
-				// cooldown, and when it ended the player stood on the copy's land below the gateway's
-				// bottom. Its outside is where the far gate's teleport puts whoever comes out (AwayFrom
-				// turns with the player, so the plane could never be passed by it). Not the stand-in's
-				// side as made: made in the frame of a trip out, before the player was moved, it faced
-				// the city, and the player standing outside the gate was sent straight back in.
-				const bool  open = standIn.gate && !standIn.picture;
-				const auto  center = Portal::Doors::Center(ref);
-				auto        inward = AwayFrom(ref, position);
-				if (open) {
-					inward = center - LinkedOf(ref)->extraList.GetByType<RE::ExtraTeleport>()->teleportData->position;
-				}
+		for (const auto& [id, standIn] : standIns) {
+			auto* ref = Lookup(id);
+			if (standIn.handedOver || standIn.swing < 0.5f || !ref || !ref->Get3D() || !InPlayerSpace(ref, a_here) || ref->IsLocked()) {
+				continue;
+			}
+			const auto  center = Portal::Doors::Center(ref);
+			const auto  size = Portal::Doors::Size(ref);
+			if (standIn.gate && !standIn.picture) {
+				// The gate's outside is where the far gate's teleport puts whoever comes out (AwayFrom
+				// turns with the player, so the plane could never be passed by it; the stand-in's side
+				// as made faced the city when made in the frame of a trip out, before the player was
+				// moved). Also within the crossing's cooldown: run straight back in after a trip out,
+				// the player was through before it ended.
+				auto inward = center - LinkedOf(ref)->extraList.GetByType<RE::ExtraTeleport>()->teleportData->position;
 				inward.z = 0.0f;
 				inward.Unitize();
-				const auto  size = Portal::Doors::Size(ref);
 				const auto  offset = position - center;
 				const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
 				const float side = std::abs(offset.x * inward.y - offset.y * inward.x);
-				const float bottom = center.z - size.halfHeight;
-				past = open && d >= 0.0f && side <= size.halfWidth;
-				if (past || (a_player->IsMoving() && d >= -(size.halfDepth + kReach) && side <= size.halfWidth && position.z >= bottom - 64.0f &&
-								position.z <= bottom + size.halfHeight && facing.Dot(inward) > 0.5f)) {
+				const float stop = -(size.halfDepth + kGateStop);
+				if (side > size.halfWidth || d <= stop) {
+					continue;
+				}
+				if (d > stop + kGateDeep || gateHeld >= kGateHoldMax) {
 					door = id;
 					depth = d;
+					past = true;
 					break;
 				}
+				auto held = position - inward * (d - stop);
+				held.z = position.z;
+				a_player->SetPosition(held, true);
+				heldInGate = true;
+				continue;
+			}
+			if (crossCooldown > 0.0f) {
+				continue;
+			}
+			auto inward = AwayFrom(ref, position);
+			inward.z = 0.0f;
+			inward.Unitize();
+			const auto  offset = position - center;
+			const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
+			const float side = std::abs(offset.x * inward.y - offset.y * inward.x);
+			const float bottom = center.z - size.halfHeight;
+			if (a_player->IsMoving() && d >= -(size.halfDepth + kReach) && side <= size.halfWidth && position.z >= bottom - 64.0f &&
+				position.z <= bottom + size.halfHeight && facing.Dot(inward) > 0.5f) {
+				door = id;
+				depth = d;
+				break;
 			}
 		}
+		gateHeld = heldInGate ? gateHeld + a_delta : 0.0f;
 		if (!past) {
 			if (!door || door != pressing.door) {
 				pressing = { door, depth, 0.0f };
@@ -2422,6 +2449,7 @@ namespace
 			}
 		}
 		pressing = {};
+		gateHeld = 0.0f;
 		crossCooldown = 1.0f;
 		auto* ref = Lookup(door);
 		logger::info("portal: door {:08X} walked into before the space behind it was there: taken the engine's way", door);
