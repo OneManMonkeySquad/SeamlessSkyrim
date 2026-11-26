@@ -1397,56 +1397,71 @@ namespace Portal::Doors
 		return count;
 	}
 
-	// Standing open, not to be shut by using it: no prompt.
-	bool PromptOff(RE::FormID a_door)
-	{
-		return Manager::Prompt(a_door) == Manager::DoorPrompt::kNone;
-	}
-
 	bool BodiesHidden(RE::FormID a_door)
 	{
 		const auto it = openDoors.find(a_door);
 		return it != openDoors.end() && !it->second.removedBodies.empty();
 	}
 
-	// TESObjectDOOR::GetActivateText (vfunc 0x4C) builds the "Open <destination>" line for the door
-	// under the crosshair. For a door held open by a portal the text is left empty here, or says
-	// "Close" for one the player opened (using it shuts it, Manager's door use).
+	// TESObjectDOOR::GetActivateText (vfunc 0x4C, ID 17923) builds the "Open <destination>" prompt
+	// for a door reference (the second argument, not the activator CommonLib names it). A seamless
+	// door doesn't take the player anywhere, so its prompt names the door, as a door that doesn't
+	// load does ("Open Door", [Portals] bPromptNamesDoor); it says "Close" for one the player
+	// opened (using it shuts it, Manager's door use), and is left empty for a door a portal holds
+	// open.
 	struct ActivateTextHook
 	{
 		static inline std::uint32_t calls = 0;
-		static bool Thunk(RE::TESObjectDOOR* a_door, RE::TESObjectREFR* a_activator, RE::BSString& a_text)
+		static inline bool          nameDoor = true;
+		static bool                 Thunk(RE::TESObjectDOOR* a_door, RE::TESObjectREFR* a_ref, RE::BSString& a_text)
 		{
 			++calls;
-			auto* pick = RE::CrosshairPickData::GetSingleton();
-			const auto target = pick ? pick->GetActiveTarget().get() : nullptr;
-			if (target && PromptOff(target->GetFormID())) {
+			const auto prompt = Manager::Prompt(a_ref->GetFormID());
+			if (prompt == Manager::DoorPrompt::kNone) {
 				a_text = "";
 				return false;
 			}
-			const bool result = func(a_door, a_activator, a_text);
-			if (target && Manager::Prompt(target->GetFormID()) == Manager::DoorPrompt::kClose) {
-				auto*             settings = RE::GameSettingCollection::GetSingleton();
-				auto*             open = settings->GetSetting("sOpen");
-				auto*             close = settings->GetSetting("sClose");
-				const std::string text = a_text.c_str();
-				if (const auto at = text.find(open->GetString()); at != std::string::npos) {
-					a_text = (text.substr(0, at) + close->GetString() + text.substr(at + std::strlen(open->GetString()))).c_str();
-				}
+			const bool result = func(a_door, a_ref, a_text);
+			if (!result || prompt == Manager::DoorPrompt::kEngine || (prompt == Manager::DoorPrompt::kOpen && !nameDoor)) {
+				return result;
 			}
+			// The engine's text is "<verb>\n<destination>", with "\n<lock level>" after it for a
+			// locked door (the format strings ID 17923 passes).
+			const std::string text = a_text.c_str();
+			const auto        verbEnd = text.find('\n');
+			const auto        nameEnd = text.find('\n', verbEnd + 1);
+			std::string       verb = text.substr(0, verbEnd);
+			auto*             settings = RE::GameSettingCollection::GetSingleton();
+			if (prompt == Manager::DoorPrompt::kClose && verb == settings->GetSetting("sOpen")->GetString()) {
+				verb = settings->GetSetting("sClose")->GetString();
+			}
+			const std::string name = nameDoor ? a_ref->GetDisplayFullName() : text.substr(verbEnd + 1, nameEnd - verbEnd - 1);
+			a_text = (verb + '\n' + name + (nameEnd == std::string::npos ? "" : text.substr(nameEnd))).c_str();
 			return result;
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
-	// The text hook above alone left the prompt on the HUD (measured: "Open Riverwood Trader"
-	// with the crosshair on a hidden, open door), so the HUD is also told, the way the engine
-	// tells it when the crosshair leaves an object.
-	std::uint32_t HidePrompt()
+	// The HUD asks for a target's text only when the crosshair's target changes: the engine's
+	// crosshair update (ID 40620) sets shouldUpdateCrosshair then. A seamless door's prompt also
+	// changes under the crosshair (used, shut by itself, standing open), so it is asked again then.
+	// Clearing the prompt of a door standing open needs more: the text hook alone left it on the
+	// HUD (measured: "Open Riverwood Trader" with the crosshair on a hidden, open door), so the HUD
+	// is also told, the way the engine tells it when the crosshair leaves an object.
+	std::uint32_t UpdatePrompt()
 	{
-		auto*      pick = RE::CrosshairPickData::GetSingleton();
-		const auto target = pick ? pick->GetActiveTarget().get() : nullptr;
-		if (target && PromptOff(target->GetFormID())) {
+		static RE::FormID         shownTarget = 0;
+		static Manager::DoorPrompt shownPrompt = Manager::DoorPrompt::kEngine;
+		auto*                     pick = RE::CrosshairPickData::GetSingleton();
+		const auto                target = pick ? pick->GetActiveTarget().get() : nullptr;
+		const RE::FormID          id = target ? target->GetFormID() : 0;
+		const auto                prompt = target ? Manager::Prompt(id) : Manager::DoorPrompt::kEngine;
+		if (target && id == shownTarget && prompt != shownPrompt) {
+			RE::PlayerCharacter::GetSingleton()->GetPlayerRuntimeData().playerFlags.shouldUpdateCrosshair = true;
+		}
+		shownTarget = id;
+		shownPrompt = prompt;
+		if (prompt == Manager::DoorPrompt::kNone) {
 			auto* ui = RE::UI::GetSingleton();
 			auto  menu = ui ? ui->GetMenu(RE::HUDMenu::MENU_NAME) : nullptr;
 			if (menu && menu->uiMovie) {
@@ -1460,8 +1475,9 @@ namespace Portal::Doors
 		return ActivateTextHook::calls;
 	}
 
-	void InstallPromptHook()
+	void InstallPromptHook(bool a_nameDoor)
 	{
+		ActivateTextHook::nameDoor = a_nameDoor;
 		REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_TESObjectDOOR[0] };
 		ActivateTextHook::func = vtable.write_vfunc(0x4C, ActivateTextHook::Thunk);
 	}

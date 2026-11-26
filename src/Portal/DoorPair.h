@@ -147,11 +147,12 @@ namespace Portal::Doors
 	[[nodiscard]] std::uint32_t HiddenByNoOpener(RE::TESObjectREFR* a_door);
 
 	// Once at startup: an open doorway shows no "Open ..." prompt, or "Close ..." when it can be
-	// shut (Manager::Prompt).
-	void InstallPromptHook();
+	// shut (Manager::Prompt). a_nameDoor: a seamless door's prompt names the door ("Open Door"),
+	// not where it leads.
+	void InstallPromptHook(bool a_nameDoor);
 
-	// Main thread, every frame: takes the "Open ..." prompt off the HUD while the crosshair is
-	// on a door a portal holds open that can't be shut. Returns how often the engine asked for a
-	// door's text.
-	std::uint32_t HidePrompt();
+	// Main thread, every frame: has the HUD ask for the prompt again when the door under the
+	// crosshair changes what using it does, and takes it off while that door stands open and
+	// can't be shut. Returns how often the engine asked for a door's text.
+	std::uint32_t UpdatePrompt();
 }

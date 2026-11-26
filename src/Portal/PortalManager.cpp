@@ -2495,7 +2495,7 @@ namespace Portal::Manager
 		Portal::CameraLimit::Install();
 		Portal::StreetLOD::Install();
 		MergedCull::Install();
-		Portal::Doors::InstallPromptHook();
+		Portal::Doors::InstallPromptHook(::GetPrivateProfileIntW(L"Portals", L"bPromptNamesDoor", 1, ini.c_str()) != 0);
 		RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESActivateEvent>(&activateSink);
 		{
 			REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_TESObjectDOOR[0] };
@@ -2820,7 +2820,7 @@ namespace Portal::Manager
 	{
 		Portal::WaterReflections::Update();
 		approachLimit.reset();
-		Portal::Doors::HidePrompt();
+		Portal::Doors::UpdatePrompt();
 		ExpireLetGo(a_delta);
 		if (pendingUse) {
 			FinishPendingUse();
@@ -3416,7 +3416,7 @@ namespace Portal::Manager
 	{
 		auto* door = Lookup(a_door);
 		auto* linked = door && enabled ? UsedPairOf(door) : nullptr;
-		return !linked                     ? DoorPrompt::kOpen :
+		return !linked                     ? DoorPrompt::kEngine :
 		       StandsOpen(door, linked)    ? DoorPrompt::kNone :
 		       DoorUse::Used(a_door)       ? DoorPrompt::kClose :
 		                                     DoorPrompt::kOpen;

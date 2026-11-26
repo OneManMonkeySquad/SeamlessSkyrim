@@ -1375,7 +1375,7 @@ namespace Bridge
 				 }
 				 auto* pick = RE::CrosshairPickData::GetSingleton();
 				 auto  target = pick ? pick->GetActiveTarget().get() : nullptr;
-				 result["textHookCalls"] = Portal::Doors::HidePrompt();
+				 result["textHookCalls"] = Portal::Doors::UpdatePrompt();
 				 result["target"] = target ? std::format("{:08X}", target->GetFormID()) : "";
 				 return result;
 			 } } },

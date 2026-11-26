@@ -64,12 +64,13 @@ namespace Portal::Manager
 	// The portal's door stands (at least partly) open; shut, the portal isn't drawn on it.
 	[[nodiscard]] bool DoorwayOpen();
 	// Main thread: what using the door does, for its prompt: nothing (it stands open), shut it
-	// (someone opened it, DoorUse), or what it does for any door (open it).
+	// (someone opened it, DoorUse), open it, or the engine's (not a seamless door: it loads).
 	enum class DoorPrompt
 	{
 		kOpen,
 		kClose,
 		kNone,
+		kEngine,
 	};
 	[[nodiscard]] DoorPrompt Prompt(RE::FormID a_door);
 	// Diagnostics: the image-space blend across the doorway is on (UpdateTone).

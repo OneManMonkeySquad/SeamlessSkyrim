@@ -181,6 +181,12 @@ Found porting the plugin; each was checked in the code of both.
   script command table (ID 29924 + 0x691 calls the entry), so replacing the entry answers every
   condition.
 - **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
+- **A door's prompt:** `TESObjectDOOR::GetActivateText` (vfunc 0x4C, ID 17923) gets the door
+  reference as its second argument (CommonLib calls it the activator). It writes
+  `"<verb>\n<name>"`, with `"\n<lock word><level>"` after it for a locked door; the name is the
+  destination's for a load door, the reference's display name for any other. The HUD asks again
+  only when the crosshair update (ID 40620) sees the target change and sets
+  `playerFlags.shouldUpdateCrosshair`; setting that flag yourself makes it ask the next frame.
 
 - **Water:** `TESWaterSystem` (ID 400450) lists water objects (+0x20, each: +0x20 shape, +0x40
   reflection) and reflections (+0x38, each: +0x14 plane, +0x40 the material of the water it was
