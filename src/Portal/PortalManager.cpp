@@ -199,7 +199,7 @@ namespace
 		std::size_t                                next = 0;
 		Portal::ShapeSet                           shapes;
 		std::vector<RE::NiPointer<RE::BSGeometry>> strays;
-		RE::NiPoint3                               doorway;  // stray bones are measured from it
+		std::vector<const RE::BSGeometry*>         straysBefore;  // hidden by the last pass: looked at again
 	};
 
 	// What a room merged into the world needs while it is drawn there, besides its cells
@@ -3809,13 +3809,15 @@ namespace Portal::Manager
 		// Skinned shapes whose bones are driven by something that doesn't know about the merge (SMP
 		// hair and cloth physics keep simulating where the cell used to be) are stretched from the
 		// moved actor back to the cell's own coordinates: one long streak across the view. They are
-		// hidden while any of their bones is far from the doorway.
-		bool HasStrayBones(RE::BSGeometry* a_shape, const RE::NiPoint3& a_near)
+		// hidden while any of their bones is far from the skeleton they belong to. Not from the
+		// doorway: people across Whiterun's market, 5000 units from the Bannered Mare's door, were
+		// hidden for half a second and shown for the next, all the time.
+		bool HasStrayBones(RE::BSGeometry* a_shape)
 		{
 			auto*      skin = a_shape->GetGeometryRuntimeData().skinInstance.get();
-			const auto count = skin && skin->skinData ? skin->skinData->bones : 0;
+			const auto count = skin && skin->skinData && skin->rootParent ? skin->skinData->bones : 0;
 			for (std::uint32_t i = 0; i < count; ++i) {
-				if (auto* bone = skin->bones[i]; bone && bone->world.translate.GetDistance(a_near) > 4000.0f) {
+				if (auto* bone = skin->bones[i]; bone && bone->world.translate.GetDistance(skin->rootParent->world.translate) > 4000.0f) {
 					return true;
 				}
 			}
@@ -3831,10 +3833,12 @@ namespace Portal::Manager
 		}
 
 		// a_street: the street merged into an interior, whose distant land and objects belong to it.
-		MarkPass StartMarkPass(const Portal::RemoteCell& a_space, bool a_street, const RE::NiPoint3& a_near)
+		MarkPass StartMarkPass(const MergedRoom& a_room, const Portal::RemoteCell& a_space, bool a_street)
 		{
 			MarkPass pass;
-			pass.doorway = a_near;
+			for (const auto& shape : a_room.strays) {
+				pass.straysBefore.push_back(shape.get());
+			}
 			// The distant land and objects belong to the street: seen only through the doorway.
 			if (a_street && mergedLOD) {
 				pass.roots.push_back({ RE::NiPointer<RE::NiAVObject>(mergedLOD->root.get()), nullptr });
@@ -3864,7 +3868,10 @@ namespace Portal::Manager
 				}
 				RE::BSVisit::TraverseScenegraphGeometries(root.node.get(), [&](RE::BSGeometry* a_shape) {
 					a_pass.shapes.insert(a_shape);
-					if (root.cell && !a_shape->GetAppCulled() && HasStrayBones(a_shape, a_pass.doorway)) {
+					// A shape this pass's own hiding left culled is looked at again, or it was shown by
+					// the next pass and hidden by the one after: on and off twice a second.
+					const bool looked = !a_shape->GetAppCulled() || std::ranges::find(a_pass.straysBefore, a_shape) != a_pass.straysBefore.end();
+					if (root.cell && looked && HasStrayBones(a_shape)) {
 						a_pass.strays.emplace_back(a_shape);
 					}
 					return RE::BSVisit::BSVisitControl::kContinue;
@@ -3936,11 +3943,11 @@ namespace Portal::Manager
 
 		// a_mark false: the merge ended, everything marked goes back. True: listed anew at once, in
 		// this frame.
-		void MarkMergedShapes(MergedRoom& a_room, Portal::RemoteCell* a_space, bool a_primary, bool a_street, bool a_mark, const RE::NiPoint3& a_near = {})
+		void MarkMergedShapes(MergedRoom& a_room, Portal::RemoteCell* a_space, bool a_primary, bool a_street, bool a_mark)
 		{
 			a_room.markPass.reset();
 			if (a_mark && a_space) {
-				auto pass = StartMarkPass(*a_space, a_street, a_near);
+				auto pass = StartMarkPass(a_room, *a_space, a_street);
 				StepMarkPass(*a_space, pass, std::numeric_limits<double>::infinity());
 				FinishMarkPass(a_room, pass, a_primary, a_street);
 				return;
@@ -4022,13 +4029,13 @@ namespace Portal::Manager
 					MergePersistent();
 				}
 				const Perf::Scope scope("mark shapes");
-				MarkMergedShapes(a_room, &a_space, primary, street, true, mapping.sourceCenter);
+				MarkMergedShapes(a_room, &a_space, primary, street, true);
 			} else if (!a_room.markPass && (a_room.markTimer -= a_delta) <= 0.0f) {
 				a_room.markTimer = 0.5f;
 				if (street) {
 					MergePersistent();
 				}
-				a_room.markPass = StartMarkPass(a_space, street, mapping.sourceCenter);
+				a_room.markPass = StartMarkPass(a_room, a_space, street);
 			}
 			if (a_room.markPass && StepMarkPass(a_space, *a_room.markPass, 0.4)) {
 				FinishMarkPass(a_room, *a_room.markPass, primary, street);

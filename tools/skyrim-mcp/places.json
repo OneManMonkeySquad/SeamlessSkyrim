@@ -1,4 +1,15 @@
 {
+  "bannered-mare-door-npcs-se": {
+    "cell": "WhiterunBanneredMare",
+    "headingDeg": 181.13218688964844,
+    "interior": true,
+    "note": "SE 1.5.97 user's quicksave Quicksave0_2E8FEB0C_0_52_WhiterunBanneredMare_000004_20261126192834_1_1: just inside the Bannered Mare's open door, looking out at the market and the stairs up, NPCs in the middle distance.",
+    "pos": [
+      -103.89037322998047,
+      -1064.28564453125,
+      68.33944702148438
+    ]
+  },
   "bannered-mare-door-out": {
     "cell": "WhiterunBanneredMare",
     "headingDeg": 180.0,
