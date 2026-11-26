@@ -19,6 +19,14 @@ Precision - Compatible
 Faster Loadscreens - Compatible
 Faster Decompression - Compatible
 
+## Translating the in-game menu
+
+The text of the SKSE Menu Framework menu is in `SKSE\Plugins\SeamlessSkyrim_Translations\english.json`.
+Copy it to a file named after the game's language (`sLanguage` in Skyrim.ini, lower case:
+`german.json`, `french.json`, `russian.json`, ...) and translate the values, not the keys. Keep
+every `{}`: a number or name goes there. What the file lacks, or gets wrong, stays in English and
+is named in `SeamlessSkyrim.log`.
+
 ## License
 
 GPL-3.0-or-later: SeamlessSkyrim is free software; you can redistribute it and/or modify it

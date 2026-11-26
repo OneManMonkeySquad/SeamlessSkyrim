@@ -8,6 +8,7 @@ The mod holds:
   SKSE\Plugins\SeamlessSkyrim.dll           Release build, without its PDB (what a player gets)
   SKSE\Plugins\SeamlessSkyrim.ini           package\
   SKSE\Plugins\SeamlessSkyrim_Doors.ini     package\, the doors tuned so far
+  SKSE\Plugins\SeamlessSkyrim_Translations\*.json   package\, the menu's text
   SKSE\Plugins\CommunityShaders.dll         the fork's build (its PDB only with -CsPdb)
   every file the fork changed or added under package\ and features\*\ since -CsBase, at the
   place Community Shaders' own packaging puts it (Shaders\Lighting.hlsl, Shaders\Skylighting\...)
@@ -127,6 +128,9 @@ Assert-Newer $dll (Join-Path $repo 'src')
 $files["$plugins\SeamlessSkyrim.dll"] = $dll
 
 $files["$plugins\SeamlessSkyrim.ini"] = Join-Path $repo "package\$plugins\SeamlessSkyrim.ini"
+foreach ($json in Get-ChildItem -LiteralPath (Join-Path $repo "package\$plugins\SeamlessSkyrim_Translations") -Filter *.json) {
+	$files["$plugins\SeamlessSkyrim_Translations\$($json.Name)"] = $json.FullName
+}
 
 & (Join-Path $PSScriptRoot 'fold-door-tunings.ps1') -GameData $GameData
 $files["$plugins\SeamlessSkyrim_Doors.ini"] = Join-Path $repo "package\$plugins\SeamlessSkyrim_Doors.ini"

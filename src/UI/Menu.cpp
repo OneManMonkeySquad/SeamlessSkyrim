@@ -6,12 +6,21 @@
 #include "Portal/PortalManager.h"
 #include "Portal/PortalRender.h"
 #include "Render/Backend.h"
+#include "UI/Translation.h"
 
 #include "Paths.h"
 #include "SKSEMenuFramework.h"
 
 namespace
 {
+	namespace T = UI::Translation;
+
+	// Not TextWrapped(text): a translation with a % in it would be read as a format.
+	void Wrapped(std::string_view a_key)
+	{
+		ImGui::TextWrapped("%s", T::Text(a_key));
+	}
+
 	// What is set here is written to SeamlessSkyrim.ini, as the ini's comments say of these keys
 	// ("Also in the in-game menu"): kept for the session only, every setting was back at the next
 	// start of the game.
@@ -78,30 +87,30 @@ namespace
 		bool enabled = Portal::Manager::Enabled();
 		const bool available = Portal::Manager::HooksInstalled();
 
-		ImGui::TextWrapped("Rendering: %s", Render::Backend::Name());
+		ImGui::TextWrapped("%s", T::Format("settings.rendering", Render::Backend::Name()).c_str());
 		if (available && !Render::Backend::CanMerge()) {
-			ImGui::TextWrapped("Rooms aren't drawn into the world with this renderer (see [Render] sBackend in SeamlessSkyrim.ini).");
+			Wrapped("settings.no_merge_renderer");
 		}
 
 		ImGui::NewLine();
 
 		ImGui::BeginDisabled(!available);
-		if (ImGui::Checkbox("Seamless doors", &enabled)) {
+		if (ImGui::Checkbox(T::Label("settings.enabled"), &enabled)) {
 			Portal::Manager::SetEnabled(enabled);
 		}
 		ImGui::EndDisabled();
 		if (!available) {
-			ImGui::TextWrapped("Off for this session: set bEnabled=1 under [Portals] in SeamlessSkyrim.ini and restart the game.");
+			Wrapped("settings.enabled_unavailable");
 		} else {
 			// Not written to the ini: off there, the game starts without the mod's hooks, and this
 			// box can't switch it on again.
-			ImGui::TextWrapped("For this session; to keep it off, set bEnabled=0 in SeamlessSkyrim.ini.");
+			Wrapped("settings.enabled_session");
 		}
 
 		ImGui::NewLine();
 		
 		bool merge = Portal::Manager::MergeEnabled();
-		if (ImGui::Checkbox("Draw rooms into the world (seen from outside)", &merge)) {
+		if (ImGui::Checkbox(T::Label("settings.merge"), &merge)) {
 			Portal::Manager::SetMergeEnabled(merge);
 			Save(L"bMerge", merge);
 		}
@@ -109,33 +118,28 @@ namespace
 		ImGui::NewLine();
 
 		int shown = Portal::Manager::ShownRooms();
-		if (ImGui::SliderInt("Rooms active at once", &shown, 1, Portal::Manager::kMaxShownRooms)) {
+		if (ImGui::SliderInt(T::Label("settings.shown_rooms"), &shown, 1, Portal::Manager::kMaxShownRooms)) {
 			Portal::Manager::SetShownRooms(shown);
 		}
 		SaveWhenReleased(L"iShownRooms", shown);
-		ImGui::TextWrapped("Outdoors, the rooms behind the nearest doors are loaded, so a doorway opens at once when you walk up, "
-						   "and each open door shows its own room. Counts the room you're at; 1 = only that one. Each costs "
-						   "memory, a short frame when it loads, frame time while its doorway is on screen, and its people "
-						   "are simulated.");
+		Wrapped("settings.shown_rooms_help");
 		if (Render::Backend::MergedRooms() < 2) {
-			ImGui::TextWrapped("This renderer draws one room at a time: the others stay loaded out of sight, and their open doors "
-							   "show a picture.");
+			Wrapped("settings.shown_rooms_one_at_a_time");
 		}
 
 		ImGui::NewLine();
 
 		bool pause = Portal::Manager::PauseUnseenRooms();
-		if (ImGui::Checkbox("Pause rooms nobody can see", &pause)) {
+		if (ImGui::Checkbox(T::Label("settings.pause_unseen"), &pause)) {
 			Portal::Manager::SetPauseUnseenRooms(pause);
 			Save(L"bPauseUnseenRooms", pause);
 		}
-		ImGui::TextWrapped("A loaded room whose doorway is out of view isn't simulated or drawn until it comes into view; "
-						   "the room at the door you're at always runs.");
+		Wrapped("settings.pause_unseen_help");
 
 		ImGui::NewLine();
 
 		bool step = Portal::Manager::StepExterior();
-		if (ImGui::Checkbox("Street physics while indoors (people outside walk)", &step)) {
+		if (ImGui::Checkbox(T::Label("settings.step_exterior"), &step)) {
 			Portal::Manager::SetStepExterior(step);
 			Save(L"bStepExteriorFromInside", step);
 		}
@@ -143,24 +147,23 @@ namespace
 		ImGui::NewLine();
 
 		{
-			int                   force = static_cast<int>(Portal::DoorUse::GetForce());
-			constexpr const char* labels[]{ "As set for each door", "All open (locked ones too)", "All shut until used" };
-			if (ImGui::Combo("Doors", &force, labels, static_cast<int>(std::size(labels)))) {
+			int         force = static_cast<int>(Portal::DoorUse::GetForce());
+			const char* labels[]{ T::Text("settings.doors_as_set"), T::Text("settings.doors_all_open"), T::Text("settings.doors_all_shut") };
+			if (ImGui::Combo(T::Label("settings.doors"), &force, labels, static_cast<int>(std::size(labels)))) {
 				Portal::DoorUse::SetForce(static_cast<Portal::DoorUse::Force>(force));
 				Save(L"iForceDoors", force);
 			}
-			ImGui::TextWrapped("A door opens when you or someone else uses it, and shuts a few seconds after nobody stands in it. "
-							   "City gates and doors set to always open stand open. All shut: those too stay shut until used.");
+			Wrapped("settings.doors_help");
 		}
 
 		ImGui::NewLine();
 
 		float doorDistance = Portal::Manager::DoorOpenDistance();
-		if (ImGui::SliderFloat("Door reach (game units)", &doorDistance, 150.0f, 1000.0f, "%.0f")) {
+		if (ImGui::SliderFloat(T::Label("settings.door_reach"), &doorDistance, 150.0f, 1000.0f, "%.0f")) {
 			Portal::Manager::SetDoorOpenDistance(doorDistance);
 		}
 		SaveWhenReleased(L"iDoorOpenDistance", static_cast<int>(std::lround(doorDistance)));
-		ImGui::TextWrapped("The space behind a door starts loading 300 units beyond this and is let go 700 units beyond it.");
+		Wrapped("settings.door_reach_help");
 
 		ImGui::NewLine();
 
@@ -171,8 +174,20 @@ namespace
 			// The sizes on disk are a door into a room's: its picture reaches past the doorway (3.5
 			// times as wide, 1.75 times as high) at twice the density (Snapshot's kCameraExtent and
 			// kCameraDensity).
-			constexpr const char* labels[]{ "48 x 64 (0.6 MB per door)", "96 x 128 (2.4 MB per door, default)", "144 x 192 (5.4 MB per door)",
-				"192 x 256 (9.6 MB per door)", "288 x 384 (22 MB per door)", "384 x 512 (39 MB per door)" };
+			constexpr int         widths[]{ 48, 96, 144, 192, 288, 384 };
+			constexpr const char* megabytes[]{ "0.6", "2.4", "5.4", "9.6", "22", "39" };
+			constexpr std::size_t defaultIndex = 1;
+			// The language is set once, before the menu is first drawn.
+			static const auto texts = [&] {
+				std::array<std::string, std::size(heights)> result;
+				for (std::size_t i = 0; i < result.size(); ++i) {
+					result[i] = T::Format(i == defaultIndex ? "settings.picture_size_option_default" : "settings.picture_size_option",
+						widths[i], heights[i], megabytes[i]);
+				}
+				return result;
+			}();
+			const char* labels[std::size(heights)];
+			std::ranges::transform(texts, labels, &std::string::c_str);
 			const int current = Portal::Snapshot::PictureHeight();
 			// An ini value between the presets shows as the nearest one.
 			int index = 0;
@@ -181,23 +196,21 @@ namespace
 					index = i;
 				}
 			}
-			if (ImGui::Combo("Doorway picture size (texels)", &index, labels, static_cast<int>(std::size(labels)))) {
+			if (ImGui::Combo(T::Label("settings.picture_size"), &index, labels, static_cast<int>(std::size(labels)))) {
 				Portal::Snapshot::SetPictureHeight(heights[index]);
 				Save(L"iDoorwayPictureHeight", heights[index]);
 			}
-			ImGui::TextWrapped("The blurred picture a doorway shows while the space behind it loads, in texels across the doorway. "
-							   "Larger is sharper; each door is taken again at the new size when next seen open (doors to the outdoors "
-							   "keep one per part of the day, of the doorway only: a 25th of the size).");
+			Wrapped("settings.picture_size_help");
 			// Until another click: the result of this one, so the click visibly did something.
 			static std::optional<int> deleted;
-			if (ImGui::Button("Delete all doorway pictures")) {
+			if (ImGui::Button(T::Label("settings.delete_pictures"))) {
 				deleted = Portal::Snapshot::DeleteAll();
 			}
 			if (deleted) {
 				ImGui::SameLine();
-				ImGui::Text("%d deleted", *deleted);
+				ImGui::TextUnformatted(T::Format("settings.pictures_deleted", *deleted).c_str());
 			}
-			ImGui::TextWrapped("Each door shows the plain colour until it is next seen open, and is taken again then.");
+			Wrapped("settings.delete_pictures_help");
 		}
 	}
 
@@ -205,45 +218,44 @@ namespace
 	{
 		const auto pair = CurrentPair();
 		if (!pair.key) {
-			ImGui::TextWrapped("Walk up to a door: its doorway's settings appear here.");
+			Wrapped("door.none");
 			return;
 		}
-		ImGui::Text("Door: %s", Describe(pair.source).c_str());
-		ImGui::Text("Leads to: %s", Describe(pair.linked).c_str());
+		ImGui::TextUnformatted(T::Format("door.door", Describe(pair.source)).c_str());
+		ImGui::TextUnformatted(T::Format("door.leads_to", Describe(pair.linked)).c_str());
 
 		ImGui::NewLine();
 
-		if (ImGui::Button("Save door settings")) {
+		if (ImGui::Button(T::Label("door.save"))) {
 			Portal::Doors::SaveCorrection(pair.key->GetFormID());
 		}
 
 		ImGui::NewLine();
 
 		bool portal = !Portal::Doors::PortalOff(pair.key->GetFormID());
-		if (ImGui::Checkbox("Seamless door (off: an ordinary door with a loading screen)", &portal)) {
+		if (ImGui::Checkbox(T::Label("door.portal"), &portal)) {
 			Portal::Doors::SetPortalOff(pair.key->GetFormID(), !portal);
 		}
 		bool inward = Portal::Doors::OpensInward(pair.key->GetFormID());
-		if (ImGui::Checkbox("Opens inward (off: outward, into the street)", &inward)) {
+		if (ImGui::Checkbox(T::Label("door.opens_inward"), &inward)) {
 			Portal::Doors::SetOpensInward(pair.key->GetFormID(), inward);
 		}
 		bool always = Portal::Doors::AlwaysOpen(pair.key->GetFormID());
-		if (ImGui::Checkbox("Always open (not only when used; once its doorway has a picture)", &always)) {
+		if (ImGui::Checkbox(T::Label("door.always_open"), &always)) {
 			Portal::Doors::SetAlwaysOpen(pair.key->GetFormID(), always);
 		}
 		if (Outdoors(pair.source) && Outdoors(pair.linked)) {
 			bool picture = Portal::Doors::PictureFromAfar(pair.key->GetFormID());
-			if (ImGui::Checkbox("Plain colour until it has a picture (a gate walled up behind)", &picture)) {
+			if (ImGui::Checkbox(T::Label("door.picture_from_afar"), &picture)) {
 				Portal::Doors::SetPictureFromAfar(pair.key->GetFormID(), picture);
 			}
 		}
 		
 		ImGui::NewLine();
 
-		ImGui::TextWrapped("If the room behind the doorway doesn't line up with the outside, turn it here. It follows the slider "
-						   "live.");
+		Wrapped("door.turn_help");
 		float degrees = Portal::Doors::Correction(pair.key->GetFormID());
-		if (ImGui::SliderFloat("Turn the inside (degrees)", &degrees, -15.0f, 15.0f, "%.1f")) {
+		if (ImGui::SliderFloat(T::Label("door.turn"), &degrees, -15.0f, 15.0f, "%.1f")) {
 			Portal::Doors::SetCorrection(pair.key->GetFormID(), degrees);
 		}
 		if (ImGui::Button("-0.1")) {
@@ -254,32 +266,32 @@ namespace
 			Portal::Doors::SetCorrection(pair.key->GetFormID(), degrees + 0.1f);
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Reset")) {
+		if (ImGui::Button(T::Label("door.turn_reset"))) {
 			Portal::Doors::SetCorrection(pair.key->GetFormID(), 0.0f);
 		}
 
 		ImGui::NewLine();
 
-		ImGui::TextWrapped("Move the inside against the outside (game units; sideways and further in as seen walking in):");
+		Wrapped("door.shift_help");
 		auto shift = Portal::Doors::Shift(pair.key->GetFormID());
-		bool moved = ImGui::SliderFloat("Sideways", &shift.x, -60.0f, 60.0f, "%.1f");
-		moved |= ImGui::SliderFloat("Further in", &shift.y, -60.0f, 60.0f, "%.1f");
-		moved |= ImGui::SliderFloat("Up", &shift.z, -40.0f, 40.0f, "%.1f");
+		bool moved = ImGui::SliderFloat(T::Label("door.sideways"), &shift.x, -60.0f, 60.0f, "%.1f");
+		moved |= ImGui::SliderFloat(T::Label("door.further_in"), &shift.y, -60.0f, 60.0f, "%.1f");
+		moved |= ImGui::SliderFloat(T::Label("door.up"), &shift.z, -40.0f, 40.0f, "%.1f");
 		if (moved) {
 			Portal::Doors::SetShift(pair.key->GetFormID(), shift);
 		}
-		if (ImGui::Button("Reset position")) {
+		if (ImGui::Button(T::Label("door.shift_reset"))) {
 			Portal::Doors::SetShift(pair.key->GetFormID(), {});
 		}
 		
 		ImGui::NewLine();
 
 		float swing = Portal::Doors::SwingDegrees(pair.key->GetFormID());
-		if (ImGui::SliderFloat("How far it opens (degrees)", &swing, 30.0f, 120.0f, "%.0f")) {
+		if (ImGui::SliderFloat(T::Label("door.swing"), &swing, 30.0f, 120.0f, "%.0f")) {
 			Portal::Doors::SetSwingDegrees(pair.key->GetFormID(), swing);
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Reset##swing")) {
+		if (ImGui::Button(T::Label("door.swing_reset"))) {
 			Portal::Doors::SetSwingDegrees(pair.key->GetFormID(), Portal::Doors::kSwingDegrees);
 		}
 	}
@@ -296,9 +308,11 @@ namespace UI::Menu
 			logger::info("menu: SKSE Menu Framework not installed; no in-game settings");
 			return;
 		}
+		T::Load();
+		// The mod's name stays as it is in every language.
 		SKSEMenuFramework::SetSection("Seamless Skyrim");
-		SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
-		SKSEMenuFramework::AddSectionItem("This doorway", RenderDoor);
+		SKSEMenuFramework::AddSectionItem(T::Text("settings.section"), RenderSettings);
+		SKSEMenuFramework::AddSectionItem(T::Text("door.section"), RenderDoor);
 		logger::info("menu: registered with SKSE Menu Framework");
 	}
 }

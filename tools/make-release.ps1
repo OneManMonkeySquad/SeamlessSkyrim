@@ -9,6 +9,7 @@ The archive holds:
   Core\SKSE\Plugins\SeamlessSkyrim.dll     Release build, without its PDB
   Core\SKSE\Plugins\SeamlessSkyrim.ini     package\, as a player gets it
   Core\SKSE\Plugins\SeamlessSkyrim_Doors.ini   package\, with the doors tuned in game moved in
+  Core\SKSE\Plugins\SeamlessSkyrim_Translations\*.json   package\, the menu's text
   CommunityShaders\SKSE\Plugins\CommunityShaders.dll   the fork's build
   CommunityShaders\...                     every file the fork changed or added under package\
                                            and features\*\ since -CsBase
@@ -99,6 +100,9 @@ if ((Get-Content -Raw -LiteralPath $ini) -match '(?m)^bEnabled=0') {
 }
 $files["Core\$plugins\SeamlessSkyrim.ini"] = $ini
 $files["Core\$plugins\SeamlessSkyrim_Doors.ini"] = $doors
+foreach ($json in Get-ChildItem -LiteralPath (Join-Path $repo "package\$plugins\SeamlessSkyrim_Translations") -Filter *.json) {
+	$files["Core\$plugins\SeamlessSkyrim_Translations\$($json.Name)"] = $json.FullName
+}
 
 $csDll = Join-Path $CsFork 'build\ALL\Release\CommunityShaders.dll'
 Assert-Newer $csDll (Join-Path $CsFork 'src')

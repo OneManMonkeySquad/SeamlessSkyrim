@@ -69,6 +69,7 @@ if(MSVC)
 endif()
 
 if(SKYRIM_PLUGINS_DIR)
+	file(GLOB TRANSLATIONS CONFIGURE_DEPENDS package/SKSE/Plugins/SeamlessSkyrim_Translations/*.json)
 	add_custom_command(
 		TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${SKYRIM_PLUGINS_DIR}"
@@ -79,6 +80,12 @@ if(SKYRIM_PLUGINS_DIR)
 			-Destination "${SKYRIM_PLUGINS_DIR}"
 			"$<TARGET_FILE:${PROJECT_NAME}>"
 			"$<TARGET_PDB_FILE:${PROJECT_NAME}>"
+		# The menu reads its text from these; the DLL asserts on a missing english.json.
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${SKYRIM_PLUGINS_DIR}/SeamlessSkyrim_Translations"
+		COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+			-File "${CMAKE_SOURCE_DIR}/tools/copy-in-place.ps1"
+			-Destination "${SKYRIM_PLUGINS_DIR}/SeamlessSkyrim_Translations"
+			${TRANSLATIONS}
 		COMMENT "Deploying ${PROJECT_NAME} to ${SKYRIM_PLUGINS_DIR}"
 		VERBATIM
 	)
