@@ -247,11 +247,20 @@ Open bugs and things not tried. A fixed one comes out.
   particles. Not compared with stock 2.0 rc.2. With Bottled Shaders 2.0.3 the same route shows the
   rain falling in the street through the doorway.
 - Bottled Shaders 2.0.3, the street seen from inside a building (Bannered Mare):
-  - Snow Cover isn't on it: indoors Snow Cover takes the interior's config (none), so the
-    mountains through the doorway are bare rock where outside they are snowed. Taking the street's
-    config indoors would also need the snow's world positions moved back out of the interior.
-  - At 19:30 the houses through the doorway are lit bright orange; outside they are dark grey.
-    Cause not found; not compared with Community Shaders 2.0 at that hour.
+  - Snow Cover isn't on it: indoors Snow Cover takes the interior's config (none). Not seen in
+    Whiterun (no snow in its streets); in Windhelm the street through a doorway would be bare.
+    Taking the street's config indoors would also need the snow's world positions moved back out
+    of the interior.
+  - The outdoor haze (View Atmosphere's medium) and the volumetric clouds aren't the street's: the
+    medium resolves from the interior, and the clouds are traced from the interior's coordinates,
+    turned with the door pair. Through the doorway the air is clear, the sky bluer and the clouds
+    elsewhere; outside the street is hazier and greyer.
+  - The street's ambient falls back to the outdoor IBL of the moment the player walked in
+    (`IBL::outdoorIBLTexture`); waiting indoors for hours leaves it at that hour's light.
+- Bottled Shaders 2.0.3: the game crashed once in the sun's shadow map rendering
+  (`BSShadowDirectionalLight` cascade, a batch pass through `SetupAndDrawPass`, SkyrimSE.exe+15603CD),
+  standing in the Bannered Mare's doorway after walking in and out several times at 19:30.
+  Not reproduced.
 - Community Shaders 2.0, the street's Physical Sky seen from indoors: no lightning (Physical Sky
   keeps it off in interiors); the street's own light is the weather's colour, not Physical Sky's sun
   as outdoors; the medium's height fog and scene settings resolve from the interior's layers.

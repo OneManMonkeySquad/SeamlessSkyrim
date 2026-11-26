@@ -293,6 +293,14 @@ Frame rate:
   pictures and times from the same spot.
 - `move_to` across the door plane into the merged room teleports into its cell at the street's
   coordinates (the player falls in the void): load the game again.
+- After `set gamehour` jumps, Community Shaders' dynamic cubemap takes seconds to catch up, and the
+  outdoor IBL the street merged into an interior is lit with is taken on walking in: after a jump
+  from 15:30 to 19:30 the street through the doorway was lit warm and bright. Compare lighting
+  across a doorway after a fresh launch, or wait outdoors first.
+- Exposure and lighting across a crossing: `run_route` with `capture` and a `{"frames": 50}` step
+  before the walk out, then the mean colour of fixed screen regions in each frame (a few lines of Python with PIL)
+  (`bannered-mare-walk-out-dusk`, `bannered-mare-walk-out-afternoon`). The first frame after the
+  crossing still has the old space's exposure, so it tells lighting from exposure.
 
 ## Other game versions
 

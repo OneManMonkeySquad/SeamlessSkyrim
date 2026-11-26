@@ -89,7 +89,9 @@ Where 2.0 differs from 1.9.1, and what the port does about it:
   interior's coordinates) and the sun and moons from `SkySync::SeamlessStreetDirections` (where they
   stand outdoors, turned into the interior). Sky Sync itself stays off indoors: it would turn and
   recolour the interior's directional light. `LinearLighting` keeps its π directional multiplier
-  then, so the interior's light is as before. The medium (`PostWaterComposite`) then fogs the whole
+  indoors, so the interior's light is as before; it asks `Util::IsInterior()` for that, not
+  `seamlessStreetActive`, which is the previous frame's: in the frame the player walked out, the
+  outdoor sun came in at π times, and the street flashed white. The medium (`PostWaterComposite`) then fogs the whole
   frame, the interior's short distances included; at the Bannered Mare the room looked the same with
   it and without. `globals::game::calendar` can be null there: `Util::Climate::GetCalendar()`.
 - Fog: the merged fog is applied on upstream's vanilla fog path in `Lighting.hlsl`, `Effect.hlsl`
@@ -116,6 +118,19 @@ its own features, so everything in "On Community Shaders 2.0" holds; on top of i
   in the merged street.
 - `ScreenSpaceShadows`: the raymarch is still compiled ahead (`PrecompileRaymarch`); the denoise
   and mask filter shaders, new here, are compiled on first use.
+- Screen Space GI replaces the ambient (`ReplaceAmbient`, on with its cubemap fallback): `Lighting.hlsl`
+  zeroes it and the GI's light stands in, falling back, where a ray finds nothing on screen, to the
+  dynamic cubemap of the camera's space. Through the Bannered Mare's doorway the street was lit by
+  the inn's warm room (orange at dusk, then a jump on walking out). The street merged into an
+  interior falls back to its outdoor IBL instead (`diffuseGI.cs.hlsl` `SampleStreetFallback`, the
+  cubemap path with `GetOutdoorIBL` and the street's own ambient; `IBL::outdoorIBLTexture` bound at
+  CS t75 for the GI pass). A space with nothing to fall back to keeps its own ambient as without
+  the replacement (`seamlessOwnAmbient`: a room merged into the street, the street without IBL);
+  `DeferredCompositeCS.hlsl` and `composite.cs.hlsl` (no GI light on it) tell its pixels apart by
+  `SeamlessDoorClips`.
+- Histogram Auto Exposure lowers the exposure range's floor by Interior Brightening (2 EV) indoors.
+  Switched in one frame, the street's exposure jumped on walking out; it is eased at the adaptation
+  speed instead (`interiorBrighteningEV`), snapped after a pause in drawing (a loading screen).
 
 ## DLL
 

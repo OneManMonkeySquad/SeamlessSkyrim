@@ -202,6 +202,146 @@
       }
     ]
   },
+  "bannered-mare-walk-out-afternoon": {
+    "note": "Bottled Shaders 2.0.3: Whiterun at 15:30 (time stopped), into the Bannered Mare, stand in its doorway looking out, walk out with every frame taken (run with capture). Was: the street through the doorway brighter (the interior's exposure, Interior Brightening lowering the exposure range's floor by 2 EV indoors), the exposure jumping to the outdoor one in the frame after the crossing.",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "set gamehour to 15.5"
+      },
+      {
+        "place": "belethors-front-user"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "walk": {
+          "ref": "0001A6F4",
+          "run": true,
+          "stop_distance": 5,
+          "timeout_seconds": 40
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            25900,
+            -7631
+          ],
+          "stop_distance": 20,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "move": [
+          -128,
+          -1118,
+          68
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 8
+      },
+      {
+        "frames": 50
+      },
+      {
+        "walk": {
+          "pos": [
+            -128,
+            -1500
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "wait": 2
+      }
+    ]
+  },
+  "bannered-mare-walk-out-dusk": {
+    "note": "Bottled Shaders 2.0.3: Whiterun at 19:30 (time stopped), into the Bannered Mare, stand in its doorway looking out, then walk out with every frame taken (run with capture). Was: the street through the doorway bright orange, outside dark grey, changing in one frame at the crossing (Screen Space GI's ambient replacement lit the street with the inn's cubemap).",
+    "steps": [
+      {
+        "load": "SeamlessTestBelethors"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "set gamehour to 19.5"
+      },
+      {
+        "place": "belethors-front-user"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "walk": {
+          "ref": "0001A6F4",
+          "run": true,
+          "stop_distance": 5,
+          "timeout_seconds": 40
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            25900,
+            -7631
+          ],
+          "stop_distance": 20,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "move": [
+          -128,
+          -1118,
+          68
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 8
+      },
+      {
+        "frames": 50
+      },
+      {
+        "walk": {
+          "pos": [
+            -128,
+            -1500
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "wait": 2
+      }
+    ]
+  },
   "belethors-dropped-item-out-and-in": {
     "note": "Belethor's: an iron dagger placed at the player's feet, walk out through the portal and back in, stand where it was dropped. It must still be there with its FF form ID (refs_near). Was: its form ID cleared (00000000) on walking back in, lost on saving: releasing the merged room gave the loose items back their physics before moving the room back from the street, and the engine took them for fallen out of the world (user/tester, 2026-11-24).",
     "steps": [
