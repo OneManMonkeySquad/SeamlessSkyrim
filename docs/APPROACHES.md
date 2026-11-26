@@ -8,7 +8,8 @@ Read this before proposing a new approach. The engine facts behind it are in ENG
 |---|---|
 | Outdoors, a door into a room | The room merged into the world scene (3), up to four at once (`[Portals] iShownRooms`) |
 | Indoors, the door out to the street | The street merged into the interior (9, `[Portals] bMergeOutdoors`, on) |
-| Interior ↔ interior, exterior ↔ exterior (city gates) | The portal pass (1); through a city gate the world's own shapes are masked as far as the portal pass draws (`UpdateGateMask`) |
+| Interior ↔ interior | The room merged into the interior the player is in (3, `[Portals] bMergeInteriors`, on) |
+| Exterior ↔ exterior (city gates) | The portal pass (1); through a city gate the world's own shapes are masked as far as the portal pass draws (`UpdateGateMask`) |
 | A room's doorway before its merge | A picture taken with the portal pass, kept per door. From inside a building, none of the street: its door stays shut until the street is shown live (`StreetShownLive`) |
 
 Crossing is the engine's own door teleport without its loading screen (2). A doorway standing
@@ -95,6 +96,22 @@ tested against what is seen of them (Understone Keep from Markarth's street: fra
 On its own it only works one way: the outdoors' terrain, LOD, sky and water are global systems
 and can't be moved into the interior. What made the other way possible is 9: the interior's
 scene takes the street in, and the outdoors' global systems turn out to survive indoors.
+
+Between two interiors the room hangs in the player's interior: in the room of its door when the
+interior is built of rooms, else in its statics branch (`InteriorBranch`), as the street does (9);
+under the world scene an interior draws none of it. Drawn by the portal pass before, the room was
+flat and evenly lit (no deferred lighting, no ambient occlusion, no fog) and brighter than from
+inside it. Crossing, the room left is merged back in the frame of arrival (`Travel.cpp`).
+Across the doorway:
+- **Image space:** the two rooms' blended by where the camera is, the weight symmetric about the
+  door plane (`UpdateTone`), so walking through changes nothing.
+- **Light through the doorway:** each room takes the other's in through it, as the street's light
+  falls into a room (`SetMergedDaylight`, and `SetHostDaylight` for the player's room). Each room's
+  light is measured from the frame (`Snapshot::MeasureSpaces`: what the doorway shows, and the
+  rest of the view) and kept by room, not by side. Estimated from the cells' light records it
+  matched nothing: inverse-square lights (Lux) keep 1 in `radius.x` and their real reach in the
+  fork. 1 (the light as measured) left the doorway's sides black next to a bright hall through
+  the tone map; `[Portals] fDoorwayLight` is 4.
 
 ## 4. Walk into rooms (`[Portals] bWalkIntoRooms`, built, off)
 

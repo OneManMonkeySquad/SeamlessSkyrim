@@ -1080,6 +1080,117 @@ namespace
 		return !meter.failed;
 	}
 
+	// MeasureSpaces: one group of 16x16 threads; each takes 4x4 points of a 64x64 grid over the
+	// doorway's box on screen, and 4x4 of one over the viewport, the latter only outside the box.
+	struct SpaceMeter
+	{
+		struct Pending
+		{
+			ID3D11Texture2D* staging = nullptr;
+			bool             pending = false;
+			RE::FormID       through = 0;
+			RE::FormID       around = 0;
+		};
+		ID3D11ComputeShader*                                     shader = nullptr;
+		ID3D11Buffer*                                            constants = nullptr;
+		ID3D11Texture2D*                                         result = nullptr;
+		ID3D11UnorderedAccessView*                               resultView = nullptr;
+		std::array<Pending, 4>                                   ring{};
+		std::size_t                                              next = 0;
+		bool                                                     failed = false;
+		std::vector<std::pair<RE::FormID, std::array<float, 3>>> lights;  // a few spaces
+		std::chrono::steady_clock::time_point                    read{};
+	} spaceMeter;
+
+	bool EnsureSpaceMeter(ID3D11Device* a_device)
+	{
+		if (spaceMeter.shader || spaceMeter.failed) {
+			return !spaceMeter.failed;
+		}
+		static const char source[] = R"(
+			Texture2D<float4>    Scene : register(t0);
+			RWTexture2D<float4>  Out : register(u0);
+			cbuffer Meter : register(b0) { float4 Size; float4 Box; };  // Size.xy: viewport; Box: the doorway's, in pixels
+			groupshared float4 through[256];
+			groupshared float4 around[256];
+			[numthreads(16, 16, 1)]
+			void CS(uint3 thread : SV_GroupThreadID, uint index : SV_GroupIndex)
+			{
+				float4 inside = 0;
+				float4 outside = 0;
+				for (uint y = 0; y < 4; ++y) {
+					for (uint x = 0; x < 4; ++x) {
+						float2 cell = (float2(thread.xy * 4 + uint2(x, y)) + 0.5) / 64;
+						if (Box.z > Box.x)
+							inside += float4(Scene.Load(int3(lerp(Box.xy, Box.zw, cell), 0)).rgb, 1);
+						float2 at = cell * Size.xy;
+						if (any(at < Box.xy) || any(at > Box.zw))
+							outside += float4(Scene.Load(int3(at, 0)).rgb, 1);
+					}
+				}
+				through[index] = inside;
+				around[index] = outside;
+				GroupMemoryBarrierWithGroupSync();
+				for (uint half = 128; half > 0; half >>= 1) {
+					if (index < half) {
+						through[index] += through[index + half];
+						around[index] += around[index + half];
+					}
+					GroupMemoryBarrierWithGroupSync();
+				}
+				if (index == 0) {
+					Out[uint2(0, 0)] = through[0];
+					Out[uint2(1, 0)] = around[0];
+				}
+			}
+		)";
+		ID3DBlob* blob = nullptr;
+		ID3DBlob* errors = nullptr;
+		spaceMeter.failed = FAILED(::D3DCompile(source, sizeof(source) - 1, "SeamlessSpaceMeter", nullptr, nullptr, "CS", "cs_5_0", 0, 0, &blob, &errors));
+		if (errors) {
+			logger::error("space light: shader failed: {}", static_cast<const char*>(errors->GetBufferPointer()));
+			errors->Release();
+		}
+		if (!spaceMeter.failed) {
+			D3D11_BUFFER_DESC    constants{ sizeof(float) * 8, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
+			D3D11_TEXTURE2D_DESC result{ 2, 1, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, { 1, 0 }, D3D11_USAGE_DEFAULT, D3D11_BIND_UNORDERED_ACCESS, 0, 0 };
+			D3D11_TEXTURE2D_DESC staging{ 2, 1, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, { 1, 0 }, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0 };
+			spaceMeter.failed = FAILED(a_device->CreateComputeShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &spaceMeter.shader)) ||
+			                    FAILED(a_device->CreateBuffer(&constants, nullptr, &spaceMeter.constants)) ||
+			                    FAILED(a_device->CreateTexture2D(&result, nullptr, &spaceMeter.result)) ||
+			                    FAILED(a_device->CreateUnorderedAccessView(spaceMeter.result, nullptr, &spaceMeter.resultView));
+			for (auto& slot : spaceMeter.ring) {
+				spaceMeter.failed = spaceMeter.failed || FAILED(a_device->CreateTexture2D(&staging, nullptr, &slot.staging));
+			}
+			if (spaceMeter.failed) {
+				logger::error("space light: could not create the meter");
+			}
+		}
+		if (blob) {
+			blob->Release();
+		}
+		return !spaceMeter.failed;
+	}
+
+	// Eased towards a_reading, per channel in log space as Adapt: a room's light changes as the view
+	// turns over it, and the doorway's light shouldn't flicker with it.
+	void AdaptSpace(RE::FormID a_cell, const float* a_reading, float a_seconds)
+	{
+		if (!std::isfinite(a_reading[0] + a_reading[1] + a_reading[2])) {
+			return;
+		}
+		const auto found = std::ranges::find(spaceMeter.lights, a_cell, &std::pair<RE::FormID, std::array<float, 3>>::first);
+		if (found == spaceMeter.lights.end()) {
+			spaceMeter.lights.emplace_back(a_cell, std::array<float, 3>{ a_reading[0], a_reading[1], a_reading[2] });
+			return;
+		}
+		const float toward = 1.0f - std::exp(-a_seconds / kAdaptSeconds);
+		for (int i = 0; i < 3; ++i) {
+			const float from = std::max(found->second[i], 1e-5f);
+			found->second[i] = std::exp(std::log(from) + (std::log(std::max(a_reading[i], 1e-5f)) - std::log(from)) * toward);
+		}
+	}
+
 	void Adapt(float a_reading)
 	{
 		const auto now = std::chrono::steady_clock::now();
@@ -1152,6 +1263,109 @@ namespace Portal::Snapshot
 		context->CopyResource(copy, meter.result);
 		meter.pending[meter.next] = true;
 		meter.next = (meter.next + 1) % meter.staging.size();
+	}
+
+	void MeasureSpaces(void* a_scene, const View& a_view, const Corners& a_doorway, RE::FormID a_through, RE::FormID a_around)
+	{
+		auto* context = Context();
+		auto* device = Device();
+		if (!context || !device || !a_scene || !EnsureSpaceMeter(device)) {
+			return;
+		}
+		auto& slot = spaceMeter.ring[spaceMeter.next];
+		if (slot.pending) {
+			D3D11_MAPPED_SUBRESOURCE mapped{};
+			const HRESULT            result = context->Map(slot.staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+			if (result == DXGI_ERROR_WAS_STILL_DRAWING) {
+				return;
+			}
+			if (SUCCEEDED(result)) {
+				const auto* sums = static_cast<const float*>(mapped.pData);
+				const auto  now = std::chrono::steady_clock::now();
+				const float seconds = std::chrono::duration<float>(now - spaceMeter.read).count();
+				spaceMeter.read = now;
+				// The doorway's only when it was on screen.
+				if (sums[3] > 0.0f && slot.through) {
+					const float mean[3] = { sums[0] / sums[3], sums[1] / sums[3], sums[2] / sums[3] };
+					AdaptSpace(slot.through, mean, seconds);
+				}
+				if (sums[7] > 0.0f) {
+					const float mean[3] = { sums[4] / sums[7], sums[5] / sums[7], sums[6] / sums[7] };
+					AdaptSpace(slot.around, mean, seconds);
+				}
+				context->Unmap(slot.staging, 0);
+			}
+			slot.pending = false;
+		}
+		// The doorway's box on screen, shrunk to what lies inside its frame (its corners are frame
+		// and wall when seen at an angle, and an arched doorway's top corners are wall).
+		float minX = FLT_MAX, minY = FLT_MAX, maxX = -FLT_MAX, maxY = -FLT_MAX;
+		for (const auto& corner : a_doorway) {
+			const auto clip = ToClip(a_view, corner);
+			// A corner behind the camera: the doorway may still be partly on screen, and the rest of
+			// the view isn't one space's.
+			if (clip[3] <= 1.0f) {
+				return;
+			}
+			const float x = (clip[0] / clip[3] * 0.5f + 0.5f) * a_view.width;
+			const float y = (0.5f - clip[1] / clip[3] * 0.5f) * a_view.height;
+			minX = std::min(minX, x);
+			maxX = std::max(maxX, x);
+			minY = std::min(minY, y);
+			maxY = std::max(maxY, y);
+		}
+		constexpr float kShrink = 0.2f;
+		const float     shrinkX = (maxX - minX) * kShrink, shrinkY = (maxY - minY) * kShrink;
+		float           box[4] = { std::clamp(minX + shrinkX, 0.0f, a_view.width), std::clamp(minY + shrinkY, 0.0f, a_view.height),
+			          std::clamp(maxX - shrinkX, 0.0f, a_view.width), std::clamp(maxY - shrinkY, 0.0f, a_view.height) };
+		// Too small to say much about the space behind it: measured as the rest of the view.
+		constexpr float kMinPixels = 24.0f;
+		const bool      seen = box[2] - box[0] >= kMinPixels && box[3] - box[1] >= kMinPixels;
+		if (!seen) {
+			box[0] = std::clamp(minX, 0.0f, a_view.width);
+			box[1] = std::clamp(minY, 0.0f, a_view.height);
+			box[2] = std::clamp(maxX, 0.0f, a_view.width);
+			box[3] = std::clamp(maxY, 0.0f, a_view.height);
+		}
+		const float constants[8] = { a_view.width, a_view.height, 0.0f, 0.0f, box[0], box[1], box[2], box[3] };
+		Upload(context, spaceMeter.constants, constants, sizeof(constants));
+		const SavedState        saved(context);
+		ID3D11RenderTargetView* noTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+		context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, noTargets, nullptr);
+		ID3D11ComputeShader*       savedShader = nullptr;
+		ID3D11ShaderResourceView*  savedView = nullptr;
+		ID3D11UnorderedAccessView* savedOut = nullptr;
+		ID3D11Buffer*              savedConstants = nullptr;
+		context->CSGetShader(&savedShader, nullptr, nullptr);
+		context->CSGetShaderResources(0, 1, &savedView);
+		context->CSGetUnorderedAccessViews(0, 1, &savedOut);
+		context->CSGetConstantBuffers(0, 1, &savedConstants);
+		auto* scene = static_cast<ID3D11ShaderResourceView*>(a_scene);
+		context->CSSetShader(spaceMeter.shader, nullptr, 0);
+		context->CSSetShaderResources(0, 1, &scene);
+		context->CSSetUnorderedAccessViews(0, 1, &spaceMeter.resultView, nullptr);
+		context->CSSetConstantBuffers(0, 1, &spaceMeter.constants);
+		context->Dispatch(1, 1, 1);
+		context->CSSetShader(savedShader, nullptr, 0);
+		context->CSSetShaderResources(0, 1, &savedView);
+		context->CSSetUnorderedAccessViews(0, 1, &savedOut, nullptr);
+		context->CSSetConstantBuffers(0, 1, &savedConstants);
+		for (IUnknown* object : std::initializer_list<IUnknown*>{ savedShader, savedView, savedOut, savedConstants }) {
+			if (object) {
+				object->Release();
+			}
+		}
+		context->CopyResource(slot.staging, spaceMeter.result);
+		slot.pending = true;
+		slot.through = seen ? a_through : 0;
+		slot.around = a_around;
+		spaceMeter.next = (spaceMeter.next + 1) % spaceMeter.ring.size();
+	}
+
+	std::optional<std::array<float, 3>> SpaceLight(RE::FormID a_cell)
+	{
+		const auto found = std::ranges::find(spaceMeter.lights, a_cell, &std::pair<RE::FormID, std::array<float, 3>>::first);
+		return found != spaceMeter.lights.end() ? std::optional(found->second) : std::nullopt;
 	}
 
 	std::optional<float> SceneBrightness()

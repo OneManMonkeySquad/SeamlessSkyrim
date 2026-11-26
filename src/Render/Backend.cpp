@@ -22,6 +22,7 @@ namespace
 		void (*setMergedFog)(const float*) = nullptr;
 		void (*setFrontFog)(const float*) = nullptr;
 		void (*setMergedRoomDaylight)(int, const float*) = nullptr;
+		void (*setHostDaylight)(const float*) = nullptr;
 		void (*setGatePassage)(float) = nullptr;
 		void (*setInteriorSun)(bool) = nullptr;
 		void (*settleSkylighting)() = nullptr;
@@ -49,6 +50,7 @@ namespace
 		Find(a_module, "SeamlessPortal_SetMergedFog", fork.setMergedFog);
 		Find(a_module, "SeamlessPortal_SetFrontFog", fork.setFrontFog);
 		Find(a_module, "SeamlessPortal_SetMergedRoomDaylight", fork.setMergedRoomDaylight);
+		Find(a_module, "SeamlessPortal_SetHostDaylight", fork.setHostDaylight);
 		Find(a_module, "SeamlessPortal_SetGatePassage", fork.setGatePassage);
 		Find(a_module, "SeamlessPortal_SetInteriorSun", fork.setInteriorSun);
 		Find(a_module, "SeamlessPortal_SettleSkylighting", fork.settleSkylighting);
@@ -206,6 +208,13 @@ namespace Render::Backend
 	{
 		if (kind == Kind::kCommunityShaders && fork.setMergedRoomDaylight && a_room >= 0 && a_room < MergedRooms()) {
 			fork.setMergedRoomDaylight(a_room, a_daylight);
+		}
+	}
+
+	void SetHostDaylight(const float* a_daylight)
+	{
+		if (kind == Kind::kCommunityShaders && fork.setHostDaylight) {
+			fork.setHostDaylight(a_daylight);
 		}
 	}
 

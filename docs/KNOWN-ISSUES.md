@@ -107,8 +107,8 @@
   walking on; the others go on within 0.25 s.
 - Shutting a door by using it while standing in its doorway swings it shut onto the player.
 - A door pair placed at two sizes is evened out only for the street seen from inside (drawn
-  larger, `PlacementOf`). Between two interiors (the portal pass) the far side's wall still shows
-  in a band inside the larger doorway.
+  larger, `PlacementOf`). Between two interiors (now merged, `bMergeInteriors`) not looked at
+  again; with the portal pass the far side's wall showed in a band inside the larger doorway.
 - Walking out of Understone Keep (`markarth-understone-walk-out`): in the last frame before the
   crossing the guard beside the door was drawn without his head, and the banners on the pillars
   were missing from inside throughout. Not compared with a build before the street was scaled.
@@ -149,6 +149,14 @@
 - College of Winterhold, Hall of the Elements: with the door up to the Arcanaeum (000175DD) used and
   open, the walk in (`winterhold-arcanaeum-walk-in`) stops at x 320 instead of going up the stairs;
   the route predates doors opening only when used and doesn't use the door.
+- Saving releases the spaces behind doors from the save's own thread (`kSaveGame` arrives off the
+  main thread: `released: saving` logged by another thread than the frame's), while the frame's
+  culling jobs may still walk them. The game crashed once that way (user, Windhelm's Palace of the
+  Kings, 0.2 s after the upstairs behind its door was attached, its references still loading): in
+  a culling job, `BSCullingProcess::Process` (ID 106921) reading a null object (ID 76561 + 0x56).
+  Not reproduced by saving 0.05-0.4 s after an attach of the same door.
+- Two interiors merged (`bMergeInteriors`) with the native backend (no Community Shaders, SE
+  1.5.97): not tried.
 - The street merged into an interior: the land of some of its cells is left at the street's own
   place, not moved to the doorway (`scene_check`): loaded inside The Drunken Huntsman
   (`SeamlessTestDrunkenHuntsmanInside`, 3 of 9 cells), walked into Warmaiden's

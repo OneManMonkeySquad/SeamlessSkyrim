@@ -32,6 +32,17 @@
       320.3499450683594
     ]
   },
+  "blue-palace-pelagius-wing-door": {
+    "cell": "BluePalaceWing01",
+    "headingDeg": 270.0,
+    "interior": true,
+    "note": "Solitude, inside the Pelagius Wing, 250 units from its door to the Blue Palace (0009B5C2, interior to interior; both doors unlocked by console: 00034249.unlock, 0009B5C2.unlock; doors force 1). Dark wing, bright palace: for the two rooms' tone and the light through the doorway.",
+    "pos": [
+      6966.0,
+      2383.999755859375,
+      4064.342529296875
+    ]
+  },
   "jorrvaskr-front-door": {
     "cell": "WhiterunWindDistrict03",
     "headingDeg": 90.0,
@@ -239,6 +250,17 @@
       23050.87890625,
       -7756.4453125,
       -3497.621826171875
+    ]
+  },
+  "windhelm-palace-upstairs-door": {
+    "cell": "WindhelmPalaceoftheKings",
+    "headingDeg": 270.0,
+    "interior": true,
+    "note": "Windhelm, Palace of the Kings, 250 units in front of the door to the upstairs (000C0E0E, interior to interior), looking at it (doors force 1, or use it). The upstairs is merged into the palace (bMergeInteriors); before, the portal pass drew it.",
+    "pos": [
+      -2759.999755859375,
+      -3007.999755859375,
+      56.440940856933594
     ]
   },
   "windhelm-sadris-door": {

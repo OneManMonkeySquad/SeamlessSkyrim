@@ -330,6 +330,14 @@ Found porting the plugin; each was checked in the code of both.
 
 ## Culling
 
+- **What straddles an interior's portals hangs in a node of its own** (the parent of each
+  portal's `BSPortalSharedNode`, under the cell's sixth child). The main view leaves that node
+  out of a cell it culls; the rooms cull it through their portals. A merged interior hung in
+  another interior's room is culled as a plain subtree, which walks into that node, and its merged
+  rooms cull the shared nodes too (`RoomCullHook`): the shapes went into the main view's batches
+  twice, a batch's pass list ran in a circle and the game hung in `BSBatchRenderer::RenderBatches`
+  (ID 107642). While hung there the node is app-culled (`RemoteCell::Merge`).
+
 - **A reference's 3D is a copy of a loaded one of the same model, as it is at that moment.** A
   shape hidden with `SetAppCulled` in the first instance of a model (loading a save inside The
   Drunken Huntsman: its own two doors) comes hidden in every instance loaded after (every Whiterun

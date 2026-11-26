@@ -671,6 +671,10 @@ namespace Portal
 		UnmergeCollision();
 		if (std::exchange(merged, false)) {
 			const Perf::Scope scope("release: unmerge cells");
+			for (auto& holder : sharedHolders) {
+				holder->SetAppCulled(false);
+			}
+			sharedHolders.clear();
 			// Back under the portal root, unmoved, so the normal release below applies.
 			for (auto* cell : cells) {
 				RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
@@ -1804,13 +1808,13 @@ namespace Portal
 		mergedWorld = nullptr;
 	}
 
-	json RemoteCell::Merge(const Placement& a_placement)
+	json RemoteCell::Merge(const Placement& a_placement, RE::NiNode* a_parent)
 	{
 		placed = a_placement;
 		const auto& a_toSource = a_placement.toSource;
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		auto* here3D = Cell3D(here);
-		auto* worldParent = here3D ? here3D->parent : nullptr;
+		auto* worldParent = a_parent ? a_parent : here3D ? here3D->parent : nullptr;
 		if (!worldParent || cells.empty()) {
 			throw std::runtime_error("nothing to merge");
 		}
@@ -1854,6 +1858,31 @@ namespace Portal
 			}
 		}
 		MoveBounds(a_toSource);
+		// Hung into an interior (a_parent), the cells are culled as any subtree of its room, which walks
+		// into the node holding what straddles their rooms' portals (the portals' BSPortalSharedNodes);
+		// the main view leaves that node out of a cell it culls itself, and the merged rooms cull those
+		// through their portals (MergedCull's RoomCullHook). Culled both ways, the shapes went into the
+		// main view's batches twice, a batch's list of passes ran in a circle, and the game hung drawing
+		// it (the Ratway merged into the Ragged Flagon, its door opened).
+		if (a_parent) {
+			for (auto* cell : cells) {
+				auto* loaded = cell->GetRuntimeData().loadedData;
+				auto* graph = loaded ? loaded->portalGraph.get() : nullptr;
+				if (!graph) {
+					continue;
+				}
+				for (const auto& room : graph->rooms) {
+					for (auto* portal : room->portalList) {
+						auto* shared = portal ? portal->portalSharedNode.get() : nullptr;
+						auto* holder = shared ? shared->parent : nullptr;
+						if (holder && !holder->GetAppCulled()) {
+							holder->SetAppCulled(true);
+							sharedHolders.emplace_back(holder);
+						}
+					}
+				}
+			}
+		}
 		// The room's lights stay in the portal's light scene: the patched Community Shaders lights the
 		// merged shapes from there (SetupPortalStrictLights). Handed to the world's, they lit the
 		// street around the door, through walls, took shadow slots from the town's own lights (its

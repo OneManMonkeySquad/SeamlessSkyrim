@@ -985,10 +985,16 @@ namespace Bridge
 				 if (a.contains("streetEye")) {
 					 Portal::Manager::SetStreetEye(a.at("streetEye").get<bool>());
 				 }
+				 if (a.contains("doorwayLight")) {
+					 Portal::Manager::SetDoorwayLight(a.at("doorwayLight").get<float>());
+				 }
+				 if (a.contains("interiors")) {
+					 Portal::Manager::SetMergeInteriors(a.at("interiors").get<bool>());
+				 }
 				 if (a.contains("ownLighting")) {
 					 Portal::Manager::SetMergedOwnLighting(a.at("ownLighting").get<bool>());
 				 }
-				 return json{ { "enabled", Portal::Manager::MergeEnabled() }, { "adaptation", Portal::Manager::DescribeAdaptation() } };
+				 return json{ { "enabled", Portal::Manager::MergeEnabled() }, { "interiors", Portal::Manager::MergeInteriors() }, { "adaptation", Portal::Manager::DescribeAdaptation() } };
 			 } } },
 			// Diagnostics: the world scene's graph's occlusion shapes. "list"; "clear": its list emptied
 			// (kept aside); "restore": put back. The list: first, last, count at the graph's +0x10, each

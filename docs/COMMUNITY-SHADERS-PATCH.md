@@ -57,6 +57,7 @@ Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = featur
 | `SeamlessPortal_SetMergedFog(const float[10])` | The merged space's fog (near, far, power, most it covers, near colour, far colour): the street merged into an interior gets the weather's, a room merged into the street its cell's own (most it covers 0 for an interior without fog); `nullptr` = fogged like the world. One for all merged rooms. Uploaded as `SeamlessRemoteFogParam/Near/Far` (appended to `SharedData`). Applied in `Lighting.hlsl` to shapes flagged `SeamlessRemote` (forward), and in `ISSAOComposite.hlsl` (the deferred fog) to pixels `SeamlessDoorClips(position, false)` takes from the interior. Without it the interior's fog turned the distant mountains black. |
 | `SeamlessPortal_SetFrontFog(const float[10])` | Rooms merged into the street, seen from it: the street's fog (as `SetMergedFog`) for the air between the camera and their doorways, uploaded as `SeamlessFrontFogParam/Near/Far`; `nullptr` = none. `SharedData::SeamlessRoomFog` fogs a room's pixel with the room's fog beyond the doorway and the street's in front of it, combined (`Lighting.hlsl` forward, `ISSAOComposite.hlsl`). Off in the portal pass. |
 | `SeamlessPortal_SetMergedRoomDaylight(int room, const float[3])` | A room merged into the street, seen from it: the street's light coming in through its doorway, as the opening's radiance (rgb), `SeamlessRoomDaylight[room]`; `nullptr` = none. `Lighting.hlsl` adds it to the ambient of the room's shapes times the doorway's form factor from the pixel (`SharedData::SeamlessDoorwayView`, unoccluded). 0 in the portal pass. |
+| `SeamlessPortal_SetHostDaylight(const float[3])` | Room 0 merged into the interior the player is in: its light coming out through its doorway into the player's space, as the opening's radiance (rgb), `SharedData::SeamlessHostDaylight`; `nullptr` = none. `Lighting.hlsl` adds it to the ambient of every shape not merged (not `SeamlessRemote`/`SeamlessOutdoor`) times room 0's doorway's form factor, as `SeamlessRoomDaylight` for the merged room. 0 in the portal pass. |
 | `SeamlessPortal_SettleSkylighting()` | The player walked out of a doorway: for the next 16 probe updates, Skylighting takes each probe at full confidence from its first sample (`SkylightingSettings.SeamlessSettle`, `UpdateProbesCS.hlsl`), stored as confident so the usual accumulation carries on. Its probes are kept by position, the player jumps from the interior's coordinates to the street's, and the usual fade-in (a loading screen hides it) lit the street under roofs and porches as if open to the sky for a second or two. |
 | `bool SeamlessPortal_OutdoorSunDirection(float hour, const float[3] vanillaSunPosition, float[3] towardSun)` | The street merged into an interior: the direction toward the sun outdoors at `hour`, as Sky Sync turns it (`SkySync::OutdoorSunDirection`, which repeats `Update`'s windows, the alternate sun path and `ShadowFader`'s elevation clamp without the dusk heading lock). Indoors the sky updates no sun, so SeamlessSkyrim computes vanilla's sun position itself and asks this for the light outdoors would have (`OutdoorSunDirection` in `PortalRender.cpp`). False when Sky Sync is off or doesn't place the sun (night); SeamlessSkyrim then uses vanilla's light direction, which by day is about 13 degrees flatter than Sky Sync's. |
 
@@ -152,8 +153,8 @@ Changes by file:
   `SeamlessUnmasked` for shapes the plugin's `SeamlessPortal_IsUnmaskedShape(BSGeometry*)` names
   (the player's), and the `discard` in `Lighting.hlsl` and `Utility.hlsl` is skipped for them: the
   player walking through a doorway is drawn whole instead of being cut at the door plane.
-- `Common/SharedData.hlsli`: after the fog fields, `SeamlessRoomDaylight` and
-  `SeamlessFrontFogParam/Near/Far`, with `SeamlessDoorPassed`, `SeamlessRoomFog` and
+- `Common/SharedData.hlsli`: after the fog fields, `SeamlessRoomDaylight`,
+  `SeamlessFrontFogParam/Near/Far` and `SeamlessHostDaylight`, with `SeamlessDoorPassed`, `SeamlessRoomFog` and
   `SeamlessDoorwayView` (see the exports above).
 - `Common/SharedData.hlsli`: the `Seamless*` fields at the end of the `SharedData` cbuffer, by
   merged room (doors: `SeamlessDoorPlane/Center/Right[4]`, plane `w` 1 while that room is merged;
@@ -180,7 +181,8 @@ Changes by file:
   with own lighting: `dirLightColor` from `SeamlessRemoteDirColor`, no world shadow
   (`GetWorldShadow`), `dirDetailedShadow = dirSoftShadow = 1` before the directional light is
   evaluated (not while `SeamlessParams.w` is set: the merged street keeps the sun's shadows), `directionalAmbientColor` from `SeamlessRemoteAmbientFor`, `skylightingDiffuse = 1`. Then the street's light through the doorway is added to it
-  (`SeamlessRoomDaylight`, see `SeamlessPortal_SetMergedRoomDaylight`).
+  (`SeamlessRoomDaylight`, see `SeamlessPortal_SetMergedRoomDaylight`); for a shape not merged,
+  room 0's light through its doorway (`SeamlessHostDaylight`, see `SeamlessPortal_SetHostDaylight`).
   For a merged shape (`ExtraFlags::SeamlessRemote`) the world's clustered lights are skipped in the
   LLF light loop: its strict lights (the room's own) light it alone.
   Also for a merged shape: the IBL diffuse replacement of the ambient is skipped (it lit the room

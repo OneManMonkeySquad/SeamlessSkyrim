@@ -82,7 +82,8 @@ directional ambient at ID 390984. For the length of the engine's call these are 
 Not done natively: Interior Sun (the street's sun shadows inside), skylighting settle, Sky Sync's
 sun direction (the computed one is used). These are Community Shaders features. Nor, for a room
 seen from across the street, the street's light through its doorway and the street's fog in front
-of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders.
+of it (`SetMergedDaylight`, `SetFrontFog`): both are per pixel in the fork's shaders. Nor, between
+two interiors, each room's light through the doorway (`SetMergedDaylight`, `SetHostDaylight`).
 
 ## ENB
 

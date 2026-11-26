@@ -214,6 +214,60 @@
       }
     ]
   },
+  "blue-palace-pelagius-wing-look-out": {
+    "note": "Pelagius Wing (dark) looking out through its door at the Blue Palace (bright), interior to interior: the palace merged into the wing (bMergeInteriors); then walk through into the palace, the wing merged behind. Run bridge doors {force: 1} first (or the door stays shut). Look at: the palace drawn as from inside it (it was drawn flat and evenly lit by the portal pass), the image space blended across the doorway, each room's light on the other's floor and the doorway's sides (fDoorwayLight).",
+    "steps": [
+      {
+        "load": "SeamlessTestWinterholdArcanaeum"
+      },
+      {
+        "console": "coc SolitudeBluePalace"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "console": "00034249.unlock"
+      },
+      {
+        "console": "0009B5C2.unlock"
+      },
+      {
+        "place": "blue-palace-pelagius-wing-door"
+      },
+      {
+        "console": "setini \"fAutoVanityModeDelay:Camera\" 100000"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "wing-looking-out"
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            6400,
+            2384
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "palace-walked-in"
+        }
+      }
+    ]
+  },
   "drunken-huntsman-doors-after-load": {
     "note": "Loaded inside The Drunken Huntsman, then out of its side door: every door around drawn with its leaves. The inn's own doors, hidden while the street is merged, are the first dragon doors loaded, and every one loaded after was copied from them hidden (Pristine). Checked outside only: inside, the merged street's land fails the check (KNOWN-ISSUES).",
     "steps": [
@@ -659,6 +713,32 @@
       {
         "check": {
           "name": "walked-in"
+        }
+      }
+    ]
+  },
+  "ragged-flagon-ratway-door-open": {
+    "note": "The Ragged Flagon (an interior built of rooms), facing its door to the Ratway (another roomed interior) with every door open: the Ratway merged into the Flagon. Run bridge doors {force: 1} after the coc. Was: the game hung drawing as soon as the door opened (the Ratway's portal-straddling shapes culled twice, a batch's pass list ran in a circle).",
+    "steps": [
+      {
+        "load": "SeamlessTestWinterholdArcanaeum"
+      },
+      {
+        "console": "coc RiftenRaggedFlagon"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "heading": 255
+      },
+      {
+        "wait": 5
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "door"
         }
       }
     ]

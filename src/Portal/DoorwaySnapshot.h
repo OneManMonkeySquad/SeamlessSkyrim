@@ -144,5 +144,16 @@ namespace Portal::Snapshot
 	// was taken with). Without one, the rooms' with pictures; none before any.
 	std::optional<float> RoomBrightness(RE::FormID a_door);
 
+	// Two interiors joined by an open doorway light each other through it, each with the light it
+	// gives off as drawn: whatever the load order's lights and shaders make of a room, which no
+	// estimate from its light records matched (inverse-square lights keep their radius elsewhere).
+	// Render, after the world is drawn: the mean colour (linear, before tone mapping) of what is
+	// seen through a_doorway and of the rest of the view, read back a few frames later and kept per
+	// space: a_through's and a_around's. a_doorway: the doorway's corners (Corners).
+	void MeasureSpaces(void* a_scene, const View& a_view, const Corners& a_doorway, RE::FormID a_through, RE::FormID a_around);
+	// A space's light as last measured, eased over a second or so (the eye follows a room's light as
+	// it turns); none before the first reading.
+	std::optional<std::array<float, 3>> SpaceLight(RE::FormID a_cell);
+
 	json Describe();
 }

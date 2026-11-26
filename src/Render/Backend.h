@@ -57,6 +57,9 @@ namespace Render::Backend
 	// A room merged into the street, seen from it: the street's light coming in through its
 	// doorway, as the radiance of the opening (rgb); nullptr: none. Community Shaders only.
 	void SetMergedDaylight(int a_room, const float* a_daylight);
+	// Room 0 merged into the interior the player is in: its light coming out through its doorway into
+	// the player's space, as the radiance of the opening (rgb); nullptr: none. Community Shaders only.
+	void SetHostDaylight(const float* a_daylight);
 	// A city gate seen through as a merged door in room 0 (the portal pass draws the other side):
 	// the world's own shapes are masked through it only up to a_depth beyond its plane, where its far
 	// gate stands in the world; 0 when room 0 isn't a gate. Only when CanMaskGate().

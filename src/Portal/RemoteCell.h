@@ -148,7 +148,9 @@ namespace Portal
 
 			[[nodiscard]] bool SamePlace(const Placement& a_other) const { return sourceDoor == a_other.sourceDoor && turn == a_other.turn && shift == a_other.shift; }
 		};
-		json Merge(const Placement& a_placement);
+		// a_parent: where the cells hang; null: beside the player's cell (the world scene's objects
+		// root). An interior draws only what hangs in its own 3D (Manager's InteriorBranch).
+		json Merge(const Placement& a_placement, RE::NiNode* a_parent = nullptr);
 		// Merged: the cells placed anew (a door correction changed while looking at them, or the
 		// space is now seen through another of its doors).
 		void Remap(const Placement& a_placement);
@@ -247,6 +249,8 @@ namespace Portal
 		// with the LOD root (Manager's MergeLOD).
 		std::vector<RE::TESObjectCELL*> movedCells;
 		Placement                       placed;  // while merged
+		// Merged into an interior: the nodes holding the cells' portals' shared geometry, hidden (see Merge).
+		std::vector<RE::NiPointer<RE::NiNode>> sharedHolders;
 		void                    MoveBounds(const RE::NiTransform& a_toSource);
 
 	public:

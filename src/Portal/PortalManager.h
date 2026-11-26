@@ -103,6 +103,24 @@ namespace Portal::Manager
 	[[nodiscard]] json DescribeAdaptation();
 	// Diagnostics: false draws rooms seen from the street as from inside, to compare.
 	void SetStreetEye(bool a_on);
+	// Diagnostics: how strongly two interiors joined by an open door light each other through it (1
+	// by default, 0 not at all).
+	void SetDoorwayLight(float a_scale);
+	// [Portals] bMergeInteriors, for A/B comparisons: off, a room behind a door between two interiors
+	// is drawn by the portal pass.
+	void SetMergeInteriors(bool a_on);
+	[[nodiscard]] bool MergeInteriors();
+	// A room merged into the interior the player is in: its doorway (corners, centre, and the direction
+	// into the room) and the two spaces, for measuring the light each gives off (Snapshot::MeasureSpaces).
+	struct InteriorDoorway
+	{
+		std::array<RE::NiPoint3, 4> corners;
+		RE::NiPoint3                center;
+		RE::NiPoint3                inward;
+		RE::FormID                  here = 0;
+		RE::FormID                  behind = 0;
+	};
+	[[nodiscard]] std::optional<InteriorDoorway> MergedInteriorDoorway();
 	// Render: the door whose room waits to be merged until the portal pass has drawn its doorway
 	// picture with the capture camera (Portal::Snapshot::CameraPictureWanted), or 0.
 	[[nodiscard]] RE::FormID PictureWanted();

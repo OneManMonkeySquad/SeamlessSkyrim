@@ -146,6 +146,10 @@ namespace
 	// Prototype (docs/APPROACHES.md, 9): the street merged into the interior the player is in, so the
 	// view out is drawn by the game's main pass instead of the portal pass. [Portals] bMergeOutdoors.
 	bool                                   mergeOutdoors = true;
+	// The room behind a door between two interiors merged into the one the player is in, rather than
+	// drawn by the portal pass, whose reduced render (no deferred lighting, ambient occlusion or
+	// fog) set it apart from the room around the doorway. [Portals] bMergeInteriors.
+	bool                                   mergeInteriors = true;
 	Portal::RemoteCell                     remote;  // the space shown behind the portal's door
 	// Interiors behind other doors near the player, attached out of sight, so that their doorway
 	// opens at once when it becomes the nearest instead of waiting for the space to load. Outdoors
@@ -216,6 +220,9 @@ namespace
 		std::optional<std::array<float, 19>> lighting;
 		RE::FormID                           door = 0;         // the door in the player's space it is merged behind
 		float                                daylight = 0.0f;  // as sent (Render::Backend::SetMergedDaylight)
+		// Between two interiors, as sent: the player's space's light into the room, and the room's out.
+		std::array<float, 3>                 lightIn{};
+		std::array<float, 3>                 lightOut{};
 		// Actor 3D moved out of its cell's actor node while merged, with the node to put it back in.
 		std::vector<std::pair<RE::NiPointer<RE::NiAVObject>, RE::NiPointer<RE::NiNode>>> actors;
 		float                                seconds = 0.0f;  // since the merge began
@@ -863,12 +870,21 @@ namespace
 	// Merging puts an interior into the exterior's scene. The other way round (the street, its land
 	// and the distant LOD put into an interior's scene) is the mergeOutdoors prototype: indoors the
 	// LOD stays loaded, only hidden, and the sky's dome stays in the scene (bridge outdoors_probe).
+	// Between two interiors the room behind the door hangs in the player's interior (mergeInteriors).
 	bool Mergeable(const RE::TESObjectCELL* a_here, const RE::TESObjectCELL* a_behindDoor)
 	{
 		if (!MergeSupported() || !a_here || !a_behindDoor) {
 			return false;
 		}
-		return (!a_here->IsInteriorCell() && a_behindDoor->IsInteriorCell()) || (mergeOutdoors && a_here->IsInteriorCell() && !a_behindDoor->IsInteriorCell());
+		const bool hereInside = a_here->IsInteriorCell(), behindInside = a_behindDoor->IsInteriorCell();
+		return (!hereInside && behindInside) || (mergeOutdoors && hereInside && !behindInside) || (mergeInteriors && hereInside && behindInside);
+	}
+
+	// A room merged into an interior: both spaces are interiors.
+	bool MergedIndoors()
+	{
+		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		return remote.merged && remote.Cell() && remote.Cell()->IsInteriorCell() && here && here->IsInteriorCell();
 	}
 
 	// The street merged into the interior the player is in (mergeOutdoors), as opposed to a room
@@ -1332,6 +1348,40 @@ namespace
 		skyModeChange.reset();
 	}
 
+	// Where a space merged into the interior the player is in hangs: its statics branch (the one
+	// holding the most shapes), so that it is culled into the main view with the interior's own
+	// contents. Left under the world scene, only the sky was drawn through the doorway.
+	// An interior built of rooms (Riften's jail) is culled through its portal graph: what lies
+	// outside its rooms is tested against the view through the rooms' portals, and the space beyond
+	// the door is outside all of them (only the sky, the water and the street's particles were
+	// drawn). There it hangs in the room of the door it is seen through, and is culled with that
+	// room's view. a_door: the interior's door the space is seen through; a_children: how many
+	// objects the branch held.
+	RE::NiNode* InteriorBranch(RE::TESObjectREFR* a_door, std::size_t& a_children)
+	{
+		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		auto* loaded = here->GetRuntimeData().loadedData;
+		auto* interior3D = loaded && loaded->cell3D ? loaded->cell3D->AsNode() : nullptr;
+		RE::NiNode* branch = nullptr;
+		a_children = 0;
+		for (auto* up = a_door && a_door->Get3D() ? a_door->Get3D()->parent : nullptr; up && !branch; up = up->parent) {
+			if (auto* room = netimmerse_cast<RE::BSMultiBoundRoom*>(up)) {
+				branch = room;
+				a_children = room->GetChildren().size();
+			}
+		}
+		if (interior3D && !branch) {
+			for (auto& child : interior3D->GetChildren()) {
+				auto* node = child ? child->AsNode() : nullptr;
+				if (node && node->GetChildren().size() > a_children) {
+					a_children = node->GetChildren().size();
+					branch = node;
+				}
+			}
+		}
+		return branch;
+	}
+
 	// a_door: the interior's door the street is seen through.
 	void MergeLOD(const RE::NiTransform& a_toSource, RE::TESObjectREFR* a_door)
 	{
@@ -1360,34 +1410,8 @@ namespace
 		RE::NiUpdateData update;
 		root->Update(update);
 		state.bounds.Move(root, moveBy);
-		// Hung into the interior's statics branch (the one holding the most shapes), the street and
-		// the LOD are culled into the main view with the interior's own contents. Left under the
-		// world scene, only the sky was drawn through the doorway.
-		// An interior built of rooms (Riften's jail) is culled through its portal graph: what lies
-		// outside its rooms is tested against the view through the rooms' portals, and the street
-		// beyond the door is outside all of them (only the sky, the water and the street's
-		// particles were drawn). There the street hangs in the room of the door it is seen through,
-		// and is culled with that room's view.
-		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
-		auto* loaded = here ? here->GetRuntimeData().loadedData : nullptr;
-		auto* interior3D = loaded && loaded->cell3D ? loaded->cell3D->AsNode() : nullptr;
-		RE::NiNode* branch = nullptr;
 		std::size_t most = 0;
-		for (auto* up = a_door && a_door->Get3D() ? a_door->Get3D()->parent : nullptr; up && !branch; up = up->parent) {
-			if (auto* room = netimmerse_cast<RE::BSMultiBoundRoom*>(up)) {
-				branch = room;
-				most = room->GetChildren().size();
-			}
-		}
-		if (interior3D && !branch) {
-			for (auto& child : interior3D->GetChildren()) {
-				auto* node = child ? child->AsNode() : nullptr;
-				if (node && node->GetChildren().size() > most) {
-					most = node->GetChildren().size();
-					branch = node;
-				}
-			}
-		}
+		RE::NiNode* branch = InteriorBranch(a_door, most);
 		// In a room, the tree LOD (464 instanced shapes looking out of Mistveil Keep at Riften) came
 		// into the sun's shadow map (Interior Sun) twice now and then; that batch's list then looped,
 		// its last pass leading back to its first, and the game hung drawing it. Not through the
@@ -1585,6 +1609,9 @@ namespace
 	bool                   toneOutdoorsLogged = false;
 	RE::ImageSpaceBaseData toneIndoors;            // the interior the player is in, as the engine had it
 	RE::TESObjectCELL*     toneIndoorsCell = nullptr;
+	// What the engine shows in an interior without an image space of its own, for a room seen through
+	// a doorway that has none.
+	std::optional<RE::ImageSpaceBaseData> toneInteriorDefault;
 
 	void ClearTone()
 	{
@@ -1635,7 +1662,7 @@ namespace
 	void UpdateTone(RE::TESObjectCELL* a_here, RE::TESObjectCELL* a_behindDoor, float a_interiorDepth, float a_inDoorway)
 	{
 		auto* manager = RE::ImageSpaceManager::GetSingleton();
-		if (!manager || !a_here || !a_behindDoor || a_here->IsInteriorCell() == a_behindDoor->IsInteriorCell() || (Portal::RemoteCell::debugSkip & 64)) {
+		if (!manager || !a_here || !a_behindDoor || (!a_here->IsInteriorCell() && !a_behindDoor->IsInteriorCell()) || (Portal::RemoteCell::debugSkip & 64)) {
 			ClearTone();
 			return;
 		}
@@ -1658,6 +1685,9 @@ namespace
 			if (inside) {
 				toneIndoors = *runtime.currentBaseData;
 				toneIndoorsCell = a_here;
+				if (!CellImageSpace(a_here)) {
+					toneInteriorDefault = toneIndoors;
+				}
 			} else {
 				toneOutdoors = *runtime.currentBaseData;
 				toneOutdoorsWeather = RE::Sky::GetSingleton()->currentWeather;
@@ -1672,7 +1702,41 @@ namespace
 				}
 			}
 		}
-		const auto* indoors = inside ? (toneIndoorsCell == a_here ? &toneIndoors : CellImageSpace(a_here)) : CellImageSpace(a_behindDoor);
+		// Just walked in, the engine's own is not known yet (our blend is on): the cell's.
+		const auto* hereData = toneIndoorsCell == a_here ? &toneIndoors : CellImageSpace(a_here);
+		if (!hereData && inside && toneInteriorDefault) {
+			hereData = &*toneInteriorDefault;
+		}
+		if (a_behindDoor->IsInteriorCell() && inside) {
+			// Between two interiors: each side's own, blended by where the camera is. The weight of the
+			// room behind the door at a point is the same seen from either room (symmetric about the
+			// door plane), so walking through changes nothing: before, the room walked into took its
+			// own image space at once, a step in brightness and tint at the door.
+			const auto* behindData = CellImageSpace(a_behindDoor);
+			if (!behindData && toneInteriorDefault) {
+				behindData = &*toneInteriorDefault;
+			}
+			constexpr float kHalfWidth = 135.0f;
+			float           t = std::clamp((kHalfWidth - a_interiorDepth) / (2.0f * kHalfWidth), 0.0f, 1.0f);
+			t = t * t * (3.0f - 2.0f * t) * a_inDoorway;
+			if (!hereData || !behindData || t <= 0.0f) {
+				ClearTone();
+				return;
+			}
+			toneBlend = *hereData;
+			const float* from = reinterpret_cast<const float*>(hereData);
+			const float* to = reinterpret_cast<const float*>(behindData);
+			float*       blend = reinterpret_cast<float*>(&toneBlend);
+			for (std::size_t i = 0; i < offsetof(RE::ImageSpaceBaseData, depthOfField) / sizeof(float); ++i) {
+				const bool adapt = i == offsetof(RE::ImageSpaceBaseData::HDR, eyeAdaptSpeed) / sizeof(float) || i == offsetof(RE::ImageSpaceBaseData::HDR, eyeAdaptStrength) / sizeof(float);
+				if (!adapt) {
+					blend[i] = from[i] + (to[i] - from[i]) * t;
+				}
+			}
+			runtime.overrideBaseData = &toneBlend;
+			return;
+		}
+		const auto* indoors = inside ? hereData : CellImageSpace(a_behindDoor);
 		const auto* outdoorsData = OutdoorImageSpace();
 		constexpr float kFrom = -150.0f, kTo = 120.0f;
 		float           t = std::clamp((a_interiorDepth - kFrom) / (kTo - kFrom), 0.0f, 1.0f);
@@ -2376,6 +2440,12 @@ namespace Portal::Manager
 		Portal::Snapshot::SetPictureHeight(static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iDoorwayPictureHeight", 128, ini.c_str())));
 		walkIntoRooms = ::GetPrivateProfileIntW(L"Portals", L"bWalkIntoRooms", 0, ini.c_str()) != 0;
 		mergeOutdoors = ::GetPrivateProfileIntW(L"Portals", L"bMergeOutdoors", 1, ini.c_str()) != 0;
+		mergeInteriors = ::GetPrivateProfileIntW(L"Portals", L"bMergeInteriors", 1, ini.c_str()) != 0;
+		{
+			wchar_t buffer[32]{};
+			::GetPrivateProfileStringW(L"Portals", L"fDoorwayLight", L"4", buffer, static_cast<DWORD>(std::size(buffer)), ini.c_str());
+			SetDoorwayLight(std::wcstof(buffer, nullptr));
+		}
 		Portal::RemoteCell::slowLoadMs = static_cast<int>(::GetPrivateProfileIntW(L"Portals", L"iSlowLoadMs", 0, ini.c_str()));
 		// Diagnostics: RemoteCell::debugSkip from the start (the bridge's portal_debug sets it later).
 		Portal::RemoteCell::debugSkip = static_cast<std::uint32_t>(::GetPrivateProfileIntW(L"Portals", L"iDebugSkip", 0, ini.c_str()));
@@ -2919,7 +2989,9 @@ namespace Portal::Manager
 					const auto placement = PlacementOf(*portal, Doors::Compute(*portal));
 					const auto toSource = placement.toSource;
 					const Perf::Scope scope("merge");
-					const auto        result = remote.Merge(placement);
+					std::size_t       children = 0;
+					auto*             parent = here->IsInteriorCell() && portal->cell->IsInteriorCell() ? InteriorBranch(Lookup(portal->sourceDoor), children) : nullptr;
+					const auto        result = remote.Merge(placement, parent);
 					if (walkIntoRooms && !MergedOutdoors()) {
 						MergeRoomCollision(*portal, here->GetbhkWorld());
 					}
@@ -3229,6 +3301,10 @@ namespace Portal::Manager
 	namespace
 	{
 		bool streetEye = true;  // diagnostics: false = rooms seen from the street drawn as from inside
+		// How strongly two interiors light each other through their doorway ([Portals] fDoorwayLight; 0:
+		// not at all). 1 is the light as measured, which the tone map leaves all but black where a dim
+		// room meets a bright one: the doorway's sides stayed dark against the bright hall in it.
+		float doorwayLight = 4.0f;
 
 		// Seen from the street, how far a room is drawn as an eye used to the street sees it rather
 		// than as from inside: 0 within a few steps of its doorway, where walking in has to find the
@@ -3278,7 +3354,8 @@ namespace Portal::Manager
 			if (a_room.door) {
 				const auto brightness = Portal::Snapshot::RoomBrightness(a_room.door);
 				rooms.push_back({ { "door", std::format("{:08X}", a_room.door) }, { "brightness", brightness ? json(*brightness) : json() },
-					{ "lightScale", 1.0f + (StreetEyeScale(a_room.door) - 1.0f) * a_room.daylight }, { "daylight", a_room.daylight } });
+					{ "lightScale", 1.0f + (StreetEyeScale(a_room.door) - 1.0f) * a_room.daylight }, { "daylight", a_room.daylight }, { "lightIn", a_room.lightIn },
+					{ "lightOut", a_room.lightOut } });
 			}
 		};
 		if (remote.merged) {
@@ -3294,6 +3371,39 @@ namespace Portal::Manager
 	void SetStreetEye(bool a_on)
 	{
 		streetEye = a_on;
+	}
+
+	void SetDoorwayLight(float a_scale)
+	{
+		doorwayLight = a_scale;
+	}
+
+	void SetMergeInteriors(bool a_on)
+	{
+		mergeInteriors = a_on;
+		if (!a_on && MergedIndoors()) {
+			ReleaseAll("merging interiors turned off");
+		}
+	}
+
+	bool MergeInteriors()
+	{
+		return mergeInteriors;
+	}
+
+	std::optional<InteriorDoorway> MergedInteriorDoorway()
+	{
+		const auto portal = ReadyPortal();
+		const auto mapping = portal && MergedIndoors() ? Doors::TryCompute(*portal) : std::nullopt;
+		if (!mapping) {
+			return std::nullopt;
+		}
+		const RE::NiPoint3 right{ mapping->inward.y, -mapping->inward.x, 0.0f };
+		const RE::NiPoint3 up{ 0.0f, 0.0f, mapping->halfHeight };
+		const auto         across = right * mapping->halfWidth;
+		const auto&        center = mapping->sourceCenter;
+		return InteriorDoorway{ { center - across - up, center + across - up, center - across + up, center + across + up }, center, mapping->inward,
+			RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetFormID(), portal->cell->GetFormID() };
 	}
 
 	RE::FormID PictureWanted()
@@ -3956,9 +4066,11 @@ namespace Portal::Manager
 			{
 				// Seen from across the street, the room is drawn as an eye used to the street sees
 				// it, with the street's light falling in through its doorway; from a few steps away
-				// as from inside (FarWeight). The street merged into a room is drawn as it is.
+				// as from inside (FarWeight). The street merged into a room is drawn as it is, and so is
+				// a room merged into another: there is no street's light or eye to see it with.
 				a_room.door = a_portal.sourceDoor;
-				const float away = street || cameraInside ? 0.0f : FarWeight(mapping.sourceCenter, mapping.inward);
+				const bool  indoors = primary && MergedIndoors();
+				const float away = street || indoors || cameraInside ? 0.0f : FarWeight(mapping.sourceCenter, mapping.inward);
 				a_room.daylight = away;
 				{
 					// What comes in is the street as seen through the doorway: as bright as the eye
@@ -3971,7 +4083,27 @@ namespace Portal::Manager
 						const float scale = *view * away / luminance;
 						daylight = { tint->red * scale, tint->green * scale, tint->blue * scale };
 					}
+					// Two rooms joined by an open door light each other through it: each takes the other's
+					// light in through the doorway, the merged room this one's and this one the merged
+					// room's (Backend::SetHostDaylight). Each room's light is kept by room, not by side
+					// (Snapshot::SpaceLight), so the same light falls the same way whichever room the
+					// player is in, and walking through changes nothing.
+					std::array<float, 3> host{};
+					if (indoors && doorwayLight > 0.0f) {
+						const float open = SwingEase(swung, a_room.swing, a_room.opening) * doorwayLight;
+						const auto  hereLight = Portal::Snapshot::SpaceLight(RE::PlayerCharacter::GetSingleton()->GetParentCell()->GetFormID());
+						const auto  roomLight = Portal::Snapshot::SpaceLight(a_portal.cell->GetFormID());
+						for (int i = 0; i < 3; ++i) {
+							daylight[i] = hereLight ? (*hereLight)[i] * open : 0.0f;
+							host[i] = roomLight ? (*roomLight)[i] * open : 0.0f;
+						}
+					}
+					a_room.lightIn = daylight;
+					a_room.lightOut = host;
 					::Render::Backend::SetMergedDaylight(a_slot, daylight.data());
+					if (primary) {
+						::Render::Backend::SetHostDaylight(indoors ? host.data() : nullptr);
+					}
 				}
 				auto lighting = a_room.lighting;
 				if (lighting) {
@@ -4002,8 +4134,10 @@ namespace Portal::Manager
 					// for all merged rooms (the shaders take one): the shown room's.
 					const auto fog = street ? Render::MergedFog() : Render::CellFog(a_portal.cell);
 					SendMergedFog(fog ? fog->data() : nullptr);
-					// Up to the doorway it is the street's air.
-					const auto front = street || !streetEye ? std::nullopt : Render::MergedFog();
+					// Up to the doorway it is the street's air, or the room's the player is in.
+					const auto front = indoors ? Render::CellFog(RE::PlayerCharacter::GetSingleton()->GetParentCell()) :
+					                   street || !streetEye ? std::nullopt :
+					                                          Render::MergedFog();
 					::Render::Backend::SetFrontFog(front ? front->data() : nullptr);
 				}
 			}
@@ -4033,8 +4167,13 @@ namespace Portal::Manager
 			SendMergedDoor(a_slot, nullptr);
 			SendMergedLighting(a_slot, nullptr);
 			::Render::Backend::SetMergedDaylight(a_slot, nullptr);
+			if (a_slot == 0) {
+				::Render::Backend::SetHostDaylight(nullptr);
+			}
 			a_room.door = 0;
 			a_room.daylight = 0.0f;
+			a_room.lightIn = {};
+			a_room.lightOut = {};
 			a_room.lightingTimer = 0.0f;
 			a_room.seconds = 0.0f;
 			MarkMergedShapes(a_room, nullptr, a_slot == 0, false, false);

@@ -622,6 +622,12 @@ namespace
 							Portal::Manager::Update(0.0f);  // in the room now: its house's passage opened
 						}
 					}
+				} else if (cell && !leftExterior && Portal::Manager::MergeInteriors()) {
+					// From one interior into another, the room just left is merged back in now (a few
+					// ms: it is still loaded): looking back, the doorway is open on it in the first
+					// frame, and the image space is blended across the doorway from that frame on
+					// (without the room there, the first frame took this room's alone).
+					Portal::Manager::Update(0.0f);
 				}
 				// The player's 3D at the place of arrival before the camera is placed from its head: left
 				// where the teleport put it until the frame's scene update, the first frame in the new

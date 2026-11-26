@@ -2379,7 +2379,15 @@ namespace
 		Portal::Snapshot::Flush();
 		const auto view = SnapshotView();
 		// Before any stand-in picture is drawn into it: the eye adapts to the real view.
-		Portal::Snapshot::MeasureScene(RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN].SRV, view.width, view.height);
+		auto* scene = RE::BSGraphics::Renderer::GetSingleton()->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN].SRV;
+		Portal::Snapshot::MeasureScene(scene, view.width, view.height);
+		if (const auto doorway = Portal::Manager::MergedInteriorDoorway()) {
+			// With the camera through the doorway (walking in), the room is all round it and the
+			// player's space is what the doorway shows.
+			const auto offset = view.eye - doorway->center;
+			const bool beyond = offset.x * doorway->inward.x + offset.y * doorway->inward.y > 0.0f;
+			Portal::Snapshot::MeasureSpaces(scene, view, doorway->corners, beyond ? doorway->here : doorway->behind, beyond ? doorway->behind : doorway->here);
+		}
 		const auto chance = Portal::Manager::SnapshotChance();
 		const auto standIns = Portal::Manager::StandIns();
 		if (!chance && standIns.empty() && !captureDrawn) {
