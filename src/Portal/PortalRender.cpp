@@ -17,6 +17,7 @@
 #include "Portal/PortalManager.h"
 #include "Portal/RemoteCell.h"
 #include "Render/Backend.h"
+#include "Render/SceneDepth.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1799,6 +1800,15 @@ namespace
 		SetColorTarget(0, kColorTarget, RE::BSGraphics::SRTM_CLEAR, true);
 		SetDepthTarget(kDepthTarget, RE::BSGraphics::SRTM_CLEAR, 0);
 		{
+			// The portal camera into the renderer's camera state (as SubmitAccumulator does, ID 77503)
+			// before the clear: Bottled Shaders' Reverse Z-Buffer clears the depth for the camera last
+			// put there. After the portal's shadow maps that was a cascade's, cleared as standard depth
+			// while the portal camera then drew reversed: nothing passed, and a city gate's picture was
+			// the bare sky.
+			static REL::Relocation<void (*)(RE::BSGraphics::State*, const RE::NiCamera*, std::uint32_t)> setCameraData{ REL::RelocationID(75694, 77503) };
+			setCameraData(RE::BSGraphics::State::GetSingleton(), portalCamera.get(), (!capturing && !a_fullTarget) ? LiveRenderFlags() : kRenderFlags);
+		}
+		{
 			static REL::Relocation<void (*)(void*)>                resetState{ REL::RelocationID(75570, 77371) };  // Renderer::ResetState
 			static REL::Relocation<void (*)(void*, std::uint32_t)> applyState{ REL::RelocationID(75462, 77247) };
 			resetState(RendererObject());
@@ -2118,7 +2128,7 @@ namespace
 				row_major float4x4 PreviousViewProj;     // unjittered, relative to the previous eye
 				float4             EyeDelta;             // this frame's eye - the previous frame's; w: portal near
 				float4             ViewSize;             // the scene's viewport in pixels; z: see-through; w: portal far
-				float4             Debug;                // x: tint the picture red (which flashes are in it)
+				float4             Debug;                // x: tint the picture red (which flashes are in it); y: depth runs 1 near to 0 far
 				float4             Fog;                  // the player's space's, as the engine's FogParam
 				float4             FogNear;
 				float4             FogFar;
@@ -2151,12 +2161,17 @@ namespace
 				// The distance along the view axis from the portal camera's own depth (its near plane
 				// is at the door, not where the main view's is), then the point on this pixel's ray.
 				float depth = PortalDepth.Load(texel);
+				// The portal pass's target is made like the scene's depth, and with Reverse Z-Buffer
+				// both run from 1 near to 0 far. Read in that convention, not turned into the standard
+				// one: 1 - depth rounds to 1 (empty) for everything further than a few hundred units.
+				const bool reversed = Debug.y > 0.5;
 				// A city gate: where the portal pass drew nothing (sky, or beyond the few cells it
 				// has), the player's own worldspace shows through the doorway. Both worldspaces
 				// share their coordinates, distant land and sky, which the portal pass has not.
-				if (ViewSize.z > 0.5 && depth >= 1.0)
+				if (ViewSize.z > 0.5 && (reversed ? depth <= 0.0 : depth >= 1.0))
 					discard;
-				float viewDistance = EyeDelta.w * ViewSize.w / max(ViewSize.w - depth * (ViewSize.w - EyeDelta.w), 1e-3);
+				float viewDistance = reversed ? EyeDelta.w * ViewSize.w / max(EyeDelta.w + depth * (ViewSize.w - EyeDelta.w), 1e-3) :
+				                                EyeDelta.w * ViewSize.w / max(ViewSize.w - depth * (ViewSize.w - EyeDelta.w), 1e-3);
 				float4 world = mul(float4(ndc, 0.5, 1), InverseViewProj);
 				world /= world.w;
 				world.xyz *= viewDistance / mul(world, ViewProj).w;
@@ -2348,6 +2363,7 @@ namespace
 			constants[51] = portalNear;
 			constants[55] = portalFar;
 			constants[56] = lightDebug.tintDoorway ? 1.0f : 0.0f;
+			constants[57] = ::Render::SceneDepthReversed(m) ? 1.0f : 0.0f;
 			auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 			constants[54] = portalDepthSRV && here && !here->IsInteriorCell() && a_portal.cell && !a_portal.cell->IsInteriorCell() ? 1.0f : 0.0f;
 			constants[52] = sceneDesc.Width * scaleX;
@@ -2368,6 +2384,8 @@ namespace
 		context->OMSetRenderTargets(withMotion ? 2 : 1, quadTargets, sceneDSV);
 		context->PSSetConstantBuffers(0, 1, &quad.motion);
 		context->PSSetShaderResources(1, 1, &portalDepthSRV);
+		// LESS_EQUAL also with Reverse Z-Buffer: Bottled Shaders turns the states bound with its
+		// reversed depth targets round itself (ReverseZ's OMSetDepthStencilState hook).
 		context->OMSetDepthStencilState(quad.depthState, 0);
 		context->OMSetBlendState(quad.blendState, nullptr, 0xFFFFFFFF);
 		context->RSSetState(quad.rasterState);
@@ -2417,7 +2435,7 @@ namespace
 				object->Release();
 			}
 		}
-		return { { "composited", true }, { "renderScale", { scaleX, scaleY } }, { "sceneSize", { sceneDesc.Width, sceneDesc.Height } }, { "sceneFormat", static_cast<int>(sceneDesc.Format) },
+		return { { "composited", true }, { "depthReversed", ::Render::SceneDepthReversed(m) }, { "renderScale", { scaleX, scaleY } }, { "sceneSize", { sceneDesc.Width, sceneDesc.Height } }, { "sceneFormat", static_cast<int>(sceneDesc.Format) },
 			{ "portalFormat", static_cast<int>(portalDesc.Format) } };
 	}
 

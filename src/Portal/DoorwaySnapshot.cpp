@@ -1,6 +1,7 @@
 #include "Portal/DoorwaySnapshot.h"
 
 #include "Paths.h"
+#include "Render/SceneDepth.h"
 
 #include <DirectXPackedVector.h>
 #include <d3d11.h>
@@ -469,7 +470,7 @@ namespace
 				// main scene's viewport is the top-left part of its texture at a render scale below
 				// 1; the portal pass's image always fills its target).
 				float4 Sizes;
-				float4 Out;      // xy: the picture's size
+				float4 Out;      // xy: the picture's size; z: depth runs 1 near to 0 far (Render::SceneDepthReversed)
 				row_major float4x4 InverseViewProj;
 				float4 WColumn;  // a camera-relative point's distance along the view axis: dot(p, xyz) + w
 				float4 Origin;   // the doorway's bottom corner, camera-relative
@@ -493,17 +494,20 @@ namespace
 				float3 world;
 				if (Portal.z > 0.5) {
 					// As the doorway quad reads it (PortalRender): the distance along the view axis, then
-					// the point on this pixel's ray.
-					if (depth >= 1)
+					// the point on this pixel's ray. The portal pass's target is made like the scene's
+					// depth, reversed with it (read as it is: 1 - depth rounds to 1 far away).
+					const bool reversed = Out.z > 0.5;
+					if (reversed ? depth <= 0 : depth >= 1)
 						return kFar;
-					float  viewDistance = Portal.x * Portal.y / max(Portal.y - depth * (Portal.y - Portal.x), 1e-3);
+					float  viewDistance = reversed ? Portal.x * Portal.y / max(Portal.x + depth * (Portal.y - Portal.x), 1e-3) :
+					                                 Portal.x * Portal.y / max(Portal.y - depth * (Portal.y - Portal.x), 1e-3);
 					if (Portal.w > 0)
 						return clamp(viewDistance - Portal.w, 1, kFar);
 					float4 p = mul(float4(ndc, 0.5, 1), InverseViewProj);
 					p.xyz /= p.w;
 					world = p.xyz * viewDistance / (dot(p.xyz, WColumn.xyz) + WColumn.w);
 				} else {
-					if (depth >= 0.999999)
+					if (Out.z > 0.5 ? depth <= 0.000001 : depth >= 0.999999)
 						return kFar;
 					float4 p = mul(float4(ndc, depth, 1), InverseViewProj);
 					world = p.xyz / p.w;
@@ -795,6 +799,7 @@ namespace
 			depthWrite.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
 			D3D11_DEPTH_STENCIL_DESC depthTest = depthWrite;
 			depthTest.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+
 			D3D11_DEPTH_STENCIL_DESC noDepth{};
 			D3D11_BLEND_DESC         blend{};
 			blend.IndependentBlendEnable = TRUE;
@@ -1527,6 +1532,7 @@ namespace Portal::Snapshot
 			constants[15] = 1.0f / (fillsTarget ? a_view.height : sceneDesc.Height);
 			constants[16] = static_cast<float>(width);
 			constants[17] = static_cast<float>(height);
+			constants[18] = ::Render::SceneDepthReversed(a_view.viewProj) ? 1.0f : 0.0f;
 			std::memcpy(constants + 20, a_view.viewProjInverse, sizeof(float) * 16);
 			for (int row = 0; row < 4; ++row) {
 				constants[36 + row] = a_view.viewProj[row * 4 + 3];

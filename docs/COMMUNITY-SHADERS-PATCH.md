@@ -128,6 +128,19 @@ its own features, so everything in "On Community Shaders 2.0" holds; on top of i
   the replacement (`seamlessOwnAmbient`: a room merged into the street, the street without IBL);
   `DeferredCompositeCS.hlsl` and `composite.cs.hlsl` (no GI light on it) tell its pixels apart by
   `SeamlessDoorClips`.
+- Reverse Z-Buffer (on by default): the scene's depth runs from 1 near to 0 far. Its hooks reverse
+  a camera's projection when it is put into the renderer's state (`SetCameraData`, ID 77503) with
+  one of its depth targets bound (the portal pass's own target is made like `kMAIN_COPY`, so it
+  counts), turn round the depth states and clears bound with such a target, the clear's value by
+  the camera put there last. SeamlessSkyrim's side:
+  - The portal pass puts its camera into the state before clearing its depth: after the portal's
+    shadow maps the last camera was a cascade's, the depth was cleared as standard, nothing drew,
+    and a city gate's picture was the bare sky (the world's own low-detail copy of the city showed
+    through the masked gatehouse).
+  - The doorway picture and a stand-in's capture read the portal's depth as reversed
+    (`Render::SceneDepthReversed`, from the main view's matrix): empty is 0, and turned into
+    standard depth (1 - depth) every distant pixel rounded to empty.
+  - Their depth states stay standard; Reverse Z-Buffer turns them round itself.
 - Histogram Auto Exposure lowers the exposure range's floor by Interior Brightening (2 EV) indoors.
   Switched in one frame, the street's exposure jumped on walking out; it is eased at the adaptation
   speed instead (`interiorBrighteningEV`), snapped after a pause in drawing (a loading screen).

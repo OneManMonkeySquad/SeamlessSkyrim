@@ -127,9 +127,12 @@ fork's `package/Shaders`, copy it over the game's file:
 cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special Edition/Data/Shaders/"
 ```
 
-- Community Shaders only notices a change to a shader's own file. After changing an include
-  (`Common/*.hlsli`), delete that shader's folder under `<game>\Data\ShaderCache\` (for example
-  `Lighting`, `Utility`), or the old code keeps running.
+- Community Shaders 1.9.1 and 2.0.0-rc.2 only notice a change to a shader's own file. After
+  changing an include (`Common/*.hlsli`), delete that shader's folder under
+  `<game>\Data\ShaderCache\` (for example `Lighting`, `Utility`), or the old code keeps running.
+  Bottled Shaders 2.0.3 (upstream `dev`'s `ShaderDDC`, `ShaderCache\DDC\`) keys each compiled
+  shader by a hash of its source and every include: it recompiles exactly the shaders an edited
+  include reaches, so delete nothing there.
 - The lighting pixel shaders then recompile in the background for minutes (about 10 s each,
   queued). Until they're done, the patch doesn't show.
 - A shader that fails to compile is reported in `CommunityShaders.log` ("Failed to compile ...").
