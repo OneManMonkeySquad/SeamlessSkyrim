@@ -69,10 +69,15 @@ namespace
 
 	// What the engine does each frame for the cells the player is in, over the cell's animated
 	// references (LOADED_CELL_DATA +0x40): their animation graphs (ID 18900), and a selective update
-	// of their 3D by the frame's time, which runs their controllers and so their particle systems.
-	// Without it the fire in Understone Keep's braziers stood still behind the doorway (SE) or never
-	// started (AE). The engine's per-reference update (ID 18894) isn't called for that: it skipped
-	// these references (it also checks the 3D's room against the player's visible rooms).
+	// of their 3D by the frame's time, which runs their controllers. Without it the fire in Understone
+	// Keep's braziers stood still behind the doorway (SE) or never started (AE). The engine's
+	// per-reference update (ID 18894) isn't called for that: it skipped these references (it also
+	// checks the 3D's room against the player's visible rooms).
+	//
+	// The particle systems aren't moved by the update itself: it returns flag 0x100 for a 3D that has
+	// some, and ID 18894 then queues it (ID 19366) for the jobs that simulate them (ID 19387). Without
+	// the queue the room's particles stood where they were when it was merged, still and out of
+	// the doorway: no flames in the Bannered Mare's hearth seen from the street.
 	void AnimateReferences(RE::TESObjectCELL* a_cell)
 	{
 		if (AnimatedByEngine(a_cell)) {
@@ -80,6 +85,7 @@ namespace
 		}
 		static REL::Relocation<void (*)(RE::TESObjectCELL*)> animate{ REL::RelocationID(18469, 18900) };
 		static REL::Relocation<const float*>                 frameTime{ REL::RelocationID(514188, 400333) };
+		static REL::Relocation<void (*)(RE::NiAVObject*)>    queueParticles{ REL::RelocationID(18952, 19366) };
 		animate(a_cell);
 		for (const auto& handle : a_cell->GetRuntimeData().loadedData->unk040) {
 			const auto ref = handle.get();
@@ -88,6 +94,9 @@ namespace
 				RE::NiUpdateData data{ *frameTime, RE::NiUpdateData::Flag::kNone };
 				reinterpret_cast<std::uint32_t&>(data.flags) = 2;
 				object->UpdateSelectedDownwardPass(data, 0);
+				if (reinterpret_cast<std::uint32_t&>(data.flags) & 0x100) {
+					queueParticles(object);
+				}
 			}
 		}
 	}

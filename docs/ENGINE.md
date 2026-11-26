@@ -464,9 +464,13 @@ the end. These were expensive to find. Add new ones in the same change that need
   "animated" bit, removed by ID 19420), filled in any attached cell. Per frame the engine runs
   their animation graphs (ID 18900, `UpdateAnimation`) and, through ID 18891 / 18875, ID 18894:
   the fade check, a visible-room check, then `UpdateSelectedDownwardPass` of the 3D with the
-  frame's time (ID 400333) and flags 2, which runs the controllers and so the particle systems.
-  ID 18894 skips the references of a room merged into the street; the selective update on its
-  own runs them (`RemoteCell.cpp`, `AnimateReferences`).
+  frame's time (ID 400333) and flags 2, which runs the controllers. The particle systems are not
+  simulated there: the update returns flag 0x100 for a 3D with some, and ID 18894 then queues it
+  (ID 19366, SE 18952; at most 200 a frame) for jobs that simulate them (ID 19387 per object).
+  ID 18894 skips the references of a room merged into the street; the selective update plus that
+  queue run them (`RemoteCell.cpp`, `AnimateReferences`). Without the queue a merged room's fire
+  had no flames: the particles stayed where they were at the merge, and their bounds there (in the
+  interior's coordinates) left them out of the native backend's doorway cut.
 - **`ShadowSceneNode::particleNodes`** (+0x1C8) is only a queue: the light update (ID 106335)
   pairs each new particle node with lights and empties it every frame. It doesn't animate.
 - **`BGSTerrainManager` layout:**
