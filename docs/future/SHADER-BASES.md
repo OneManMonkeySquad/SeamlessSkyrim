@@ -1,6 +1,7 @@
 # Plan: the fork on Community Shaders 1.9.1, 2.0 and Bottled Shaders 2.0.3
 
-Written 2026-11-26, not started. Goal: one release whose installer patches any of Community
+Written 2026-11-26. Step 1 ported and built, not yet run in the game (COMMUNITY-SHADERS-PATCH.md, "On
+Community Shaders 2.0"). Goal: one release whose installer patches any of Community
 Shaders 1.9.1, Community Shaders 2.0 and Bottled Shaders 2.0.3. Today: 1.9.1 only.
 
 ## The bases

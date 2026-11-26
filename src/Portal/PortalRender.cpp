@@ -886,7 +886,7 @@ namespace
 			return;
 		}
 		OutdoorSnapshot snapshot;
-		snapshot.sun = light->GetLightRuntimeData().diffuse;
+		snapshot.sun = ::Render::Backend::GameLightColor(light);
 		snapshot.sunFade = light->GetLightRuntimeData().fade;
 		const auto& r = light->world.rotate;
 		snapshot.sunDirection = { r.entry[0][0], r.entry[1][0], r.entry[2][0] };  // along its local +X

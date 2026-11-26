@@ -103,6 +103,12 @@ E:\projects\CommunityShaders-Seamless-2.0`. A fresh tree is configured with `cma
 from the worktree with `VCPKG_ROOT` set to Visual Studio's vcpkg (`C:\Program Files\Microsoft
 Visual Studio\18\Community\VC\vcpkg`), about 4 minutes.
 
+In Vortex the 2.0 setup is the mod `Community Shaders 2.0 rc2 SeamlessSkyrim`: the whole of
+Community Shaders 2.0 with the patch, from `cmake --install build/ALL --config Release --prefix
+<folder>`, in place of the 1.9.1 mod. The SeamlessSkyrim mod still carries the 1.9.1 fork's DLL
+and shaders, so the 2.0 mod has to load after it. With 2.0 deployed, a `-CommunityShaders` build
+without `-CsFork` writes the 1.9.1 fork into the game's hard link, that is into the 2.0 mod.
+
 CMake's build of the fork doesn't copy anything into the game, so do it by hand as above, or run
 `tools/build.ps1 -CommunityShaders` or `tools/deploy-vortex-mod.ps1`. `cp` writes into the
 existing file, which keeps the game's DLL hard link intact, and therefore also changes the Vortex

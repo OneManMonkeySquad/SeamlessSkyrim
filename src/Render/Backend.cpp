@@ -34,6 +34,7 @@ namespace
 		void (*beginPass)(RE::NiDirectionalLight*, bool) = nullptr;
 		void (*endPass)() = nullptr;
 		bool (*outdoorSunDirection)(float, const float*, float*) = nullptr;
+		void (*gameLightColor)(const RE::NiLight*, float*) = nullptr;
 	} fork;
 
 	template <class T>
@@ -63,6 +64,7 @@ namespace
 		Find(a_module, "SeamlessPortal_BeginPass", fork.beginPass);
 		Find(a_module, "SeamlessPortal_EndPass", fork.endPass);
 		Find(a_module, "SeamlessPortal_OutdoorSunDirection", fork.outdoorSunDirection);
+		Find(a_module, "SeamlessPortal_GameLightColor", fork.gameLightColor);
 	}
 
 	std::string ReadChoice()
@@ -326,6 +328,16 @@ namespace Render::Backend
 	bool OutdoorSunDirection(float a_hour, const float* a_position, float* a_towardSun)
 	{
 		return kind == Kind::kCommunityShaders && fork.outdoorSunDirection && fork.outdoorSunDirection(a_hour, a_position, a_towardSun);
+	}
+
+	RE::NiColor GameLightColor(const RE::NiLight* a_light)
+	{
+		if (kind == Kind::kCommunityShaders && fork.gameLightColor) {
+			RE::NiColor color;
+			fork.gameLightColor(a_light, &color.red);
+			return color;
+		}
+		return a_light->GetLightRuntimeData().diffuse;
 	}
 
 	bool CutsPortalShader(RE::BSShader::Type a_type)

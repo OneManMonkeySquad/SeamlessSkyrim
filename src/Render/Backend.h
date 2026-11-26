@@ -94,6 +94,10 @@ namespace Render::Backend
 	// Community Shaders' Sky Sync: the sun's direction for an hour and its place on the sky.
 	bool OutdoorSunDirection(float a_hour, const float* a_position, float* a_towardSun);
 
+	// A light's colour as the game's: Community Shaders 2.0 gives the world's sun one already in
+	// Linear Lighting's working space, which a copy onto another light must not carry.
+	RE::NiColor GameLightColor(const RE::NiLight* a_light);
+
 	// Whether shapes drawn with these shaders are cut at the far door in the portal pass. Community
 	// Shaders cuts only in its Lighting and Utility shaders; the native mask in every shader it hooks.
 	[[nodiscard]] bool CutsPortalShader(RE::BSShader::Type a_type);

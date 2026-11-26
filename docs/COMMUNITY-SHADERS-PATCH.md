@@ -33,6 +33,58 @@ features` in the fork lists them):
 After changing an include (`Common/*.hlsli`) the shader cache must be cleared, and the shaders
 then compile for minutes: BUILD.md, "Community Shaders fork".
 
+## On Community Shaders 2.0
+
+Branch `seamless-portal-2.0`, in the worktree `E:\projects\CommunityShaders-Seamless-2.0` (same
+repository), based on upstream's tag `v2.0.0-rc.2` (`363ac024`): the commits of
+`seamless-portal` redone on it, one each (`git diff v2.0.0-rc.2..seamless-portal-2.0`). The 1.9.1
+base is one squashed commit with no history shared with upstream, so a commit is carried across
+with `git cherry-pick`, not a rebase. Bottled Shaders 2.0.x merges upstream at this same commit:
+`docs/future/SHADER-BASES.md`.
+
+Where 2.0 differs from 1.9.1, and what the port does about it:
+
+- `ExtraShaderDescriptor` bits 7-14 are upstream's: ours are `SeamlessRemote` 15, `SeamlessUnmasked`
+  16, `SeamlessPlace` 17, `SeamlessOutdoor` 18, `SeamlessRoom` 19-20, `SeamlessLightView` 21.
+- `SharedDataCB` is `src/SharedData.h`; our fields follow `PreExposureHistoryRatio`. The world's copy
+  is upstream's `State::sharedData`, which replaces `lastSharedData`.
+- Linear Lighting converts the engine's colours into its working space before the shaders see them.
+  SeamlessSkyrim's are the game's: `UpdateSharedData` converts the merged rooms' directional colour,
+  fog colours and daylight on upload (`working`); the shaders use them as they are. The merged
+  ambient (`SeamlessRemoteAmbientFor`) is converted in the shader after the directional blend, where
+  the engine converts each axis' colour before it: close, not equal, between the axes. The portal
+  pass's sun colour is built as the world's (`LightColorToWorking`, the fade, `GetSunlightScale`).
+- Sky Sync gives the world's sun a colour already in the working space
+  (`LinearLighting::SetSunlightColor`, no sunlight scale). SeamlessSkyrim copies that light's
+  colour onto the portal scene's sun, which Linear Lighting then converted again: the city
+  behind Whiterun's gate was white wherever the sun fell. New export
+  `SeamlessPortal_GameLightColor(const NiLight*, float[3])`: a light's colour as the game's (the
+  override undone: divided by the sunlight scale, AP1 to sRGB gamut, `LinearToSRGB`), which
+  SeamlessSkyrim's outdoor snapshot takes (`Render::Backend::GameLightColor`; the light's own
+  colour without the export).
+- IBL runs indoors too (its interior switch is gone), so its textures hold the interior's IBL there.
+  The street merged into an interior reads a copy taken outdoors: `IBL::outdoorIBLTexture` (row 0
+  the environment's SH, row 1 the sky's), filled at the end of each outdoor `Prepass`, bound at
+  PS t75 and, for the deferred composite, CS t75 (`OutdoorIBLTexture`, `GetStreetDiffuseIBL`).
+  `BindForPortal` is gone: IBL is off in a portal pass, and the world's bindings stay.
+- Skylighting: `SeamlessSettle` takes the padding after `AccumulateOcclusion`; a zenith frame
+  (no occlusion sample) doesn't count as one of the 16 settled updates.
+- Sky Sync computes vanilla's sun path itself: `OutdoorSunDirection` is `GetSunDirectionAtHour`,
+  `HoldLowSunDirection` and `ClampDirection`; the vanilla position SeamlessSkyrim passes is unused.
+- Terrain Shadows: `EnableTerrainShadow` is upstream's `IsShadowMapReady()`, the player's
+  worldspace's; a portal pass asks the same of `portalWorldspace`.
+- Grass Optimizations was rewritten: its captures hold their shape and texture, so the crash fix
+  in `GrassBucketStore::StageRemoval` isn't needed; the cull shader is compiled at setup upstream;
+  the HiZ shaders moved to `HiZPyramid` (`CompileShaders`, called from its `SetupResources`).
+- Frame generation also resets on upstream's `ShouldResetHistory()`. A camera cut still resets
+  frame generation only, not the upscaler's history (`RequestHistoryReset` would do both).
+- `Particle.hlsl`: refractive rain (`REFRACTIVE_RAIN`, new) in the merged street is lit by the
+  street's light too, without the interior's point lights.
+- Fog: the merged fog is applied on upstream's vanilla fog path in `Lighting.hlsl`, `Effect.hlsl`
+  and `ISSAOComposite.hlsl`. Not on the paths View Atmosphere and Physical Sky take
+  (`PostWaterComposite`, aerial perspective): with those on, the merged street is fogged as the
+  interior.
+
 ## DLL
 
 Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = feature off):

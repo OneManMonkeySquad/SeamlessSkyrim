@@ -232,6 +232,11 @@ Open bugs and things not tried. A fixed one comes out.
 - Bottled Shaders (a Community Shaders fork, same `CommunityShaders.dll`, no `SeamlessPortal_*`
   exports) gets the "None" backend: no room merged into the street, the portal pass unclipped.
   Not tried in game. Community Shaders 2.0 is in the same state. Planned: `docs/future/SHADER-BASES.md`.
+- Community Shaders 2.0 switches itself off when it finds a DLL on its incompatible list (new
+  there: `NMN_DeformableTerrain.dll`, Dynamic Terrain Deformation): it logs "Incompatible DLL ...
+  detected" and installs nothing. Its DLL still exports the fork's functions, so SeamlessSkyrim
+  picks the Community Shaders backend and the doorways are drawn by no one. It should fall back to
+  the native backend then.
 
 ## Other
 
