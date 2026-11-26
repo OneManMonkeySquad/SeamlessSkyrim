@@ -30,6 +30,7 @@
 	"door.none": "Acércate a una puerta: aquí aparecen los ajustes de su vano.",
 	"door.door": "Puerta: {}",
 	"door.leads_to": "Lleva a: {}",
+	"door.flat": "Trampilla",
 	"door.save": "Guardar ajustes de la puerta",
 	"door.portal": "Puerta sin carga (desactivado: una puerta normal con pantalla de carga)",
 	"door.opens_inward": "Se abre hacia dentro (desactivado: hacia fuera, a la calle)",

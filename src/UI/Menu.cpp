@@ -226,6 +226,12 @@ namespace
 
 		ImGui::NewLine();
 
+		// Nothing below applies to it: none of it makes such a door a portal.
+		if (Portal::Doors::LiesFlat(pair.source) || Portal::Doors::LiesFlat(pair.linked)) {
+			Wrapped("door.flat");
+			return;
+		}
+
 		if (ImGui::Button(T::Label("door.save"))) {
 			Portal::Doors::SaveCorrection(pair.key->GetFormID());
 		}

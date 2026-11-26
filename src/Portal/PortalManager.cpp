@@ -356,8 +356,9 @@ namespace
 	// Load doors into another space: outside -> interior, interior -> outside or another interior,
 	// and from one worldspace into another (a walled city's gate). Exterior doors within one
 	// worldspace aren't portals: both ends are in the scene already.
-	// The door at the other end of a_ref when a_ref would be a portal door, the menu's switch aside.
-	RE::NiPointer<RE::TESObjectREFR> PortalLink(RE::TESObjectREFR* a_ref, RE::TESObjectCELL* a_here)
+	// The door at the other end of a_ref when a_ref leads into another space this way, whether or
+	// not its pair lies flat (PortalLink).
+	RE::NiPointer<RE::TESObjectREFR> SpaceLink(RE::TESObjectREFR* a_ref, RE::TESObjectCELL* a_here)
 	{
 		auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
 		// A locked door stays a door: closed, solid, to be picked or opened with its key. Unless
@@ -389,6 +390,20 @@ namespace
 		auto* const linkedWorld = cell ? (cell->IsInteriorCell() ? nullptr : cell->GetRuntimeData().worldSpace) : linked->GetWorldspace();
 		const bool  sameWorld = linkedWorld && !a_here->IsInteriorCell() && (!worldDoors || linkedWorld == a_here->GetRuntimeData().worldSpace);
 		if ((!cell && !linkedWorld) || cell == a_here || sameWorld) {
+			return nullptr;
+		}
+		return linked;
+	}
+
+	// The door at the other end of a_ref when a_ref would be a portal door, the menu's switch aside.
+	RE::NiPointer<RE::TESObjectREFR> PortalLink(RE::TESObjectREFR* a_ref, RE::TESObjectCELL* a_here)
+	{
+		auto linked = SpaceLink(a_ref, a_here);
+		// Either end lying in the floor: the pair is climbed (a trapdoor above a ladder), there is
+		// no doorway to walk through or to map onto the other (the College of Winterhold's yard
+		// trapdoor into the Midden). It stays an ordinary door with its loading screen: without a
+		// portal nothing has loaded the space behind it to cross into.
+		if (linked && (Portal::Doors::LiesFlat(a_ref) || Portal::Doors::LiesFlat(linked.get()))) {
 			return nullptr;
 		}
 		return linked;
@@ -2788,7 +2803,8 @@ namespace Portal::Manager
 				auto* linked = LinkedOf(door);
 				auto* base = door ? door->GetBaseObject() : nullptr;
 				const bool locked = door && door->IsLocked() && Portal::DoorUse::GetForce() != Portal::DoorUse::Force::kAllOpen;
-				if (!linked || !base || static_cast<RE::TESObject*>(base)->IsMarker() || locked || Doors::PortalOff(id) || Doors::PortalOff(linked->GetFormID())) {
+				if (!linked || !base || static_cast<RE::TESObject*>(base)->IsMarker() || locked || Doors::PortalOff(id) || Doors::PortalOff(linked->GetFormID()) ||
+				    Doors::LiesFlat(door) || Doors::LiesFlat(linked)) {
 					continue;
 				}
 				if (Portal::DoorUse::Use(id, linked->GetFormID())) {
@@ -3318,7 +3334,8 @@ namespace Portal::Manager
 		float                   bestDistance = 0.0f;
 		const auto              origin = player->GetPosition();
 		RE::TES::GetSingleton()->ForEachReferenceInRange(player, a_radius, [&](RE::TESObjectREFR* a_ref) {
-			if (const auto linked = PortalLink(a_ref, here)) {
+			// A pair lying flat too: the menu says why it has no settings.
+			if (const auto linked = SpaceLink(a_ref, here)) {
 				const float distance = origin.GetDistance(a_ref->GetPosition());
 				if (!best || distance < bestDistance) {
 					best = DoorPair{ a_ref->GetFormID(), linked->GetFormID() };

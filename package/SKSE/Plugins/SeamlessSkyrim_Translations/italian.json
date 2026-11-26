@@ -30,6 +30,7 @@
 	"door.none": "Avvicinati a una porta: qui appaiono le impostazioni del suo vano.",
 	"door.door": "Porta: {}",
 	"door.leads_to": "Conduce a: {}",
+	"door.flat": "Botola",
 	"door.save": "Salva le impostazioni della porta",
 	"door.portal": "Porta senza caricamento (disattivato: una porta normale con schermata di caricamento)",
 	"door.opens_inward": "Si apre verso l'interno (disattivato: verso l'esterno, sulla strada)",

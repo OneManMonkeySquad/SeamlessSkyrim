@@ -30,6 +30,7 @@
 	"door.none": "Approchez-vous d'une porte : les réglages de son embrasure apparaissent ici.",
 	"door.door": "Porte : {}",
 	"door.leads_to": "Mène à : {}",
+	"door.flat": "Trappe",
 	"door.save": "Enregistrer les réglages de la porte",
 	"door.portal": "Porte sans chargement (désactivé : une porte ordinaire avec écran de chargement)",
 	"door.opens_inward": "S'ouvre vers l'intérieur (désactivé : vers l'extérieur, sur la rue)",

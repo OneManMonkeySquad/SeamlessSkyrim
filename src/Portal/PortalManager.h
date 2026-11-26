@@ -85,7 +85,8 @@ namespace Portal::Manager
 		RE::FormID linkedDoor;
 	};
 	// Main thread: the nearest door within a_radius that would be a portal, switched off in the
-	// menu or not. The menu finds a switched-off door with it, which never becomes CurrentPortal.
+	// menu or not, lying flat (Doors::LiesFlat) or not. The menu finds a switched-off door with it,
+	// which never becomes CurrentPortal.
 	[[nodiscard]] std::optional<DoorPair> NearestDoorPair(float a_radius);
 	// Main thread: the pair of the doorway the player is at, for the menu. The portal's while in
 	// the room walked into, or while its door is the nearest; else the nearest door within

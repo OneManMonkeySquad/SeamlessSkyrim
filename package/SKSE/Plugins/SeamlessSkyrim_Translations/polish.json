@@ -30,6 +30,7 @@
 	"door.none": "Podejdź do drzwi: tutaj pojawią się ustawienia ich przejścia.",
 	"door.door": "Drzwi: {}",
 	"door.leads_to": "Prowadzą do: {}",
+	"door.flat": "Klapa",
 	"door.save": "Zapisz ustawienia drzwi",
 	"door.portal": "Drzwi bez wczytywania (wyłączone: zwykłe drzwi z ekranem wczytywania)",
 	"door.opens_inward": "Otwierają się do środka (wyłączone: na zewnątrz, na ulicę)",

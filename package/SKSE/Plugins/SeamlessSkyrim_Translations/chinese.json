@@ -30,6 +30,7 @@
 	"door.none": "走到一扇门前：它的门洞设置会显示在这里。",
 	"door.door": "门：{}",
 	"door.leads_to": "通往：{}",
+	"door.flat": "活板门",
 	"door.save": "保存门的设置",
 	"door.portal": "无缝门（关闭：带加载画面的普通门）",
 	"door.opens_inward": "向内打开（关闭：向外，朝向街道）",

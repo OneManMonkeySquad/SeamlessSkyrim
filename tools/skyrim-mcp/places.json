@@ -317,5 +317,16 @@
       -3615.999755859375,
       0.07609369605779648
     ]
+  },
+  "winterhold-yard-trapdoor": {
+    "cell": "WinterholdCollegeExterior",
+    "headingDeg": 9.550568580627441,
+    "interior": false,
+    "note": "College of Winterhold yard, 180 units from the trapdoor to the Midden (00058244 -> 00055DA5), looking down at it. Lies flat: no portal, an ordinary door with its loading screen; the menu's door page says Trapdoor. Was: taken for a seamless door.",
+    "pos": [
+      116589.9921875,
+      113229.9921875,
+      -7743.64892578125
+    ]
   }
 }

@@ -1040,6 +1040,25 @@ namespace Portal::Doors
 		}
 	}
 
+	bool LiesFlat(RE::TESObjectREFR* a_door)
+	{
+		// Not the measured panel: that needs the 3D, and the far door of a pair is mostly unloaded.
+		// The bounds also hold the box behind the panel, but in Skyrim.esm that leaves every
+		// trapdoor (WinterholdTrapdoor01: 96 x 96 x 33, NorShaftTrapDoor01: 510 x 510 x 102) at least
+		// twice as long as it is high either way, and every standing door taller than it is deep.
+		// Some are modelled standing and laid down by the reference (ShipTrapdoor01, 114 x 10 x
+		// 104), so the height is the model's extent along the axis the placement turns upwards.
+		const auto&   bound = a_door->GetBaseObject()->boundData;
+		const float   extent[3] = { static_cast<float>(bound.boundMax.x - bound.boundMin.x), static_cast<float>(bound.boundMax.y - bound.boundMin.y),
+            static_cast<float>(bound.boundMax.z - bound.boundMin.z) };
+		RE::NiMatrix3 placed;
+		placed.EulerAnglesToAxesZXY(a_door->GetAngle());
+		// The world's up in the model's axes.
+		const float up[3] = { std::abs(placed.entry[2][0]), std::abs(placed.entry[2][1]), std::abs(placed.entry[2][2]) };
+		const int   axis = up[0] > up[1] ? (up[0] > up[2] ? 0 : 2) : (up[1] > up[2] ? 1 : 2);
+		return extent[axis] < 0.5f * std::min(extent[(axis + 1) % 3], extent[(axis + 2) % 3]);
+	}
+
 	bool OpensInward(RE::FormID a_door)
 	{
 		std::scoped_lock lock(correctionsLock);

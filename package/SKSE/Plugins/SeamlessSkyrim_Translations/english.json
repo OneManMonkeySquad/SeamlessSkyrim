@@ -30,6 +30,7 @@
 	"door.none": "Walk up to a door: its doorway's settings appear here.",
 	"door.door": "Door: {}",
 	"door.leads_to": "Leads to: {}",
+	"door.flat": "Trapdoor",
 	"door.save": "Save door settings",
 	"door.portal": "Seamless door (off: an ordinary door with a loading screen)",
 	"door.opens_inward": "Opens inward (off: outward, into the street)",

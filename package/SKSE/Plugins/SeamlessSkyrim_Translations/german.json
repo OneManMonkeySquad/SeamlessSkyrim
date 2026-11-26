@@ -30,6 +30,7 @@
 	"door.none": "Geh zu einer Tür: hier erscheinen die Einstellungen ihres Durchgangs.",
 	"door.door": "Tür: {}",
 	"door.leads_to": "Führt nach: {}",
+	"door.flat": "Falltür",
 	"door.save": "Türeinstellungen speichern",
 	"door.portal": "Nahtlose Tür (aus: eine gewöhnliche Tür mit Ladebildschirm)",
 	"door.opens_inward": "Öffnet nach innen (aus: nach außen, auf die Straße)",

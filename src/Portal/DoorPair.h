@@ -83,6 +83,11 @@ namespace Portal::Doors
 	[[nodiscard]] bool PortalOff(RE::FormID a_door);
 	void               SetPortalOff(RE::FormID a_door, bool a_off);
 
+	// A door lying in a floor or a ceiling (a trapdoor, a hatch, a floor grate): it is climbed
+	// through, not walked through, so it never is a portal. Told from the base object's bounds as
+	// the reference is placed, so an unloaded door (the far end of a pair) is told as well.
+	[[nodiscard]] bool LiesFlat(RE::TESObjectREFR* a_door);
+
 	// Which way the pair's door opens (the menu, stored with the correction): outwards, into the
 	// street, unless set to open inwards (between two interiors "outwards" is the correction
 	// door's side). The same seen from either side: of the two doors standing in the doorway, the

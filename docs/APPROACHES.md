@@ -11,6 +11,7 @@ Read this before proposing a new approach. The engine facts behind it are in ENG
 | Interior ↔ interior | The room merged into the interior the player is in (3, `[Portals] bMergeInteriors`, on) |
 | Exterior ↔ exterior (city gates) | The portal pass (1); through a city gate the world's own shapes are masked as far as the portal pass draws (`UpdateGateMask`) |
 | A room's doorway before its merge | A picture taken with the portal pass, kept per door. From inside a building, none of the street: its door stays shut until the street is shown live (`StreetShownLive`) |
+| A pair with a door lying in a floor or ceiling (trapdoor, hatch) | Nothing: an ordinary door with its loading screen (`Doors::LiesFlat`). It is climbed, not walked through, and its far end is a ladder |
 
 Crossing is the engine's own door teleport without its loading screen (2). A doorway standing
 open before the space behind it is there to walk into (a stand-in) is taken the engine's way, with

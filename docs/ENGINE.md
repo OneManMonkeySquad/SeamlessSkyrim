@@ -101,6 +101,12 @@ the end. These were expensive to find. Add new ones in the same change that need
   and 000223B2) are modelled lying down, y up; their references are turned 90° about x to stand
   them up. The door code works in the model turned so its z is up (`Upright` in `DoorPair.cpp`).
   Bridge `ref_3d` prints each node's local rotation.
+- **Doors lying in a floor or ceiling** (trapdoors, hatches, floor grates, Dwemer lift platforms)
+  are load doors like any other: the College of Winterhold's yard trapdoor (0002BCE6) into the
+  Midden. Their base object's bounds tell them (the extent along the axis the reference's angles
+  turn upwards under half the narrower one across; `Doors::LiesFlat`), loaded or not:
+  `WinterholdTrapdoor01` 96 x 96 x 33, `ShipTrapdoor01` modelled standing and laid down. The
+  ladders below them (`TrapdoorLadder01`, 114 x 118 x 397) look like standing doors.
 - **A door's mesh can hold the wall around its panel.** Riften's `RiftenRWDoorLoad01` (base
   0006F267, e.g. Elgrim's Elixirs) carries the stone frame filling the room's arch, wider than the
   panel; the room's own wall has an arch-shaped hole. Hiding a door means hiding its leaves (the
