@@ -26,6 +26,7 @@ namespace
 		void (*setGatePassage)(float) = nullptr;
 		void (*setInteriorSun)(bool) = nullptr;
 		void (*settleSkylighting)() = nullptr;
+		void (*cameraCut)() = nullptr;
 		void (*setPortalClip)(const float*) = nullptr;
 		void (*setPortalShadows)(RE::BSShadowDirectionalLight*, void*, void*) = nullptr;
 		void (*setPortalWorldspace)(RE::TESWorldSpace*) = nullptr;
@@ -54,6 +55,7 @@ namespace
 		Find(a_module, "SeamlessPortal_SetGatePassage", fork.setGatePassage);
 		Find(a_module, "SeamlessPortal_SetInteriorSun", fork.setInteriorSun);
 		Find(a_module, "SeamlessPortal_SettleSkylighting", fork.settleSkylighting);
+		Find(a_module, "SeamlessPortal_CameraCut", fork.cameraCut);
 		Find(a_module, "SeamlessPortal_SetPortalClip", fork.setPortalClip);
 		Find(a_module, "SeamlessPortal_SetPortalShadows", fork.setPortalShadows);
 		Find(a_module, "SeamlessPortal_SetPortalWorldspace", fork.setPortalWorldspace);
@@ -251,6 +253,14 @@ namespace Render::Backend
 		// The game's own lighting has nothing that builds up over time like CS's skylighting.
 		if (kind == Kind::kCommunityShaders && fork.settleSkylighting) {
 			fork.settleSkylighting();
+		}
+	}
+
+	void CameraCut()
+	{
+		// Frame generation is Community Shaders' (FSR's): without it every frame is a rendered one.
+		if (kind == Kind::kCommunityShaders && fork.cameraCut) {
+			fork.cameraCut();
 		}
 	}
 

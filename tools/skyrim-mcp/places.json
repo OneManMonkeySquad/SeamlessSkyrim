@@ -21,6 +21,17 @@
       -3374.91259765625
     ]
   },
+  "belethors-front-user": {
+    "cell": "WhiterunPLainsDistrict03",
+    "headingDeg": 234.73329162597656,
+    "interior": false,
+    "note": "Whiterun, in front of Belethor's door (0001A6F5) where the user stood: walking in, one flashing frame at the crossing (user, 2026-11-26).",
+    "pos": [
+      24285.552734375,
+      -8178.93798828125,
+      -3387.48291015625
+    ]
+  },
   "blackbriar-meadery-door": {
     "cell": "RiftenBlackBriarMeadery",
     "headingDeg": 91.10099029541016,

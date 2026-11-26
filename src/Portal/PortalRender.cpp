@@ -2758,10 +2758,13 @@ namespace
 				}
 				// The picture hardly changes across the doorway, but the coordinates do: the camera and
 				// the player jump by the distance between the two spaces, and the motion vectors of
-				// this frame said so. Frame generation then made the frame between the last one
-				// outside and the first one inside out of that jump (one wrong picture on walking
-				// through), and the upscaler threw its history away. For this frame the camera and
-				// the player count as not having moved.
+				// this frame said so; the upscaler threw its history away. For this frame the camera
+				// and the player count as not having moved.
+				// Frame generation's frame between the last one outside and the first one inside
+				// stayed a smear of the two seen from neither place (its own flow between the two
+				// pictures, which turn with the door pair), with or without those motion vectors: it
+				// starts afresh from this frame instead.
+				::Render::Backend::CameraCut();
 				{
 					auto& shadow = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
 					*reinterpret_cast<RE::NiPoint3*>(&shadow.previousPosAdjust) = *reinterpret_cast<const RE::NiPoint3*>(&shadow.posAdjust);

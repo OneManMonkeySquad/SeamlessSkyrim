@@ -71,6 +71,8 @@ namespace Render::Backend
 	void SetInteriorSun(bool a_on);
 	// The player walked out of a doorway: lighting that builds up over time is settled at once.
 	void SettleSkylighting();
+	// The camera was carried through a doorway into the other space for this frame.
+	void CameraCut();
 
 	// Around the portal pass. a_sun: the light scene's sun, already carrying the other space's
 	// light. The clip plane (unit normal, offset; pixels with dot(P, n) < offset are cut) is set

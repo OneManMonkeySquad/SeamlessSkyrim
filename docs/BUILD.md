@@ -207,6 +207,17 @@ town falls between screenshots):
 - The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
   a row (a weapon drawn black for four) has to be seen.
 - Not while measuring stutter or timing anything: writing a burst out stalls the game ~2.5 s.
+- The bursts are the frames the game draws, not what reaches the screen: frame generation (FSR,
+  Community Shaders' `frameGenerationMode`) puts a frame of its own between every two, and a
+  broken one (the user's "seen from another place for one frame" on walking into Belethor's) is
+  in no burst. Record the screen instead, with the game launched in front
+  (`game_launch(..., background_mode=false)`; on its own virtual desktop the screen shows
+  something else) and the window's client area as the offset (the game's at x 850 on this
+  machine's 5120-wide monitor):
+  `ffmpeg -f lavfi -i "ddagrab=output_idx=0:framerate=240:dup_frames=0:draw_mouse=0:offset_x=850:offset_y=0:video_size=3440x1440" -t 7 -c:v h264_nvenc -preset p1 -qp 14 out.mkv`,
+  in the background while the route runs; then `ffmpeg -i out.mkv -vf scale=344:144
+  -fps_mode passthrough f_%04d.png` and look for frames unlike both neighbours. A walk's first
+  frame turns the view at once (the steering), which also stands out.
 
 Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
