@@ -184,6 +184,11 @@ Open bugs and things not tried. A fixed one comes out.
   scales the ambient light (its x at 0 turned the shaded porch posts black while the cobbles kept
   their sun). Tried and dropped: t37's x times the mask's x — shade without any ambient, black.
   The sun's direct light indoors under ENB has no per-pixel input we can set; left open.
+- With ENB's effects on, the white textures put over ENB's screen-sized slots for the portal
+  pass's lighting draws (`Neutralized`) go through hooks on the context's draw calls, which the
+  runtime rewrites under them: a few draws a frame likely keep ENB's t37, faint main-view shapes
+  in the picture's shadows for a frame. Not tried since the cut moved off the draw calls; moving
+  this too needs a way to bind it that ENB doesn't undo at the draw.
 - SE 1.5.97 with ENB 0.505 (effects on, `EnableTerrainBlending=true`): after a seamless trip into
   Whiterun and back out, the land outside the gate is a flat grey-brown, untextured (route
   `whiterun-gate-roundtrip-terrain-se`). Only when an interior was visited just before the game

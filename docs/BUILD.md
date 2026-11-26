@@ -28,6 +28,8 @@ building when the game is running and the copy would fail. It doesn't run from t
 (execution policy); use the PowerShell tool.
 
 - Output: `build/RelWithDebInfo/SeamlessSkyrim.dll` and `.pdb`.
+- A source file put back with `Copy-Item` keeps its old time, and the build skips it ("built",
+  with the old code). Touch it (`(Get-Item f).LastWriteTime = Get-Date`) after copying.
 - The post-build step copies both into `<game>\Data\SKSE\Plugins` (`SKYRIM_PLUGINS_DIR` in
   CMakeLists.txt). The copy fails while the game runs, so quit it first. It writes into the
   existing files (`tools/copy-in-place.ps1`), so when Vortex deploys the DLL as a hard link the
@@ -281,7 +283,11 @@ copied from the AE game's plugins folder, trainwreck, no Community Shaders). It 
 - The user's mod list runs it through Mod Organizer 2 (`C:\Modding\MO2`, shortcut
   `moshortcut://Skyrim Special Edition 1.5.97:SKSE`). MO2 must be started with `SEAMLESS_AGENT=1`
   in its environment, or the game it launches has no bridge: an MO2 the user started has to be
-  closed first. That game has a save of its own (`Autosave1_2E8FEB0C_...`, routes `*-se`).
+  closed first. From PowerShell: set `$env:SEAMLESS_AGENT='1'` (and `_BACKGROUND`, `_MUTE`,
+  `_LOAD=<save>`, which the plugin reads as with `game_launch`), then
+  `Start-Process C:\Modding\MO2\ModOrganizer.exe -ArgumentList '"moshortcut://Skyrim Special Edition 1.5.97:SKSE"'`:
+  the inner quotes are needed (unquoted, MO2 started nothing). Starting it again while an MO2
+  runs closed both; stop MO2 after `game_quit` and start a fresh one per launch. That game has a save of its own (`Autosave1_2E8FEB0C_...`, routes `*-se`).
 - ENB there is deployed by Root Builder: its files are in the game folder only while MO2 runs the
   game. Its settings are `%LOCALAPPDATA%\ModOrganizer\Skyrim Special Edition 1.5.97\overwrite\Root\enbseries.ini`,
   read at launch. `ENBSetParameter` refuses `[EFFECT]` switches. Numpad minus (`press_key 0x4A`,

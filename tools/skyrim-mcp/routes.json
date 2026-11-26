@@ -1,4 +1,55 @@
 {
+  "bannered-mare-door-blinks-se": {
+    "note": "SE 1.5.97 MO2 game (native backend, the user's quicksave Quicksave0_2E8FEB0C_0_52_WhiterunWorld_000003_20261126080355_1_1, loaded by the launch): at the Bannered Mare's open door looking in, the room merged; 5 bursts of 60 frames standing still. Was: in a few frames of each 300, random shapes of the room drawn pale blue-white (the sky's colour), as holes to the sky.",
+    "steps": [
+      {
+        "console": "setini \"fAutoVanityModeDelay:Camera\" 100000"
+      },
+      {
+        "move": [
+          25612,
+          -7627,
+          -3253
+        ]
+      },
+      {
+        "heading": 89.5
+      },
+      {
+        "wait": 4
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      }
+    ]
+  },
   "bannered-mare-npcs-evening": {
     "note": "Whiterun at 19:48, timescale 60, standing at the foot of the Bannered Mare's steps looking at its door (00016072/0001A6F4, stands open): within ~20 s Brenuin, Olfina Gray-Mane and Jon Battle-Born walk in through the doorway (NpcTravel carries them; capture takes an 'npc' burst at each). Was: slid in without walking, then stood just inside the door for seconds (user, 2026-11-24).",
     "steps": [
@@ -1416,6 +1467,59 @@
       },
       {
         "wait": 4
+      }
+    ]
+  },
+  "whiterun-gate-shadow-flicker-se": {
+    "note": "SE 1.5.97 MO2 game (native backend, the user's save). Outside Whiterun's gate at 16:30, time stopped, standing still looking into the city; 3 bursts of 60 frames. Was: the city's shadows through the gate flickered (some lighting draws of the portal pass got the main view's shadow mask, and some cuts were missed: the runtime rewrites the context's draw functions under the hooks).",
+    "steps": [
+      {
+        "load": "Autosave1_2E8FEB0C_1_52_Tamriel_000001_20261125160434_1_1"
+      },
+      {
+        "console": "set gamehour to 16.5"
+      },
+      {
+        "console": "set timescale to 0"
+      },
+      {
+        "console": "setini \"fAutoVanityModeDelay:Camera\" 100000"
+      },
+      {
+        "heading": 90
+      },
+      {
+        "walk": {
+          "pos": [
+            18800,
+            -7425
+          ],
+          "stop_distance": 30
+        }
+      },
+      {
+        "heading": 90
+      },
+      {
+        "wait": 8
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
+      },
+      {
+        "frames": 60
+      },
+      {
+        "wait": 3
       }
     ]
   },

@@ -387,7 +387,7 @@ namespace
 
 	// HLSL for a pass-through geometry shader over these outputs, or nothing if they can't be
 	// passed through (already clipping, or nothing to clip with).
-	std::optional<std::string> GeometryShaderSource(std::vector<Element> a_elements)
+	std::optional<std::string> GeometryShaderSource(std::vector<Element> a_elements, int& a_pieces)
 	{
 		std::ranges::sort(a_elements, [](const Element& a, const Element& b) {
 			return a.reg != b.reg ? a.reg < b.reg : std::countr_zero(static_cast<unsigned>(a.mask)) < std::countr_zero(static_cast<unsigned>(b.mask));
@@ -423,21 +423,36 @@ namespace
 		if (position < 0) {
 			return std::nullopt;
 		}
+		// Each piece is the triangle once more with that piece's clip distances (pieces are disjoint,
+		// so nothing is drawn twice); no pieces is the shape left out. A geometry shader may put out
+		// 1024 scalars per triangle: a vertex shader with many outputs gets fewer pieces.
+		int scalars = 6;
+		for (const auto& e : a_elements) {
+			scalars += std::popcount(static_cast<unsigned>(e.mask));
+		}
+		a_pieces = std::min(kMaxPieces, 1024 / scalars / 3);
+		if (a_pieces < 1) {
+			return std::nullopt;
+		}
 		return std::format(
-			"cbuffer SeamlessClip : register(b0) {{ float4 SeamlessPlanes[6]; }};\n"
+			"cbuffer SeamlessClip : register(b0) {{ float4 SeamlessPlanes[{3}]; uint4 SeamlessPieces; }};\n"
 			"struct V {{\n{0}}};\n"
 			"struct G {{\n{0}\tfloat4 seamlessClip0 : SV_ClipDistance0;\n\tfloat2 seamlessClip1 : SV_ClipDistance1;\n}};\n"
-			"[maxvertexcount(3)]\n"
+			"[maxvertexcount({4})]\n"
 			"void main(triangle V input[3], inout TriangleStream<G> stream) {{\n"
-			"\t[unroll] for (uint i = 0; i < 3; ++i) {{\n"
-			"\t\tG o;\n{1}"
-			"\t\tfloat4 p = input[i].f{2};\n"
-			"\t\to.seamlessClip0 = float4(dot(SeamlessPlanes[0], p), dot(SeamlessPlanes[1], p), dot(SeamlessPlanes[2], p), dot(SeamlessPlanes[3], p));\n"
-			"\t\to.seamlessClip1 = float2(dot(SeamlessPlanes[4], p), dot(SeamlessPlanes[5], p));\n"
-			"\t\tstream.Append(o);\n"
+			"\t[loop] for (uint k = 0; k < SeamlessPieces.x; ++k) {{\n"
+			"\t\tuint b = k * {5};\n"
+			"\t\t[unroll] for (uint i = 0; i < 3; ++i) {{\n"
+			"\t\t\tG o;\n{1}"
+			"\t\t\tfloat4 p = input[i].f{2};\n"
+			"\t\t\to.seamlessClip0 = float4(dot(SeamlessPlanes[b], p), dot(SeamlessPlanes[b + 1], p), dot(SeamlessPlanes[b + 2], p), dot(SeamlessPlanes[b + 3], p));\n"
+			"\t\t\to.seamlessClip1 = float2(dot(SeamlessPlanes[b + 4], p), dot(SeamlessPlanes[b + 5], p));\n"
+			"\t\t\tstream.Append(o);\n"
+			"\t\t}}\n"
+			"\t\tstream.RestartStrip();\n"
 			"\t}}\n"
 			"}}\n",
-			members, copies, position);
+			members, copies, position, kMaxPieces * kPlanesPerPiece, 3 * a_pieces, kPlanesPerPiece);
 	}
 
 	ID3D11DeviceContext* Context()
@@ -457,20 +472,27 @@ namespace
 		return device;
 	}
 
+	struct Clipper
+	{
+		ID3D11GeometryShader* shader = nullptr;  // nullptr: no cut possible
+		int                   pieces = 0;        // the most pieces it puts out
+	};
+
 	struct ShaderCache
 	{
-		std::unordered_map<const void*, ID3D11GeometryShader*>      byVertexShader;  // nullptr: no cut possible
-		std::unordered_map<std::string, ID3D11GeometryShader*>      bySignature;
+		std::unordered_map<const void*, Clipper> byVertexShader;
+		std::unordered_map<std::string, Clipper> bySignature;
 		std::uint32_t                                               compiled = 0;
 		std::uint32_t                                               failed = 0;
 		double                                                      compileMs = 0.0;
 	} shaders;
 
-	ID3D11GeometryShader* Build(const std::vector<Element>& a_outputs)
+	Clipper Build(const std::vector<Element>& a_outputs)
 	{
-		const auto source = GeometryShaderSource(a_outputs);
+		int        pieces = 0;
+		const auto source = GeometryShaderSource(a_outputs, pieces);
 		if (!source) {
-			return nullptr;
+			return {};
 		}
 		const auto started = std::chrono::steady_clock::now();
 		ID3DBlob*  code = nullptr;
@@ -484,7 +506,7 @@ namespace
 			if (errors) {
 				errors->Release();
 			}
-			return nullptr;
+			return {};
 		}
 		if (errors) {
 			errors->Release();
@@ -517,19 +539,19 @@ namespace
 			++shaders.compiled;
 		}
 		code->Release();
-		return shader;
+		return { shader, shader ? pieces : 0 };
 	}
 
-	ID3D11GeometryShader* GeometryShaderFor(const RE::BSGraphics::VertexShader* a_vertexShader)
+	Clipper GeometryShaderFor(const RE::BSGraphics::VertexShader* a_vertexShader)
 	{
 		if (!a_vertexShader) {
-			return nullptr;
+			return {};
 		}
 		if (const auto it = shaders.byVertexShader.find(a_vertexShader); it != shaders.byVertexShader.end()) {
 			return it->second;
 		}
-		ID3D11GeometryShader* shader = nullptr;
-		const auto*           bytecode = a_vertexShader->rawBytecode;
+		Clipper     shader;
+		const auto* bytecode = a_vertexShader->rawBytecode;
 		const auto            size = a_vertexShader->byteCodeSize;
 		// The engine keeps the bytecode right behind the shader; DXBC starts with its magic.
 		if (size > 4 && std::memcmp(bytecode, "DXBC", 4) == 0) {
@@ -551,6 +573,13 @@ namespace
 
 	ID3D11Buffer* planeBuffer = nullptr;
 
+	// The geometry shader's constants: every piece's planes, and how many pieces.
+	struct PlaneBlock
+	{
+		Piece         piece[kMaxPieces];
+		std::uint32_t pieces[4];
+	};
+
 	bool EnsurePlaneBuffer()
 	{
 		if (planeBuffer) {
@@ -561,7 +590,7 @@ namespace
 			return false;
 		}
 		D3D11_BUFFER_DESC desc{};
-		desc.ByteWidth = sizeof(Piece);
+		desc.ByteWidth = sizeof(PlaneBlock);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -581,11 +610,11 @@ namespace
 	// ID3D11DeviceContext slots: DrawIndexed 12, Draw 13, DrawIndexedInstanced 20, DrawInstanced 21.
 	constexpr std::size_t kDrawIndexed = 12, kDraw = 13, kDrawIndexedInstanced = 20, kDrawInstanced = 21;
 
-	// The immediate context's function table lives in the context object itself and the runtime
-	// writes it again (a hook put into it once at startup was gone by the time the game was loaded,
-	// after 17 draws). So the table is checked, and the hooks put back, before every draw that
-	// needs them; what each table held before is kept per table, in case the runtime switches
-	// between several.
+	// Only for the white textures of a portal lighting draw (Neutralized, ENB's slots); the cut and
+	// the shadow mask don't go through the draw calls (see Bound). The immediate context's function
+	// table lives in the context object itself and the runtime writes it again, several times a
+	// frame. So the table is checked, and the hooks put back, before each portal lighting pass; what
+	// each table held before is kept per table. A draw after a rewrite still goes past them.
 	struct Table
 	{
 		void**                 slots = nullptr;
@@ -648,8 +677,6 @@ namespace
 		return *context.get();
 	}
 
-	std::uint64_t drawCalls = 0;       // diagnostics: every draw through the hooks
-	std::uint64_t drawCallsInJob = 0;  // ... of them while a cut was planned
 
 	// Screen-sized textures an injector binds to the lighting shader beyond the game's own slots
 	// (ENB, with its effects on, one at t37: a term of its own that it reads where the sun's mask
@@ -766,73 +793,88 @@ namespace
 	template <class F>
 	void Masked(ID3D11DeviceContext* a_context, F&& a_draw)
 	{
-		// Bound right at the draw (the engine binds its own mask while setting the pass up) and put
-		// back right after, so the engine's record of what is bound stays true.
-		auto* mask = portalLightingDraw ? Render::Native::PortalShadowMask() : nullptr;
-		ID3D11ShaderResourceView* engineMask = nullptr;
-		if (mask) {
-			a_context->PSGetShaderResources(14, 1, &engineMask);
-			a_context->PSSetShaderResources(14, 1, &mask);
-		}
 		Neutralized neutralized(a_context);
-		struct Restore
-		{
-			ID3D11DeviceContext*       context;
-			ID3D11ShaderResourceView*& engineMask;
-			bool                       on;
-			~Restore()
-			{
-				if (on) {
-					context->PSSetShaderResources(14, 1, &engineMask);
-					if (engineMask) {
-						engineMask->Release();
-					}
-				}
-			}
-		} restore{ a_context, engineMask, mask != nullptr };
-		++drawCalls;
-		drawCallsInJob += job.active ? 1 : 0;
+		a_draw();
+	}
+
+	// ---- the cut, bound for the length of one pass ---------------------------------------------
+
+	// Bound between the pass's SetupGeometry and RestoreGeometry, never at the draw call: the
+	// runtime rewrites the immediate context's function table in place several times a frame
+	// (between two sets of its own functions), and a draw hook put back before each pass still missed
+	// one to three passes a frame, drawn uncut or not left out: random shapes of a merged room gone
+	// for a frame, a street wall in its doorway, the main view's shadows in the portal pass. The
+	// engine itself never binds a geometry shader, and the shadow mask goes through the engine's own
+	// record of what is bound, which its draw applies.
+	struct Bound
+	{
+		bool                      cut = false;
+		ID3D11GeometryShader*     previousShader = nullptr;
+		ID3D11Buffer*             previousBuffer = nullptr;
+		bool                      mask = false;
+		ID3D11ShaderResourceView* engineMask = nullptr;
+	} bound;
+
+	bool Triangles(const RE::BSGeometry* a_shape)
+	{
+		using Type = RE::BSGeometry::Type;
+		const auto type = a_shape->type.get();
+		return type != Type::kLines && type != Type::kDynamicLines;
+	}
+
+	void BindPass(const RE::BSRenderPass* a_pass)
+	{
+		auto& state = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
+		if (auto* mask = portalLightingDraw ? Render::Native::PortalShadowMask() : nullptr) {
+			bound.mask = true;
+			bound.engineMask = reinterpret_cast<ID3D11ShaderResourceView*>(state.PSTexture[14]);
+			state.PSTexture[14] = reinterpret_cast<REX::W32::ID3D11ShaderResourceView*>(mask);
+			state.PSResourceModifiedBits |= 1u << 14;
+		}
 		if (!job.active) {
-			a_draw();
 			return;
 		}
-		if (job.skip) {
-			return;
-		}
-		D3D11_PRIMITIVE_TOPOLOGY topology{};
-		a_context->IAGetPrimitiveTopology(&topology);
-		const bool triangles = topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
-		auto*      vertexShader = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData().currentVertexShader;
-		auto*      geometryShader = triangles ? GeometryShaderFor(vertexShader) : nullptr;
-		if (!geometryShader || !EnsurePlaneBuffer()) {
+		const auto clipper = Triangles(a_pass->geometry) ? GeometryShaderFor(state.currentVertexShader) : Clipper{};
+		const int  pieces = job.skip ? 0 : job.pieces;
+		if (!clipper.shader || pieces > clipper.pieces || !EnsurePlaneBuffer()) {
 			++stats.drawsUncut;
-			a_draw();
 			return;
 		}
-		ID3D11GeometryShader* previousShader = nullptr;
-		ID3D11Buffer*         previousBuffer = nullptr;
-		a_context->GSGetShader(&previousShader, nullptr, nullptr);
-		a_context->GSGetConstantBuffers(0, 1, &previousBuffer);
-		a_context->GSSetShader(geometryShader, nullptr, 0);
-		a_context->GSSetConstantBuffers(0, 1, &planeBuffer);
-		for (int i = 0; i < job.pieces; ++i) {
-			D3D11_MAPPED_SUBRESOURCE mapped{};
-			if (FAILED(a_context->Map(planeBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-				continue;
-			}
-			std::memcpy(mapped.pData, &job.piece[i], sizeof(Piece));
-			a_context->Unmap(planeBuffer, 0);
-			a_draw();
-			++stats.piecesDrawn;
-		}
+		auto*                    context = DrawingContext();
+		D3D11_MAPPED_SUBRESOURCE mapped{};
+		SEAMLESS_ASSERT(SUCCEEDED(context->Map(planeBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)));
+		auto* block = static_cast<PlaneBlock*>(mapped.pData);
+		std::memcpy(block->piece, job.piece, sizeof(Piece) * pieces);
+		block->pieces[0] = static_cast<std::uint32_t>(pieces);
+		context->Unmap(planeBuffer, 0);
+		context->GSGetShader(&bound.previousShader, nullptr, nullptr);
+		context->GSGetConstantBuffers(0, 1, &bound.previousBuffer);
+		context->GSSetShader(clipper.shader, nullptr, 0);
+		context->GSSetConstantBuffers(0, 1, &planeBuffer);
+		bound.cut = true;
 		++stats.drawsCut;
-		a_context->GSSetShader(previousShader, nullptr, 0);
-		a_context->GSSetConstantBuffers(0, 1, &previousBuffer);
-		if (previousShader) {
-			previousShader->Release();
+		stats.piecesDrawn += pieces;
+	}
+
+	void UnbindPass()
+	{
+		if (std::exchange(bound.cut, false)) {
+			auto* context = DrawingContext();
+			context->GSSetShader(bound.previousShader, nullptr, 0);
+			context->GSSetConstantBuffers(0, 1, &bound.previousBuffer);
+			if (bound.previousShader) {
+				bound.previousShader->Release();
+			}
+			if (bound.previousBuffer) {
+				bound.previousBuffer->Release();
+			}
+			bound.previousShader = nullptr;
+			bound.previousBuffer = nullptr;
 		}
-		if (previousBuffer) {
-			previousBuffer->Release();
+		if (std::exchange(bound.mask, false)) {
+			auto& state = RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData();
+			state.PSTexture[14] = reinterpret_cast<REX::W32::ID3D11ShaderResourceView*>(bound.engineMask);
+			state.PSResourceModifiedBits |= 1u << 14;
 		}
 	}
 
@@ -871,26 +913,27 @@ namespace
 	// ---- the shaders' per-draw setup -----------------------------------------------------------
 
 	// BSShader vfuncs 6 (SetupGeometry) and 7 (RestoreGeometry) bracket each pass's draw in the
-	// batch renderer (SetupAndDrawPass, ID 107644): the cut is planned at the first and dropped at
-	// the second, and the draw calls between them get it.
+	// batch renderer (SetupAndDrawPass, ID 107644): the cut is planned and bound at the first and
+	// dropped at the second, and the draw calls between them get it.
 	template <int Shader>
 	struct SetupGeometryHook
 	{
 		static void Thunk(RE::BSShader* a_shader, RE::BSRenderPass* a_pass, std::uint32_t a_flags)
 		{
 			BeginPass(a_pass);
-			if (job.active) {
-				EnsureHooks(DrawingContext());
-			}
 			if constexpr (Shader == 0) {
 				auto*      accumulator = RE::BSShaderAccumulator::GetCurrentAccumulator();
 				auto*      portalScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[3];
 				portalLightingDraw = portalPass && accumulator && portalScene && accumulator->GetRuntimeData().activeShadowSceneNode == portalScene;
+				if (portalLightingDraw) {
+					EnsureHooks(DrawingContext());
+				}
 				const LightingSwap swap(a_shader, a_pass);
 				func(a_shader, a_pass, a_flags);
 			} else {
 				func(a_shader, a_pass, a_flags);
 			}
+			BindPass(a_pass);
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
@@ -901,6 +944,7 @@ namespace
 		static void Thunk(RE::BSShader* a_shader, RE::BSRenderPass* a_pass, std::uint32_t a_flags)
 		{
 			func(a_shader, a_pass, a_flags);
+			UnbindPass();
 			EndPass();
 			portalLightingDraw = false;
 		}
@@ -1012,8 +1056,6 @@ namespace Render::Native
 			{ "piecesDrawn", stats.piecesDrawn },
 			{ "drawsUncut", stats.drawsUncut },
 			{ "portalPasses", stats.portalPasses },
-			{ "drawCalls", drawCalls },
-			{ "drawCallsInJob", drawCallsInJob },
 			{ "geometryShaders", shaders.compiled },
 			{ "geometryShaderFailures", shaders.failed },
 			{ "vertexShadersSeen", shaders.byVertexShader.size() },

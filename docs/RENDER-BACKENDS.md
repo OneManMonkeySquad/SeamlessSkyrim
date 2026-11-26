@@ -42,14 +42,20 @@ world space and clip distances interpolate perspective-correctly, so the cut is 
 - Planes are turned into clip space with the renderer's current view-projection (row vectors,
   camera-relative, as `DrawDoorQuad` uses it), so the portal pass's camera works the same way.
 - Which draw: hooks on `SetupGeometry` / `RestoreGeometry` (vfuncs 6 and 7) of the Lighting,
-  Utility and Effect shaders plan the cut for the pass between them. Main pass: depth target
-  `kMAIN` and the world light scene, so shadow maps aren't cut. Portal pass: accumulator drawing
-  with the portal light scene (State slot 3).
-- The draw calls: `ID3D11DeviceContext` DrawIndexed / Draw / DrawIndexedInstanced /
-  DrawInstanced in the context's function table. The context the engine draws with is the global
-  `ID 411391`. Its table sits inside the context object and the runtime rewrites it (a hook put
-  in once was gone after 17 draws), so the hooks are checked and put back before every draw that
-  needs them, and each table's originals are kept.
+  Utility and Effect shaders plan the cut, bind the geometry shader after the engine's
+  `SetupGeometry` and unbind it at `RestoreGeometry`; the engine never binds a geometry shader
+  itself. Main pass: depth target `kMAIN` and the world light scene, so shadow maps aren't cut.
+  Portal pass: accumulator drawing with the portal light scene (State slot 3).
+- One draw per pass: the pieces are drawn by the geometry shader, which puts each triangle out
+  once per piece with that piece's clip distances (constant buffer: all pieces' planes and their
+  count); no pieces leaves the shape out. A geometry shader may put out 1024 scalars per
+  triangle, so a vertex shader with many outputs gets fewer pieces (one in Whiterun: 56 scalars,
+  5 pieces); a pass needing more is drawn uncut (`drawsUncut`).
+- Not at the draw calls: the immediate context's function table sits inside the context object
+  and the runtime rewrites it in place several times a frame, between two sets of its own
+  functions. Hooks in it, put back before each pass, still missed 1-3 passes a frame on SE 1.5.97:
+  random shapes of a merged room gone (sky in their place) or a street wall in its doorway for a
+  frame, the main view's shadow mask on parts of the city behind Whiterun's gate.
 - Geometry shaders are generated per vertex shader output signature: the engine keeps each vertex
   shader's bytecode (`BSGraphics::VertexShader::rawBytecode`), it is reflected, HLSL written,
   compiled with d3dcompiler (`gs_5_0`), and its signatures checked against the vertex shader's
@@ -91,8 +97,10 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   portal scene culled again into an accumulator in the engine's depth mode, copied from the main
   prepass's, ID 415008, and submitted with kDepthPrepass), the shadow maps drawn for the portal
   camera (`RenderPortalShadows`), then a pass of ours that turns depth and maps into the mask, and
-  the lighting passes get `kShadowDir | kDefShadow` with the mask bound at t14 right at each draw
-  (and the engine's put back). Not for a doorway picture's capture. Costs a second cull and a
+  the lighting passes get `kShadowDir | kDefShadow` with the mask put into the engine's record of
+  PS t14 (`RendererShadowState::PSTexture[14]` and its modified bit) after `SetupGeometry`, which
+  the draw applies, and the engine's put back at `RestoreGeometry`. Not for a doorway picture's
+  capture. Costs a second cull and a
   depth-only draw of what the gateway shows.
 
 Not done natively:
@@ -119,7 +127,8 @@ there instead turned shadow black, so it is a term on what the shadow leaves. In
 painted the main view's shapes behind a city gate (Tamriel's low-detail Whiterun) faintly over
 the picture's shadows. Turning off ENB's shadow, skylighting, AO, IBL and parallax-shadow effects
 in `enbseries.ini` didn't remove it. The portal pass's lighting draws get a white texture in every
-screen-sized slot from t16 up (`Neutralized` in `NativeMask.cpp`).
+screen-sized slot from t16 up (`Neutralized` in `NativeMask.cpp`), the one thing still done in
+hooks on the context's draw calls (see above: a draw now and then goes past them).
 
 What stays: ENB grades interiors and exteriors with separate settings and switches when the
 current cell changes, i.e. at the moment of crossing. The view through a doorway is graded as the
