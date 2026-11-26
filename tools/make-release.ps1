@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-Builds the release archive: a FOMOD installer with SeamlessSkyrim and, as an option, the patched
-Community Shaders.
+Builds the release archive: a FOMOD installer with SeamlessSkyrim and, as options, the patched
+Community Shaders for each release the fork is ported to.
 
 .DESCRIPTION
 The archive holds:
@@ -10,16 +10,17 @@ The archive holds:
   Core\SKSE\Plugins\SeamlessSkyrim.ini     package\, as a player gets it
   Core\SKSE\Plugins\SeamlessSkyrim_Doors.ini   package\, with the doors tuned in game moved in
   Core\SKSE\Plugins\SeamlessSkyrim_Translations\*.json   package\, the menu's text
-  CommunityShaders\SKSE\Plugins\CommunityShaders.dll   the fork's build
-  CommunityShaders\...                     every file the fork changed or added under package\
+  CommunityShaders-1.9.1\SKSE\Plugins\CommunityShaders.dll   the 1.9.1 fork's build
+  CommunityShaders-1.9.1\...               every file that fork changed or added under package\
                                            and features\*\ since -CsBase
+  CommunityShaders-2.0\...                 the same for the 2.0 port (-CsFork20, -CsBase20)
   LICENSE, SOURCE.txt                      the GPL text and where the source of both parts is
   THIRD-PARTY-NOTICES.txt                  the licenses of the libraries built into both DLLs
 
-The Community Shaders part is a separate option because it is only a patch: installed without
-Community Shaders, its DLL runs with none of the shaders and data it expects and rendering breaks.
-The installer preselects it when CommunityShaders.dll is already installed, and blocks it when
-Bottled Shaders is (same DLL name; it would be replaced by Community Shaders 1.9.1's).
+Each Community Shaders part is a separate option because it is only a patch: installed over
+another release, or without Community Shaders, its DLL runs with shaders and data it doesn't
+expect and rendering breaks. In MO2 the installer recommends the one for the installed release,
+blocks the other, and blocks both when Bottled Shaders is installed (same DLL name).
 
 Door tunings made in game (the game's SeamlessSkyrim_Doors_User.ini) are moved into package\'s
 SeamlessSkyrim_Doors.ini first (tools\fold-door-tunings.ps1; commit them there). The user file is
@@ -35,7 +36,10 @@ param(
 	[string]$CsFork = 'E:\projects\CommunityShaders-Seamless',
 	# The Community Shaders release the fork is based on (a tag or commit in the fork).
 	[string]$CsBase = 'v1.9.1',
-	# Build SeamlessSkyrim (Release) and the fork's CommunityShaders target first.
+	# The port to Community Shaders 2.0 (a worktree of the same repository) and its base.
+	[string]$CsFork20 = 'E:\projects\CommunityShaders-Seamless-2.0',
+	[string]$CsBase20 = 'v2.0.0-rc.2',
+	# Build SeamlessSkyrim (Release) and each fork's CommunityShaders target first.
 	[switch]$Build,
 	# Written into the archive's SOURCE.txt.
 	[string]$SourceUrl = 'https://github.com/OneManMonkeySquad/SeamlessSkyrim',
@@ -47,8 +51,14 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $plugins = 'SKSE\Plugins'
 
-function Invoke-Git {
-	$output = & git -C $CsFork @args
+# One installer option each; Folder is the option's folder in the archive (ModuleConfig.xml).
+$forks = @(
+	[pscustomobject]@{ Name = 'Community Shaders 1.9.1'; Folder = 'CommunityShaders-1.9.1'; Path = $CsFork; Base = $CsBase; Branch = 'seamless-portal' }
+	[pscustomobject]@{ Name = 'Community Shaders 2.0'; Folder = 'CommunityShaders-2.0'; Path = $CsFork20; Base = $CsBase20; Branch = 'seamless-portal-2.0' }
+)
+
+function Invoke-Git([string]$Repo) {
+	$output = & git -C $Repo @args
 	if ($LASTEXITCODE) { throw "git $args failed" }
 	$output
 }
@@ -79,8 +89,10 @@ if ($Build) {
 
 	& $cmake --build (Join-Path $repo 'build') --config Release
 	if ($LASTEXITCODE) { throw 'SeamlessSkyrim build failed.' }
-	& $cmake --build (Join-Path $CsFork 'build\ALL') --config Release --target CommunityShaders
-	if ($LASTEXITCODE) { throw 'Community Shaders build failed.' }
+	foreach ($fork in $forks) {
+		& $cmake --build (Join-Path $fork.Path 'build\ALL') --config Release --target CommunityShaders
+		if ($LASTEXITCODE) { throw "$($fork.Name) build failed." }
+	}
 }
 
 # ---- doors -----------------------------------------------------------------------------------
@@ -105,21 +117,28 @@ foreach ($json in Get-ChildItem -LiteralPath (Join-Path $repo "package\$plugins\
 	$files["Core\$plugins\SeamlessSkyrim_Translations\$($json.Name)"] = $json.FullName
 }
 
-$csDll = Join-Path $CsFork 'build\ALL\Release\CommunityShaders.dll'
-Assert-Newer $csDll (Join-Path $CsFork 'src')
-$files["CommunityShaders\$plugins\CommunityShaders.dll"] = $csDll
+foreach ($fork in $forks) {
+	$csDll = Join-Path $fork.Path 'build\ALL\Release\CommunityShaders.dll'
+	Assert-Newer $csDll (Join-Path $fork.Path 'src')
+	$files["$($fork.Folder)\$plugins\CommunityShaders.dll"] = $csDll
 
-$forkChanged = @(Invoke-Git diff --name-only --diff-filter=d $CsBase -- package features) +
-	@(Invoke-Git ls-files --others --exclude-standard -- package features)
-foreach ($path in $forkChanged | Sort-Object -Unique) {
-	# Community Shaders' packaging copies package\ and each features\<name>\ into Data as they are.
-	$relative = ($path -replace '^(package|features/[^/]+)/', '') -replace '/', '\'
-	$files["CommunityShaders\$relative"] = Join-Path $CsFork $path
+	$forkChanged = @(Invoke-Git $fork.Path diff --name-only --diff-filter=d $fork.Base -- package features) +
+		@(Invoke-Git $fork.Path ls-files --others --exclude-standard -- package features)
+	foreach ($path in $forkChanged | Sort-Object -Unique) {
+		# Community Shaders' packaging copies package\ and each features\<name>\ into Data as they are.
+		$relative = ($path -replace '^(package|features/[^/]+)/', '') -replace '/', '\'
+		$files["$($fork.Folder)\$relative"] = Join-Path $fork.Path $path
+	}
+	# The archive is built from the working tree; uncommitted fork changes would ship without a
+	# commit to rebase onto the next Community Shaders release.
+	$forkDirty = Invoke-Git $fork.Path status --porcelain -- src package features
+	if ($forkDirty) { Write-Warning "$($fork.Name): the fork has uncommitted changes:`n$($forkDirty -join "`n")" }
+	# SOURCE.txt points at the published branch: the GPL asks for the source of what ships.
+	$published = & git -C $fork.Path rev-parse --verify --quiet "fork/$($fork.Branch)"
+	if ($published -ne (Invoke-Git $fork.Path rev-parse $fork.Branch)) {
+		Write-Warning "$($fork.Name): branch $($fork.Branch) isn't on the fork remote as built (git push fork $($fork.Branch))."
+	}
 }
-# The archive is built from the working tree; uncommitted fork changes would ship without a
-# commit to rebase onto the next Community Shaders release.
-$forkDirty = Invoke-Git status --porcelain -- src package features
-if ($forkDirty) { Write-Warning "The fork has uncommitted changes:`n$($forkDirty -join "`n")" }
 
 # ---- third-party notices ---------------------------------------------------------------------
 # Both DLLs link vcpkg's libraries statically and compile in the code under extern\; MIT and BSD
@@ -164,9 +183,10 @@ copyright notice and license follow.
 
 ####  In SeamlessSkyrim.dll  ####
 $(Get-Notices (Join-Path $repo 'build\vcpkg_installed\x64-windows-static-md\share') (Join-Path $repo 'extern'))
-
-####  In CommunityShaders.dll (the CommunityShaders option)  ####
-$(Get-Notices (Join-Path $CsFork 'build\ALL\vcpkg_installed\x64-windows-static-md-release\share') (Join-Path $CsFork 'extern') @{ 'Community Shaders' = (Join-Path $CsFork 'EXCEPTIONS.md') })
+$(foreach ($fork in $forks) {
+	"`n####  In CommunityShaders.dll (the $($fork.Name) option)  ####`n"
+	Get-Notices (Join-Path $fork.Path 'build\ALL\vcpkg_installed\x64-windows-static-md-release\share') (Join-Path $fork.Path 'extern') @{ 'Community Shaders' = (Join-Path $fork.Path 'EXCEPTIONS.md') }
+})
 "@
 
 # ---- stage and zip ---------------------------------------------------------------------------
@@ -188,8 +208,8 @@ into CommunityShaders.dll, and their licenses: see THIRD-PARTY-NOTICES.txt.
 
 Source of SeamlessSkyrim:
   $SourceUrl
-Source of the patched Community Shaders (the CommunityShaders option), branch seamless-portal:
-  $CsSourceUrl
+Source of the patched Community Shaders, in the branch of each option:
+$(($forks | ForEach-Object { "  $($_.Name): $CsSourceUrl/tree/$($_.Branch)" }) -join "`n")
 
 "@)
 

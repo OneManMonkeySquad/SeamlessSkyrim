@@ -69,15 +69,18 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
 
 - `Core/`, always installed: the plugin (Release, no PDB) and `package/`'s two ini, the in-game
   door tunings folded in first (commit them).
-- `CommunityShaders/`, optional: the fork's DLL and changed files. The installer preselects it
-  when `SKSE\Plugins\CommunityShaders.dll` is already installed, and leaves it unselected but
-  selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
+- `CommunityShaders-1.9.1/` and `CommunityShaders-2.0/`, one installer choice with "None of
+  these": each fork's DLL and the files it changed against its base (`-CsBase`, `-CsBase20`). A
+  patch fits one release only: over another, or without Community Shaders, its DLL runs without
   the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
-  instead of the native one. It still can't tell Community Shaders versions apart: the option's
-  text says 1.9.1. Bottled Shaders (a Community Shaders fork with the same DLL name) is told
-  apart by `Shaders\Features\SnowCover.ini` or `HairBacklighting.ini`, which only it installs:
-  the option is then unusable and "No" recommended. All of this is MO2 only: Vortex answers
-  `fileDependency` from its plugin list, so there the descriptions are all the user gets.
+  instead of the native one. Told apart by feature files: Bottled Shaders (same DLL name) by
+  `SnowCover.ini` or `HairBacklighting.ini`, which only it installs (both patches unusable, "None"
+  recommended); 2.0 by `ViewAtmosphere.ini` or `SceneManager.ini`, new in 2.0 (its patch
+  recommended, 1.9.1's unusable); otherwise an installed `CommunityShaders.dll` is taken for 1.9.1.
+  All of this is MO2 only: Vortex answers `fileDependency` from its plugin list, so there the
+  option texts, which name the exact versions, are all the user gets.
+- Each fork's branch must be on GitHub as built (SOURCE.txt links it): the script warns when the
+  local branch differs from `fork/<branch>` (as last fetched).
 - `LICENSE`, `SOURCE.txt` and `THIRD-PARTY-NOTICES.txt` at the archive's root, outside both
   options: the GPL text, the GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`),
   and the license of every library in both DLLs, gathered from each build tree's
