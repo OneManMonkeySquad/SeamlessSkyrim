@@ -1767,23 +1767,6 @@ namespace
 				const Perf::Scope scope("portal cull");
 				RE::BSCullingProcess::Process(context);
 			}
-			if (nativeShadows) {
-				// Culled again into an accumulator in the engine's depth mode (the main view's prepass
-				// accumulator's, ID 415008), which makes the passes the engine's prepass draws.
-				static REL::Relocation<RE::BSShaderAccumulator**> engineDepth{ REL::RelocationID(528063, 415008) };
-				auto& depthData = portalDepthAccumulator->GetRuntimeData();
-				depthData.renderMode = (*engineDepth.get())->GetRuntimeData().renderMode;
-				depthData.activeShadowSceneNode = root;
-				depthData.eyePosition = portalCamera->world.translate;
-				ResetAccumulator(portalDepthAccumulator.get());
-				RE::BSCullingProcess::CullingContext depthContext;
-				depthContext.accumulator.reset(portalDepthAccumulator.get());
-				depthContext.camera.reset(cullCamera.get());
-				depthContext.scene.reset(root);
-				depthContext.cullMode = context.cullMode;
-				const Perf::Scope scope("portal depth cull");
-				RE::BSCullingProcess::Process(depthContext);
-			}
 			if (capturing) {
 				ShowActorsAgain(actors);
 			} else {
@@ -1911,6 +1894,28 @@ namespace
 		}
 		const auto submitFlags = atRenderScale ? LiveRenderFlags() : kRenderFlags;
 		if (nativeShadows) {
+			{
+				// Culled again into an accumulator in the engine's depth mode (the main view's prepass
+				// accumulator's, ID 415008), which makes the passes the engine's prepass draws. Culled
+				// here, after the portal's shadow maps: their cull rebuilds the shapes' depth-mode pass
+				// lists, and the passes of a cull made before it were freed by the time they were drawn
+				// (crashed in SE 1.5.97 outside Whiterun's gate).
+				static REL::Relocation<RE::BSShaderAccumulator**> engineDepth{ REL::RelocationID(528063, 415008) };
+				auto& depthData = portalDepthAccumulator->GetRuntimeData();
+				depthData.renderMode = (*engineDepth.get())->GetRuntimeData().renderMode;
+				depthData.activeShadowSceneNode = root;
+				depthData.eyePosition = portalCamera->world.translate;
+				ResetAccumulator(portalDepthAccumulator.get());
+				RE::BSCullingProcess::CullingContext depthContext;
+				depthContext.accumulator.reset(portalDepthAccumulator.get());
+				depthContext.camera.reset(cullCamera.get());
+				depthContext.scene.reset(root);
+				depthContext.cullMode = context.cullMode;
+				const auto        actors = ShowActorsForCull(Portal::Manager::RemoteCells());
+				const Perf::Scope scope("portal depth cull");
+				RE::BSCullingProcess::Process(depthContext);
+				HideActorsAgain(actors);
+			}
 			{
 				const Perf::Scope scope("portal depth submit");
 				inPortalSubmit = true;
