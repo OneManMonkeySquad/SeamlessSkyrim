@@ -14,6 +14,13 @@
   time (user). Not reproduced: no save from before the quest. Possibly the same lost-item bug fixed with
   `belethors-dropped-item-out-and-in`, or the purge of the city's cells after a gate trip
   (`Travel.cpp`, `PurgeBufferedCells`).
+- With a doorway in view the view jerks back and forth every ~100 ms, "like network lag" (user;
+  also in a user's video of an older version on the native backend, at Belethor's from the
+  street). In the video, standing still, the screen cycles through the same three images for over
+  a second, each a different camera position, as if the swap chain's buffers were presented
+  without the world drawn into them. Not reproduced: the November 22 build on SE 1.5.97 (native
+  backend) after several walks through Belethor's and Arcadia's and the city gate, nor the
+  current build on AE with the fork, at 60 fps.
 - Physics objects and arrows are not carried through a doorway.
 - Physics objects can break.
 - The street's particles (Riften's falling leaves) drawn inside an interior it is merged into, in front of the doorway too (Mistveil Keep's hall, looking out). Cause not looked into.

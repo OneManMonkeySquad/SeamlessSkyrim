@@ -2363,38 +2363,52 @@ namespace
 		constexpr float kHeldSeconds = 0.15f;
 		RE::FormID  door = 0;
 		float       depth = 0.0f;
+		bool        past = false;
 		const float yaw = a_player->GetAngleZ();
 		const auto  facing = RE::NiPoint3{ std::sin(yaw), std::cos(yaw), 0.0f };
 		const auto  position = a_player->GetPosition();
-		if (a_player->IsMoving() && crossCooldown <= 0.0f) {
+		if (crossCooldown <= 0.0f) {
 			for (const auto& [id, standIn] : standIns) {
 				auto* ref = Lookup(id);
 				if (standIn.handedOver || standIn.swing < 0.5f || !ref || !ref->Get3D() || !InPlayerSpace(ref, a_here) || ref->IsLocked()) {
 					continue;
 				}
+				// A gate onto the player's own worldspace holds nobody back: its passage leads on into
+				// that worldspace's low-detail copy of the city, where the player walked on between its
+				// land mounds and stayed. Its side is the stand-in's own (AwayFrom turns with the
+				// player, so the plane could never be passed by it): past the plane, they are taken
+				// through, at whatever height and facing. Run back in right after a trip out, the plane
+				// was passed within the crossing's cooldown, and when it ended the player stood on the
+				// copy's land below the gateway's bottom.
+				const bool  open = standIn.gate && !standIn.picture;
+				auto        inward = open ? Portal::Doors::ToShown(ref).rotate * standIn.inwardInCell : AwayFrom(ref, position);
+				inward.z = 0.0f;
+				inward.Unitize();
 				const auto  center = Portal::Doors::Center(ref);
 				const auto  size = Portal::Doors::Size(ref);
-				const auto  inward = AwayFrom(ref, position);
 				const auto  offset = position - center;
 				const float d = offset.x * inward.x + offset.y * inward.y;  // < 0: in front
 				const float side = std::abs(offset.x * inward.y - offset.y * inward.x);
 				const float bottom = center.z - size.halfHeight;
-				if (d >= -(size.halfDepth + kReach) && side <= size.halfWidth && position.z >= bottom - 64.0f && position.z <= bottom + size.halfHeight &&
-					facing.Dot(inward) > 0.5f) {
+				past = open && d >= 0.0f && side <= size.halfWidth;
+				if (past || (a_player->IsMoving() && d >= -(size.halfDepth + kReach) && side <= size.halfWidth && position.z >= bottom - 64.0f &&
+								position.z <= bottom + size.halfHeight && facing.Dot(inward) > 0.5f)) {
 					door = id;
 					depth = d;
 					break;
 				}
 			}
 		}
-		if (!door || door != pressing.door) {
-			pressing = { door, depth, 0.0f };
-			return;
-		}
-		pressing.held = depth - pressing.depth < kHeldSpeed * a_delta ? pressing.held + a_delta : 0.0f;
-		pressing.depth = depth;
-		if (pressing.held < kHeldSeconds) {
-			return;
+		if (!past) {
+			if (!door || door != pressing.door) {
+				pressing = { door, depth, 0.0f };
+				return;
+			}
+			pressing.held = depth - pressing.depth < kHeldSpeed * a_delta ? pressing.held + a_delta : 0.0f;
+			pressing.depth = depth;
+			if (pressing.held < kHeldSeconds) {
+				return;
+			}
 		}
 		pressing = {};
 		crossCooldown = 1.0f;

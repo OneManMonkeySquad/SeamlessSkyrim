@@ -1174,6 +1174,61 @@
       }
     ]
   },
+  "whiterun-gate-run-back": {
+    "note": "Into Whiterun through its gate, out again, and straight back in at a run before the city is attached again (~2 s). Was: the player ran on through the open gate into Tamriel's low-detail copy of the city and stood on its land mounds. Now: the log says 'walked into before the space behind it was there: taken the engine's way' and the player ends in WhiterunWorld (0001A26F).",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 40
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 12
+        }
+      },
+      {
+        "wait": 4
+      }
+    ]
+  },
   "whiterun-gate-shadows": {
     "note": "Outside Whiterun's gate at 17:00, time stopped, ~1000 units from the gate looking in; then move_to [18750,-7425,-3700] (~600 units) and compare the city through the gate. Was: the shadows behind the gate changed with the distance (far: the left house's front and the signpost in shadow, near: in sun), the fork linearised the portal pass's depth with the world camera's near/far.",
     "steps": [
