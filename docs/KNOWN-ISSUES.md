@@ -31,6 +31,12 @@ Open bugs and things not tried. A fixed one comes out.
 ## Looks wrong
 
 - The skylight (the indoor stand-in for the sun) in The Drunken Huntsman turns off when seen from outside (jarring).
+- Walking out of the Bannered Mare at dusk (`bannered-mare-walk-out`, 19:30): the sky and the
+  distance turn bluer in the frame of the crossing (sky ~(122,93,98) to (144,124,165) in sRGB, the
+  houses' blue ~44 to ~90); the street's surfaces match since the street gets IBL indoors. The tone
+  blend is continuous there (64% to 57% indoor weight) and turning IBL off doesn't change it.
+  Suspected: the sky's fog. Indoors `Sky::fogNear/Far/Power/Clamp` hold the interior's
+  (27853, 163840, 1, 1), outdoors the weather's (0, 150000, 0.615, 0.92); not tried.
 - With a doorway in view the view jerks back and forth every ~100 ms, "like network lag" (user;
   also in a user's video of an older version on the native backend, at Belethor's from the
   street). In the video, standing still, the screen cycles through the same three images for over

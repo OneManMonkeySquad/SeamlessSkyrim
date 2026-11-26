@@ -27,6 +27,8 @@ features` in the fork lists them):
 - `Data/Shaders/Water.hlsl`
 - `Data/Shaders/Particle.hlsl`
 - `Data/Shaders/Skylighting/UpdateProbesCS.hlsl`
+- `Data/Shaders/DeferredCompositeCS.hlsl`
+- `Data/Shaders/IBL/IBL.hlsli`
 
 After changing an include (`Common/*.hlsli`) the shader cache must be cleared, and the shaders
 then compile for minutes: BUILD.md, "Community Shaders fork".
@@ -113,6 +115,15 @@ Changes by file:
   calls it with the portal's kind, `EndPortalSharedData` with the world's (`!Util::IsInterior()`).
   `GetCommonBufferData` turns IBL off in a portal pass while `computedOutdoors` is false. Without
   this the street seen through a doorway from indoors was lit without IBL and didn't match the street.
+  The street merged into an interior (Interior Sun on for it, `SeamlessPortal_SetInteriorSun`) gets
+  the sky's IBL too: `SeamlessStreetIBL()` (IBL on in its settings, `computedOutdoors`, not in a
+  loading screen or the map) binds the textures although IBL is off for the interior (in `Prepass`,
+  which runs every frame and otherwise returns early indoors; `ReflectionsPrepass` runs only when a
+  reflection cubemap is drawn, and `EndPortalSharedData`), and `State` sends `SeamlessParams.w` 2 for it. `Prepass` fills the sky's SH only
+  outdoors (its sky term is 0 indoors anyway), so with IBL on in interiors the texture still holds
+  the last outdoor sky. Without it the street seen from inside was darker and less blue than
+  outside (with `DALCMode` 2 outdoors IBL adds the sky's light to the ambient), and changed in one
+  frame on walking out.
 - `src/Deferred.cpp/.h`: `PrecompileComposites` compiles both deferred composite compute shaders
   on a background thread (they were compiled on first use: a ~150 ms stall when walking through a
   door without a loading screen); `compositeLock` guards the two getters. Started from
@@ -192,8 +203,17 @@ Changes by file:
   For a merged shape (`ExtraFlags::SeamlessRemote`) the world's clustered lights are skipped in the
   LLF light loop: its strict lights (the room's own) light it alone.
   Also for a merged shape: the IBL diffuse replacement of the ambient is skipped (it lit the room
-  with the outdoor sky), lights and ambient are multiplied by `seamlessLightScale`, and
+  with the outdoor sky), except for the street merged into an interior with
+  `SharedData::SeamlessStreetIBL()` (`SeamlessParams.w` 2), which gets
+  `ImageBasedLighting::GetStreetDiffuseIBL` (`features/IBL/Shaders/IBL/IBL.hlsli`: as
+  `GetDiffuseIBL`, but the sky term not zeroed indoors and the env ratio taken against the street's
+  ambient); lights and ambient are multiplied by `seamlessLightScale`, and
   `psout.Reflectance` is scaled by `0.5 * seamlessLightScale` (outdoor cubemap reflections).
+- `DeferredCompositeCS.hlsl` (with Screen Space GI it takes the ambient's colour again, its
+  brightness from the lighting pass): for a pixel of the street merged into an interior
+  (`SeamlessParams.w` set, `SeamlessDoorClips(position, false)`) the colour comes from the street's
+  ambient (`SeamlessRemoteAmbientFor`, room 0) and, with `SeamlessStreetIBL()`, from
+  `GetStreetDiffuseIBL`; it was the interior's, which tinted the street with the room's ambient.
 - Both passes take the masked pixel's position from `SharedData::SeamlessPixelPosition(SV_Position)`
   in the main view (the lighting pass falls back to its interpolated position in reflections and
   cubemaps): with different sources the doorway's edge z-fights.

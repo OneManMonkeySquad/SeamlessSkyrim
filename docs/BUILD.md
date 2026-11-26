@@ -218,6 +218,9 @@ town falls between screenshots):
   in the background while the route runs; then `ffmpeg -i out.mkv -vf scale=344:144
   -fps_mode passthrough f_%04d.png` and look for frames unlike both neighbours. A walk's first
   frame turns the view at once (the steering), which also stands out.
+- `walk_to` straight after loading a save can stay put ("stuck"), and a route's next `move` in
+  the interior's coordinates then drops the player into the street's worldspace at those
+  coordinates (fell to death once). Check the cell before such a `move`, or start from `place`.
 
 Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
