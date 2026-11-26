@@ -18,7 +18,8 @@ The archive holds:
 
 The Community Shaders part is a separate option because it is only a patch: installed without
 Community Shaders, its DLL runs with none of the shaders and data it expects and rendering breaks.
-The installer preselects it when CommunityShaders.dll is already installed.
+The installer preselects it when CommunityShaders.dll is already installed, and blocks it when
+Bottled Shaders is (same DLL name; it would be replaced by Community Shaders 1.9.1's).
 
 Door tunings made in game (the game's SeamlessSkyrim_Doors_User.ini) are moved into package\'s
 SeamlessSkyrim_Doors.ini first (tools\fold-door-tunings.ps1; commit them there). The user file is

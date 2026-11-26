@@ -9,10 +9,13 @@
 			<optionalFileGroups order="Explicit">
 				<!-- A forced choice rather than a checkbox: Vortex answers fileDependency from its
 				     plugin list, which never holds a DLL, so only MO2 can preselect the right answer. -->
-				<group name="Do you use Community Shaders 1.9.1?" type="SelectExactlyOne">
+				<!-- Bottled Shaders ships the same CommunityShaders.dll, so it is told apart by feature
+				     files only it has (Snow Cover, Hair Backlighting). The patch would replace its DLL and
+				     shaders with Community Shaders 1.9.1's and break it. Patterns: the first match wins. -->
+				<group name="Do you use Community Shaders 1.9.1 (not Bottled Shaders)?" type="SelectExactlyOne">
 					<plugins order="Explicit">
 						<plugin name="Yes">
-							<description>Installs a patch for Community Shaders 1.9.1 that draws the rooms behind doors with their own light. SeamlessSkyrim must win its file conflicts with Community Shaders and Skylighting.</description>
+							<description>Installs a patch for Community Shaders 1.9.1 that draws the rooms behind doors with their own light. SeamlessSkyrim must win its file conflicts with Community Shaders and Skylighting. Not for Bottled Shaders or another fork or version of Community Shaders: it replaces their DLL and shaders with Community Shaders 1.9.1's and breaks them.</description>
 							<files>
 								<folder source="CommunityShaders" destination="" />
 							</files>
@@ -20,6 +23,13 @@
 								<dependencyType>
 									<defaultType name="Optional" />
 									<patterns>
+										<pattern>
+											<dependencies operator="Or">
+												<fileDependency file="Shaders\Features\SnowCover.ini" state="Active" />
+												<fileDependency file="Shaders\Features\HairBacklighting.ini" state="Active" />
+											</dependencies>
+											<type name="NotUsable" />
+										</pattern>
 										<pattern>
 											<dependencies operator="And">
 												<fileDependency file="SKSE\Plugins\CommunityShaders.dll" state="Active" />
@@ -31,12 +41,19 @@
 							</typeDescriptor>
 						</plugin>
 						<plugin name="No">
-							<description>No Community Shaders, or another version of it. Doors still open without a loading screen, but the rooms behind them aren't drawn into the street.</description>
+							<description>No Community Shaders, another version of it, or Bottled Shaders. Doors still open without a loading screen, but the rooms behind them aren't drawn into the street.</description>
 							<files />
 							<typeDescriptor>
 								<dependencyType>
 									<defaultType name="Optional" />
 									<patterns>
+										<pattern>
+											<dependencies operator="Or">
+												<fileDependency file="Shaders\Features\SnowCover.ini" state="Active" />
+												<fileDependency file="Shaders\Features\HairBacklighting.ini" state="Active" />
+											</dependencies>
+											<type name="Recommended" />
+										</pattern>
 										<pattern>
 											<dependencies operator="And">
 												<fileDependency file="SKSE\Plugins\CommunityShaders.dll" state="Missing" />

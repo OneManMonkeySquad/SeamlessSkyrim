@@ -74,7 +74,10 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   selectable otherwise. On its own the fork is a partial Community Shaders: its DLL runs without
   the shaders and data it expects, rendering breaks, and SeamlessSkyrim picks the fork backend
   instead of the native one. It still can't tell Community Shaders versions apart: the option's
-  text says 1.9.1.
+  text says 1.9.1. Bottled Shaders (a Community Shaders fork with the same DLL name) is told
+  apart by `Shaders\Features\SnowCover.ini` or `HairBacklighting.ini`, which only it installs:
+  the option is then unusable and "No" recommended. All of this is MO2 only: Vortex answers
+  `fileDependency` from its plugin list, so there the descriptions are all the user gets.
 - `LICENSE`, `SOURCE.txt` and `THIRD-PARTY-NOTICES.txt` at the archive's root, outside both
   options: the GPL text, the GitHub links to this repo and the fork (`-SourceUrl`, `-CsSourceUrl`),
   and the license of every library in both DLLs, gathered from each build tree's
