@@ -112,7 +112,10 @@ Across the doorway:
   rest of the view) and kept by room, not by side. Estimated from the cells' light records it
   matched nothing: inverse-square lights (Lux) keep 1 in `radius.x` and their real reach in the
   fork. 1 (the light as measured) left the doorway's sides black next to a bright hall through
-  the tone map; `[Portals] fDoorwayLight` is 4.
+  the tone map; `[Portals] fDoorwayLight` is 4. Each measurement includes the light the other
+  room sends in, but the loop stays far from running away: in the Pelagius Wing's doorway, at 4
+  each room's measured light rose by 35% and 1% over 0.01 (loop gain about 0.003), and at 16 by
+  175% and 10%.
 
 ## 4. Walk into rooms (`[Portals] bWalkIntoRooms`, built, off)
 

@@ -104,8 +104,8 @@ namespace Portal::Manager
 	[[nodiscard]] json DescribeAdaptation();
 	// Diagnostics: false draws rooms seen from the street as from inside, to compare.
 	void SetStreetEye(bool a_on);
-	// Diagnostics: how strongly two interiors joined by an open door light each other through it (1
-	// by default, 0 not at all).
+	// [Portals] fDoorwayLight: how strongly two interiors joined by an open door light each other
+	// through it (1: the light as measured, 0: not at all).
 	void SetDoorwayLight(float a_scale);
 	// [Portals] bMergeInteriors, for A/B comparisons: off, a room behind a door between two interiors
 	// is drawn by the portal pass.

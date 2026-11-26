@@ -251,6 +251,7 @@ namespace Portal
 		Placement                       placed;  // while merged
 		// Merged into an interior: the nodes holding the cells' portals' shared geometry, hidden (see Merge).
 		std::vector<RE::NiPointer<RE::NiNode>> sharedHolders;
+		bool                                   hungIndoors = false;  // Merge was given a parent
 		void                    MoveBounds(const RE::NiTransform& a_toSource);
 
 	public:

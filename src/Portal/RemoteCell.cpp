@@ -1317,6 +1317,10 @@ namespace Portal
 	void RemoteCell::Remap(const Placement& a_placement)
 	{
 		SEAMLESS_ASSERT(merged);
+		// Hung into an interior, the cells stay in the room of the door they were merged through
+		// (Merge's a_parent), which another door may not be in. Indoors the door changes only by a
+		// new merge (the Manager lets go of a merged space before switching doors).
+		SEAMLESS_ASSERT(!hungIndoors || a_placement.sourceDoor == placed.sourceDoor);
 		placed = a_placement;
 		const auto& a_toSource = a_placement.toSource;
 		RestoreBounds();
@@ -1811,6 +1815,7 @@ namespace Portal
 	json RemoteCell::Merge(const Placement& a_placement, RE::NiNode* a_parent)
 	{
 		placed = a_placement;
+		hungIndoors = a_parent != nullptr;
 		const auto& a_toSource = a_placement.toSource;
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		auto* here3D = Cell3D(here);
