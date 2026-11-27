@@ -336,6 +336,10 @@ Changes by file:
   capture is dropped. Applied later it read the freed texture (crash in `DetectComplexGrass`):
   with a street kept loaded while the player is indoors, grass is captured and destroyed with no
   grass frame in between.
+- `src/TruePBR.cpp`, `src/TruePBR/BSLightingShaderMaterialPBR*.cpp/.h`: the two tables of PBR
+  materials (`All`) are locked (`AllMutex`). Upstream's fix #3137 from after 1.9.1, written out by
+  hand (it doesn't apply); the 2.0 bases have it. Unlocked, loader threads and the main thread
+  corrupt the tables, and cells attached while the game renders make that likelier.
 
 ## Shaders
 
