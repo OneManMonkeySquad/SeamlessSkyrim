@@ -212,8 +212,8 @@ textures: leave it off for timing measurements. `(Get-Counter "\GPU Process Memo
 Committed")` shows GPU memory the game holds; private bytes follow it.
 
 Test suite (`run_suite`):
-- Runs the routes listed in `tools/skyrim-mcp/suite.json`: only paths that broke more than once,
-  not every stored route. Launches the game if needed; a route the game crashed in runs once more,
+- Runs the routes listed in `tools/skyrim-mcp/suite.json`: only paths that broke more than once
+  or that the user asked to keep working, not every stored route. Launches the game if needed; a route the game crashed in runs once more,
   the plugin's log of the crashed game kept beside the run's pictures (the relaunch starts it anew).
 - A route step `{"check": {"name": ..., "merged": true}}` calls bridge `scene_check`: still things
   (statics, trees, furniture, containers) around the player and around the door in the merged
@@ -221,6 +221,15 @@ Test suite (`run_suite`):
   distant LOD too. It also takes a picture. `"worldspace": "<form ID>"` also fails it when the
   player is elsewhere: walked through a city gate without the crossing, they stand in the street
   worldspace's low-detail copy of the city, and the scene check passes there.
+- For behaviour rather than placement, a check also takes `"scene": false` (no scene check:
+  indoors with the street merged it fails anyway), `"cell"`, `"active"` (the door holding the
+  portal), `"used"` (the doors open from use) and `"logPresent"` / `"logAbsent"` / `"logOrder"`:
+  regexes over the plugin log since the previous check, an order entry `[regex, seconds]` at least
+  that long after the one before. Events rather than step timing: a route step's wait runs long by
+  bridge overhead. A swing too short to step in and out of is slowed with `sgtm 0.1` (route
+  `riften-orphanage-door-bounce`).
+- The MCP server reads `server.py` once, at its start: after a change to it, reconnect it
+  (`/mcp`) or run the route from `tools/skyrim-mcp` with `uv run python` and `import server`.
 - `walk_to` stops at a door crossing ("travelled through a door"): a route walking on past it
   needs a second walk step.
 - The pictures come back beside the last accepted ones (`accept=true` makes this run's the

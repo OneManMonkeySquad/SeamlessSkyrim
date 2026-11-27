@@ -1154,7 +1154,7 @@
     ]
   },
   "riften-orphanage-door-bounce": {
-    "note": "Honorhall Orphanage, Riften: two doors out to different street cells, A 00056B9F (-512,192, faces south) and B 00016CEE (-128,-320), a wall between them. Open A, teleport where B is the better door, come back after a moment: A must be seen part-way shut and swinging open again, with no 'released' line and B never attached. Was: A let go at once while open, shut in the next frame (no stand-in for a door out of a building). Run with capture. For the other half (stay at B 2 s): 'used: shuts' + 'released: a closer door' ~0.4 s after arriving, then A shut on return.",
+    "note": "Honorhall Orphanage, Riften: street doors A 00056B9F and B 00016CEE into different street cells, a wall between them. The game slowed (sgtm 0.1) so the 0.4 s swing shut and the 0.2 s door scan last long enough to step between. (1) A opened, B made the nearer door for a moment: A starts swinging shut, swings open again on the return, nothing is let go and B never attached. (2) At B: A swings shut first (seconds, slowed), its use ends, and only then is it let go and B attached. (3) Back at A: A attached again, shut, not opening by itself. Was: A let go at once while open (shut in the next frame, no stand-in for a door out of a building), B attached and let go again within 0.3 s. Run with capture to watch the bounce's frames.",
     "steps": [
       {
         "load": "SeamlessTestMistveil"
@@ -1182,10 +1182,20 @@
         "wait": 6
       },
       {
+        "check": {
+          "active": "00056B9F",
+          "name": "at-a",
+          "scene": false
+        }
+      },
+      {
+        "console": "sgtm 0.1"
+      },
+      {
         "activate": "00056B9F"
       },
       {
-        "wait": 1.5
+        "wait": 7
       },
       {
         "move": [
@@ -1195,7 +1205,7 @@
         ]
       },
       {
-        "wait": 0.25
+        "wait": 2.5
       },
       {
         "move": [
@@ -1208,10 +1218,87 @@
         "heading": 180
       },
       {
-        "frames": 30
+        "frames": 40
       },
       {
-        "wait": 1
+        "wait": 8
+      },
+      {
+        "check": {
+          "active": "00056B9F",
+          "logAbsent": [
+            "released:",
+            "activated door"
+          ],
+          "logOrder": [
+            "door 00056B9F swings shut before its space is let go",
+            "door 00056B9F keeps its space: swings open again"
+          ],
+          "name": "bounce",
+          "scene": false,
+          "used": [
+            "00056B9F"
+          ]
+        }
+      },
+      {
+        "move": [
+          -260,
+          -40,
+          70
+        ]
+      },
+      {
+        "wait": 10
+      },
+      {
+        "check": {
+          "active": "00016CEE",
+          "logOrder": [
+            "door 00056B9F swings shut before its space is let go",
+            [
+              "door 00056B9F used: shuts",
+              2
+            ],
+            "released: a closer door",
+            "activated door 00016CEE"
+          ],
+          "name": "at-b",
+          "scene": false,
+          "used": []
+        }
+      },
+      {
+        "console": "sgtm 1"
+      },
+      {
+        "move": [
+          -512,
+          380,
+          70
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 4
+      },
+      {
+        "check": {
+          "active": "00056B9F",
+          "logAbsent": [
+            "door 00056B9F used: opens",
+            "swings shut before its space is let go"
+          ],
+          "logOrder": [
+            "released: a closer door",
+            "activated door 00056B9F"
+          ],
+          "name": "back-at-a",
+          "scene": false,
+          "used": []
+        }
       }
     ]
   },
@@ -1988,6 +2075,64 @@
       {
         "check": {
           "name": "inside"
+        }
+      }
+    ]
+  },
+  "winterhold-yard-trapdoor-down-and-up": {
+    "note": "College of Winterhold yard: the trapdoor to the Midden (00058244, lies flat) and the ladder back up (00055DA5) stay ordinary doors: no portal on either, used, the engine takes the player through with its loading screen. Was: the trapdoor taken for a seamless door (a portal in the ground, its activation swallowed).",
+    "steps": [
+      {
+        "load": "SeamlessTestWinterholdArcanaeum"
+      },
+      {
+        "place": "winterhold-yard-trapdoor"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "check": {
+          "cell": "WinterholdCollegeExterior",
+          "logAbsent": [
+            "activated door 00058244"
+          ],
+          "name": "yard",
+          "scene": false
+        }
+      },
+      {
+        "activate": "00058244"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "cell": "WinterholdCollegeMidden01",
+          "logAbsent": [
+            "activated door 00055DA5",
+            "crossing door 00058244"
+          ],
+          "name": "midden",
+          "scene": false
+        }
+      },
+      {
+        "activate": "00055DA5"
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "cell": "WinterholdCollegeExterior",
+          "logAbsent": [
+            "activated door 00058244",
+            "crossing door 00055DA5"
+          ],
+          "name": "yard-again",
+          "scene": false
         }
       }
     ]

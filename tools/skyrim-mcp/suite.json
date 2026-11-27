@@ -1,5 +1,5 @@
 {
-  "note": "Routes run_suite runs by default: the paths that broke more than once, not every stored route. afterLoad: console commands after each load step, for the same light in every picture.",
+  "note": "Routes run_suite runs by default: the paths that broke more than once, and those asked to be kept working, not every stored route. afterLoad: console commands after each load step, for the same light in every picture.",
   "afterLoad": [
     "set gamehour to 13"
   ],
@@ -12,6 +12,8 @@
     "windhelm-sadris-walk-in",
     "winterhold-arcanaeum-walk-in",
     "riften-south-gate-turn-back",
-    "drunken-huntsman-doors-after-load"
+    "drunken-huntsman-doors-after-load",
+    "riften-orphanage-door-bounce",
+    "winterhold-yard-trapdoor-down-and-up"
   ]
 }

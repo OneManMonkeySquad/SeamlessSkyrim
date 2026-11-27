@@ -797,6 +797,65 @@ SUITE_RUNS = Path(tempfile.gettempdir()) / "skyrim-mcp" / "suite"
 suite_route: str | None = None
 suite_run_dir: Path | None = None
 route_checks: list[dict[str, Any]] = []
+# Where in the plugin log the lines a check's log options read begin: the route's start, then the
+# previous check. Each check reads what its own part of the route wrote.
+check_log_from = 0
+
+
+def log_size() -> int:
+    return PLUGIN_LOG.stat().st_size if PLUGIN_LOG.exists() else 0
+
+
+def start_check_log() -> None:
+    global check_log_from
+    check_log_from = log_size()
+
+
+def check_log_lines() -> list[str]:
+    """The plugin log lines written since the route started or the last check, and the next check
+    reads from here."""
+    global check_log_from
+    time.sleep(0.3)  # the lines of the last frames flushed
+    size = log_size()
+    start = check_log_from if size >= check_log_from else 0  # the game restarted: all new
+    with PLUGIN_LOG.open("rb") as f:
+        f.seek(start)
+        lines = f.read().decode("utf-8", "replace").splitlines()
+    check_log_from = size
+    return lines
+
+
+def log_time(line: str) -> float:
+    """Seconds into the day of a plugin log line ("[15:24:19.644] ...")."""
+    h, m, s = line[1:13].split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def log_problems(arg: dict[str, Any], lines: list[str]) -> list[str]:
+    """A check's log options, over the lines its part of the route wrote. "logPresent": regexes
+    each matched by some line; "logAbsent": regexes no line matches; "logOrder": regexes matched in
+    this order, each entry a regex or [regex, seconds]: at least that long after the previous one's
+    line, by the log's clock (wall time: with the game slowed by sgtm, the gaps grow)."""
+    import re
+
+    problems: list[str] = []
+    for pattern in arg.get("logPresent", []):
+        if not any(re.search(pattern, line) for line in lines):
+            problems.append(f"log: no line matches '{pattern}'")
+    for pattern in arg.get("logAbsent", []):
+        if found := next((line for line in lines if re.search(pattern, line)), None):
+            problems.append(f"log: '{pattern}' should not be there: {found[:200]}")
+    at, previous = 0, None
+    for entry in arg.get("logOrder", []):
+        pattern, seconds = (entry, 0.0) if isinstance(entry, str) else (entry[0], float(entry[1]))
+        index = next((i for i in range(at, len(lines)) if re.search(pattern, lines[i])), None)
+        if index is None:
+            problems.append(f"log: no line matches '{pattern}'" + (f" after '{previous[:120]}'" if previous else ""))
+            break
+        if previous is not None and seconds > 0.0 and (gap := log_time(lines[index]) - log_time(previous)) < seconds:
+            problems.append(f"log: '{pattern}' {gap:.2f} s after the line before, expected at least {seconds:.2f} s")
+        at, previous = index + 1, lines[index]
+    return problems
 
 
 def take_picture(path: Path, max_width: int = 960) -> None:
@@ -816,14 +875,32 @@ def check_step(arg: dict[str, Any]) -> str:
     """{"check": {}}: scene_check (radius 3000), and a picture while run_suite runs. Options:
     "radius"; "merged": true or false, whether a space should be merged behind the door (not
     checked when left out); "worldspace": the form ID the player must be in (a city's own, not the
-    street worldspace's low-detail copy of it); "name": the picture's name within the route
-    (default: its number)."""
-    result = bridge.call("scene_check", radius=float(arg.get("radius", 3000)))
-    problems: list[str] = []
-    if "worldspace" in arg:
-        here = (bridge.call("state").get("player") or {}).get("worldspace", "")
-        if here.upper() != str(arg["worldspace"]).upper():
+    street worldspace's low-detail copy of it); "cell": the editor ID of the player's cell; "name": the picture's name within the route
+    (default: its number); "scene": false skips the scene check (where it fails anyway, e.g.
+    indoors with the street merged); "active": the door that must hold the portal (form ID, ""
+    for none); "used": the doors standing open because they were used (DoorUse), [] for none;
+    "logPresent", "logAbsent", "logOrder": the plugin log since the last check (see
+    log_problems)."""
+    problems = log_problems(arg, check_log_lines())
+    empty = {"checked": 0, "problems": [], "problemCount": 0}
+    result = bridge.call("scene_check", radius=float(arg.get("radius", 3000))) if arg.get("scene", True) else {"here": empty}
+    status = bridge.call("portal_status") if "active" in arg or "used" in arg else {}
+    if "active" in arg:
+        active = (status.get("active") or {}).get("sourceDoor", "")
+        if active.upper() != str(arg["active"]).upper():
+            problems.append(f"portal on door {active or 'none'}, expected {arg['active'] or 'none'}")
+    if "used" in arg:
+        used = sorted(entry["door"].upper() for entry in status["doorUse"]["used"])
+        if used != sorted(str(door).upper() for door in arg["used"]):
+            problems.append(f"doors in use {used or 'none'}, expected {arg['used'] or 'none'}")
+    if "worldspace" in arg or "cell" in arg:
+        player = bridge.call("state").get("player") or {}
+        here = player.get("worldspace", "")
+        if "worldspace" in arg and here.upper() != str(arg["worldspace"]).upper():
             problems.append(f"in worldspace {here or 'none'}, expected {arg['worldspace']}")
+        cell = (player.get("cell") or {}).get("editorId", "")
+        if "cell" in arg and cell.upper() != str(arg["cell"]).upper():
+            problems.append(f"in cell {cell or 'none'}, expected {arg['cell']}")
     for part in ("here", "merged"):
         if result.get(part):
             problems += [f"{part}: {p}" for p in result[part]["problems"]]
@@ -907,6 +984,7 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
             steps = all_routes[name]["steps"]
             for attempt in (1, 2):
                 suite_route, route_checks = name, []
+                start_check_log()
                 done: list[str] = []
                 outcome = "ok"
                 try:
@@ -1010,6 +1088,7 @@ def run_route(name: str = "", steps: list[dict[str, Any]] | None = None, grep: s
     try:
         if route_capture is not None:
             bridge.call("capture_events", directory=str(route_capture))
+        start_check_log()
         with LogWatcher() as watcher:
             for step in steps or []:
                 try:

@@ -2986,8 +2986,14 @@ namespace Portal::Manager
 			const bool wanted = door && linkedDoor && !off && !locked && Wanted(door, linkedDoor);
 			const bool handOver = wanted && !StreetShownLive(door, Outdoors(linkedDoor));
 			const bool shutFirst = end && wanted && !handOver;
-			if (shutFirst != std::exchange(shuttingToRelease, shutFirst) && (shutFirst ? !DoorShut() : wanted)) {
-				PlayDoorSound(portal->sourceDoor, portal->linkedDoor, !shutFirst);
+			if (shutFirst != std::exchange(shuttingToRelease, shutFirst)) {
+				// Read by the route riften-orphanage-door-bounce's checks.
+				logger::info("portal: door {:08X} {}", portal->sourceDoor,
+					shutFirst ? std::format("swings shut before its space is let go ({})", end) :
+					            std::format("keeps its space{}", wanted ? ": swings open again" : ""));
+				if (shutFirst ? !DoorShut() : wanted) {
+					PlayDoorSound(portal->sourceDoor, portal->linkedDoor, !shutFirst);
+				}
 			}
 			doorWanted = wanted && !shutFirst;
 			if (end && (DoorShut() || handOver || reach > ReleaseRadius() + kForceReleaseBeyond)) {
