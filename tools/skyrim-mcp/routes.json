@@ -2142,6 +2142,338 @@
       }
     ]
   },
+  "whiterun-gate-stress": {
+    "note": "Diagnostics: in and out through Whiterun's gate five times at a run, for the crashes reading floats where a pointer should be (KNOWN-ISSUES). No check: a crash is the result.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 30
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            20300,
+            -7430
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            18700,
+            -7425
+          ],
+          "run": true,
+          "stop_distance": 60,
+          "timeout_seconds": 20
+        }
+      },
+      {
+        "wait": 3
+      }
+    ]
+  },
+  "whiterun-gate-stress-engine": {
+    "note": "Diagnostics, with portals off (bridge portals_enable): in and out through Whiterun's gate five times the engine's way (using the gate), to compare with whiterun-gate-stress.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "wait": 5
+      },
+      {
+        "activate": "0001B1F1"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F3"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F1"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F3"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F1"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F3"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F1"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F3"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F1"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "activate": "0001B1F3"
+      },
+      {
+        "wait": 4
+      }
+    ]
+  },
   "windhelm-sadris-walk-in": {
     "note": "Windhelm: walk into Sadri's Used Wares (merged into the street) from the front. Was: stuck 20 units short of the door, the house's collision closing the doorway behind the door never opened.",
     "steps": [

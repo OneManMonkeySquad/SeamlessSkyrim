@@ -187,6 +187,14 @@ the end. These were expensive to find. Add new ones in the same change that need
     sets the worldspace up anew and sleeps until the task pool's loads are done (ID 75708, 50 ms
     at a time). Street cells handed over still attached failed that check and made the walk out
     slower than detaching them (`GridReadyHook` accepts them).
+  - Coming from an interior it first detaches it (+0x82: ID 19130 (cell, true)), then, the cell
+    found in the interior buffer, demotes its actors (ID 19046), or else unloads it (ID 13721).
+    With `bPreemptivelyUnloadCells:General` set (off by default) and more than
+    `iLargeIntRefCount:General` (1000) references in the interior, it then purges every buffered
+    cell and sets the worldspace up anew (+0x392: `PurgeBufferedCells`, `SetWorldSpace`).
+- **A detached interior loses its references' 3D after a while**, its cell node staying (3D=yes):
+  Arcadia's Cauldron, let go on walking into Belethor's and attached again 20 s later, took 4.7 s
+  to load. Belethor's, detached by the teleport and attached again in the same frame, was whole.
 - **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
 - **A mod's hook in a profile isn't necessarily the mod's work.** Walking in or out of Whiterun's
   shops (2026-11-16), ~25 ms of the teleport sat under `po3_LightPlacer` (ID 19411+0x257 ->

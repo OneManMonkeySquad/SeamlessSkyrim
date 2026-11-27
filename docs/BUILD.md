@@ -229,6 +229,9 @@ Test suite (`run_suite`):
   that long after the one before. Events rather than step timing: a route step's wait runs long by
   bridge overhead. A swing too short to step in and out of is slowed with `sgtm 0.1` (route
   `riften-orphanage-door-bounce`).
+- The game's `SeamlessSkyrim.ini` is a hard link into Vortex's staging folder: an edit that
+  writes a new file (`sed -i`) cuts the link. Edit it in place, or link it again
+  (`New-Item -ItemType HardLink`).
 - A step `{"bridge": {"cmd": "doors", "force": 1}}` sends a bridge command; the door force is
   put back when the route ends.
 - The MCP server reads `server.py` once, at its start: after a change to it, reconnect it

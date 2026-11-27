@@ -25,6 +25,11 @@ Open bugs and things not tried. A fixed one comes out.
   also at 11:33 the same day); walking out through Whiterun's gate, a refcount on a freed object
   in a scene walk (ID 70520+0x50, under 0EE33DE; also at 08:48); and the Winterhold `coc` crash
   below. Something writes floats (a transform?) into memory freed and reused. Not found yet.
+  Two more of the kind in shader materials (Community Shaders' PBR material's texture set, a
+  `BSEffectShaderMaterial` cloned by `Pristine`'s `CreateClone`), both during
+  `whiterun-gate-stress`, which crashed once in three runs. With remote Havok stepping off
+  (`iStepRemoteHavok=0`) the game hung instead in its second run: the main thread waiting under
+  ID 36564 → 36555 → 36544 for good.
 - Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter
   house's route): the game was gone once, with no crash log and the plugin log lost to the
   relaunch. Not again in 4 runs of the same two routes. `run_suite` now keeps the log.
