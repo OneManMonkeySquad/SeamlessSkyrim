@@ -19,7 +19,12 @@ Open bugs and things not tried. A fixed one comes out.
   Again 2026-11-27 (Open Shaders fork, AE): the frame thread waits for the frame's jobs (ID 35409
   under `EndOfFrameHook`), one job thread waits in ID 39068 (on ID 69516, event 0xD).
 - A hang right after walking out of Arcadia's (2026-11-16, agent game, once in ~17 exits): the main thread waiting for the frame's jobs (ID 35409), one job thread (an audio job, ID 39080 -> 91863) spinning in EngineFixes' `ScrapHeap::Allocate` replacement (ID 68173 -> 68144). Not reproduced; not known whether SeamlessSkyrim plays a part.
-- Loading saves one after another across worldspaces (Whiterun's Belethor's, Riften's jail) with portals on crashes now and then (ID 19165 putting an actor's 3D into a cell without 3D), also without the persistent references' 3D loading. During the sectors work (APPROACHES.md, 5), loading a save, travelling to Swindler's Den and loading again crashed with all of that switched off. Reproduced 2 of 2 (2026-11-27): route `helgen-keep-street-autodoor` (Helgen Keep, HelgenExterior merged in, "ground under only 8 of 12 NPCs ... not simulated yet"), then loading `SeamlessTestWinterholdArcanaeum`: ID 19165+0x847 (null multibound from the worldspace's map) under ID 19414, from HDT-SMP's update hook.
+- Pointers overwritten with floats (2026-11-27, AE 1.7.104): three crashes read a pointer that
+  holds two floats (0x3F039F20'3F36DF34 and the like). Loading a save right after
+  `whiterun-gate-run-back`, in the Papyrus VM's load (SkyrimSE.exe+148EF80, `mov eax,[rdi+28h]`;
+  also at 11:33 the same day); walking out through Whiterun's gate, a refcount on a freed object
+  in a scene walk (ID 70520+0x50, under 0EE33DE; also at 08:48); and the Winterhold `coc` crash
+  below. Something writes floats (a transform?) into memory freed and reused. Not found yet.
 - Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter
   house's route): the game was gone once, with no crash log and the plugin log lost to the
   relaunch. Not again in 4 runs of the same two routes. `run_suite` now keeps the log.

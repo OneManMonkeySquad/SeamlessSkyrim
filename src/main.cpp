@@ -3,6 +3,7 @@
 #include "Bridge/FrameHooks.h"
 #include "Portal/NpcTravel.h"
 #include "Portal/PortalManager.h"
+#include "Portal/RemoteCell.h"
 #include "Portal/Travel.h"
 #include "UI/Menu.h"
 #include "Probe.h"
@@ -52,6 +53,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
 			Portal::Manager::ReleaseAll("loading a save", 3.0f);
+			Portal::RemoteCell::UnloadDetachedExteriors();
 			Portal::Manager::ForgetDoors();
 			Portal::Travel::ForgetTrip();
 			break;

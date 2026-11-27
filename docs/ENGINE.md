@@ -57,6 +57,11 @@ the end. These were expensive to find. Add new ones in the same change that need
     each (ID 18976 → ID 19187); the cell must have its 3D. Also after the engine's own trip with
     its loading screen: a street let go just before it came back without them (Riften's canal
     walk outside Beggar's Row, the player in the canal).
+  - ID 19165 reads the cell's portal graph (ID 19167: the cell's own, else its worldspace's, ID
+    20513 = `TESWorldSpace::portalGraph`). Loading a save clears the worldspace's graph, then
+    moves the save's actors into their cells (ID 19799), hanging the 3D of any that has 3D into a
+    cell ID 13308 (TES, cell, false) counts as loaded: kBuilding3D to kAttached. An elk with 3D in
+    an unattached Tamriel cell crashed that (`RemoteCell::UnloadDetachedExteriors`).
   - Walking out once, Markarth's ground statics (`MrkDocksideLand01`, temporary references of
     MarkarthMines) became persistent references of a runtime cell `FF000A96 'Wilderness'`, whose 3D
     hangs under `TES::objRoot` outdoors. Why isn't known.

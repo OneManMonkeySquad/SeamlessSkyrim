@@ -769,6 +769,33 @@ namespace Portal
 		LightScene::Retire(std::move(scene));
 	}
 
+	// Loading a save takes the worldspace left down, its portal graph with it, and then moves the
+	// actors the save has elsewhere into their cells. A cell still loaded counts for that as one to
+	// hang the actor's 3D into (ID 13308), which needs the graph (ID 19165 via ID 19167): an elk
+	// that had wandered out of Helgen's street, merged into Helgen Keep, into a cell nobody attached
+	// kept its 3D, and loading the next save crashed on it every time. Cells left loaded like that
+	// are what a street shown behind a door leaves; unloaded here (ID 13721, as the engine unloads a
+	// cell), the load reads them anew.
+	void RemoteCell::UnloadDetachedExteriors()
+	{
+		std::vector<RE::TESObjectCELL*> detached;
+		{
+			auto [forms, lock] = RE::TESForm::GetAllForms();
+			RE::BSReadLockGuard guard(lock);
+			for (auto& [id, form] : *forms) {
+				auto* cell = form->As<RE::TESObjectCELL>();
+				if (cell && !cell->IsInteriorCell() && cell->cellState.get() == CellState::kUnattached) {
+					detached.push_back(cell);
+				}
+			}
+		}
+		REL::Relocation<void (*)(RE::TES*, RE::TESObjectCELL*)> unloadCell{ REL::RelocationID(13623, 13721) };
+		for (auto* cell : detached) {
+			unloadCell(RE::TES::GetSingleton(), cell);
+		}
+		logger::info("portal: {} detached exterior cell(s) unloaded before loading a save", detached.size());
+	}
+
 	void RemoteCell::HangHandedPersistent()
 	{
 		// Loaded by us while the player was indoors (a game loaded in a room after being outdoors in

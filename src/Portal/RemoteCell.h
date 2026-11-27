@@ -280,6 +280,9 @@ namespace Portal
 		// of a cell does, each once its cell is attached.
 		static void HangHandedPersistent();
 		[[nodiscard]] static bool PersistentToHang() { return !handedPersistent.empty(); }
+		// Main thread, a save about to be loaded, every space let go: every exterior cell still
+		// loaded but not attached is unloaded.
+		static void UnloadDetachedExteriors();
 		// Persistent references' 3D hung under our exterior cells (see AttachOne).
 		std::vector<RE::NiPointer<RE::NiAVObject>> borrowedPersistent;
 		// Bodies ClearPassage took out of the world, and that world.
