@@ -1629,9 +1629,11 @@ namespace Portal::Snapshot
 			constants[48] = a_view.eyeDelta.x;
 			constants[49] = a_view.eyeDelta.y;
 			constants[50] = a_view.eyeDelta.z;
-			std::memcpy(constants + 52, a_view.fog.data(), sizeof(float) * 4);
-			std::memcpy(constants + 64, a_view.fog.data() + 4, sizeof(float) * 3);
-			std::memcpy(constants + 68, a_view.fog.data() + 8, sizeof(float) * 3);
+			const bool  inStreet = a_view.streetFog && !RE::TESForm::LookupByID<RE::TESObjectREFR>(a_door)->GetParentCell()->IsInteriorCell();
+			const auto& fog = inStreet ? *a_view.streetFog : a_view.fog;
+			std::memcpy(constants + 52, fog.data(), sizeof(float) * 4);
+			std::memcpy(constants + 64, fog.data() + 4, sizeof(float) * 3);
+			std::memcpy(constants + 68, fog.data() + 8, sizeof(float) * 3);
 			constants[56] = a_plain.red;
 			constants[57] = a_plain.green;
 			constants[58] = a_plain.blue;

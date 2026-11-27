@@ -2476,6 +2476,14 @@ namespace
 		out.width = desc.Width * widthScale;
 		out.height = desc.Height * heightScale;
 		out.fog = WorldFog();
+		if (RE::PlayerCharacter::GetSingleton()->GetParentCell()->IsInteriorCell()) {
+			if (const auto street = Portal::Render::MergedFog()) {
+				// As the fork's shaders take the merged fog (Render::Backend).
+				const auto& f = *street;
+				const float range = std::max(f[1] - f[0], 1.0f);
+				out.streetFog = std::array<float, 12>{ f[0] / range, 1.0f / range, f[2], f[3], f[4], f[5], f[6], 0.0f, f[7], f[8], f[9], 0.0f };
+			}
+		}
 		return out;
 	}
 

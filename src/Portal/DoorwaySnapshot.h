@@ -28,6 +28,10 @@ namespace Portal::Snapshot
 		// 1 / (far - near), power, most it covers), near colour, far colour. The world is fogged by
 		// depth in the SSAO composite, before doorway pictures are drawn, so they fog themselves.
 		std::array<float, 12> fog{};
+		// With the player indoors, the fog of the street merged in beyond the door: a doorway standing
+		// in that street is in its haze, not in the room's. Fogged as the room, a door across a foggy
+		// market stood black in the grey.
+		std::optional<std::array<float, 12>> streetFog;
 	};
 
 	// The doorway's corners: bottom, bottom (across), top, top (across), as Doors::Quad gives them.
