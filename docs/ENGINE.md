@@ -407,6 +407,12 @@ the end. These were expensive to find. Add new ones in the same change that need
   the world scene with the attached cell's graph (`AttachGraphHook` skips it for our attaches).
   It also frees the old graph's list of occlusion shapes (`BSPortalGraph` + 0x10): before the
   skip, every remote attach left the street without its occlusion planes.
+- **The world scene's graph must never be null in a frame:** the per-actor cull (ID 40335 ->
+  ID 106433 + 0x28) reads it unchecked for every actor in the view frustum. It is set to null by
+  `SetCurrentCell` + 0x37C (until the attach installs the new cell's), ID 13317 + 0x78 (walking
+  out, the interior's), ID 19170 (an interior's loaded data freed while its graph is installed)
+  and ID 20515 (the worldspace's graph released while installed). The attach installs null for a
+  cell with no graph, but every interior has one, even with no rooms.
 
 ## Culling
 
