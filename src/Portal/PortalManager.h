@@ -35,7 +35,9 @@ namespace Portal::Manager
 	// a_holdoff: seconds before a portal may attach again (e.g. while a save is being written).
 	// a_handOver: the player is crossing into the remote (exterior) cells right now; see
 	// RemoteCell::Release.
-	void ReleaseAll(std::string_view a_reason, float a_holdoff = 0.0f, bool a_handOver = false);
+	// a_keepRooms: the rooms kept behind other doors of the street stay attached, out of sight (the
+	// player is walking into or out of a building in that street).
+	void ReleaseAll(std::string_view a_reason, float a_holdoff = 0.0f, bool a_handOver = false, bool a_keepRooms = false);
 	// Before a load: the doors held open or left swinging by stand-ins are let go. Kept, their
 	// state already matched after the load, so nothing was applied to the doors' new 3D (the box
 	// behind a panel left standing in the doorway), and the old 3D was kept alive.

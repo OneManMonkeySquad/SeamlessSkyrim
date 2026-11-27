@@ -118,9 +118,44 @@ namespace Portal
 	bool RemoteCell::Attachable(const RE::TESObjectCELL* a_cell)
 	{
 		// Attached/Attaching by the engine means it's (becoming) a current cell; never steal it.
+		// Except one the engine left attached for us on walking in (keptGrid).
 		const auto state = a_cell ? a_cell->cellState.get() : CellState::kAttached;
+		if (a_cell && state == CellState::kAttached && std::ranges::find(keptGrid, a_cell) != keptGrid.end()) {
+			return true;
+		}
 		return a_cell && a_cell != RE::PlayerCharacter::GetSingleton()->GetParentCell() && state != CellState::kAttached && state != CellState::kAttaching &&
 		       state != CellState::kDetaching;
+	}
+
+	std::vector<RE::TESObjectCELL*> RemoteCell::WithOuter() const
+	{
+		auto all = cells;
+		all.insert(all.end(), outer.begin(), outer.end());
+		return all;
+	}
+
+	bool RemoteCell::TakeKept(RE::TESObjectCELL* a_cell)
+	{
+		return std::erase(keptGrid, a_cell) != 0;
+	}
+
+	void RemoteCell::DropKeptGrid()
+	{
+		if (keptGrid.empty()) {
+			return;
+		}
+		// As the engine would have on the way in (TES::SetCurrentCell + 0x50E, + 0x58E), their 3D under its root.
+		REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::RelocationID(18655, 19130) };
+		for (auto* cell : keptGrid) {
+			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
+			if (cell->cellState.get() == CellState::kAttached && cell3D->parent == keptRoot.get()) {
+				keptRoot->DetachChild(cell3D.get());
+				RE::TES::GetSingleton()->objRoot->AttachChild(cell3D.get(), true);
+				detachCell(cell, cell->GetRuntimeData().worldSpace->GetSkyCell() == cell);
+			}
+		}
+		logger::info("portal: {} street cell(s) kept attached on walking in detached: no street took them", keptGrid.size());
+		keptGrid.clear();
 	}
 
 	RemoteCell::PersistentByCell RemoteCell::PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells, std::unordered_set<RE::FormID>& a_queued, int& a_newlyQueued)
@@ -237,6 +272,33 @@ namespace Portal
 			while (top->parent) {
 				top = top->parent;
 			}
+			// Hung in a cell of the street beyond those shown (outer), which hangs in no scene: the
+			// reference alone comes under the portal root. Taken whole, the sixteen cells were drawn
+			// and moved with the street. The persistent references standing in those cells are taken
+			// too: the city's far walls and houses, which the engine's detach used to leave in one
+			// node of their own (seen from the Bannered Mare's door, the mountains showed where
+			// Whiterun's wall stands).
+			// They hang in one node of ours, as the engine's did: each on its own under the portal root
+			// (424 looking out of the Bannered Mare) was merged, unmerged and released one by one.
+			if (top == outerRoot.get()) {
+				RE::NiPointer<RE::NiAVObject> keep(object);
+				object->parent->DetachChild(object);
+				if (!outerPersistent) {
+					outerPersistent.reset(RE::NiNode::Create(0));
+					root->AttachChild(outerPersistent.get(), true);
+					borrowedPersistent.emplace_back(outerPersistent);
+					++hung;
+				}
+				// One whose 3D came after the node was merged with the street goes on its own, to be
+				// placed and its bounds moved as the node's were then (Manager's MergePersistent).
+				if (outerPersistent->parent == root) {
+					outerPersistent->AttachChild(object, true);
+					outerPersistentRefs.emplace_back(object);
+					top = root;
+				} else {
+					top = object;
+				}
+			}
 			if (top != root && top->AsNode() != RE::Main::WorldRootNode()) {
 				root->AttachChild(top, true);
 				borrowedPersistent.emplace_back(top);
@@ -284,11 +346,17 @@ namespace Portal
 		// one the remote cell's rooms render fine.
 		auto* worldScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		auto* worldGraph = worldScene ? worldScene->GetRuntimeData().portalGraph : nullptr;
-		loadTempData(a_cell);
-		attachingRemote = true;
-		attachCell(a_cell, scene.get());
-		finishAttach(a_cell, true);
-		attachingRemote = false;
+		if (TakeKept(a_cell)) {
+			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(a_cell));
+			cell3D->parent->DetachChild(cell3D.get());
+			scene->AttachChild(cell3D.get(), true);
+		} else {
+			loadTempData(a_cell);
+			attachingRemote = true;
+			attachCell(a_cell, scene.get());
+			finishAttach(a_cell, true);
+			attachingRemote = false;
+		}
 		// The land's meshes are built only when the engine loads a cell into its own grid (IDs 13285
 		// and 13427 call this right after 19063), which a remote cell never goes through: a street
 		// read from disk while the player is indoors (a game loaded in a room) had no ground through
@@ -386,6 +454,25 @@ namespace Portal
 				}
 			}
 		}
+		// The rest of the grid walked in from (see keepGridOnEntry). Behind an interior, or a street of
+		// another worldspace, they are nobody's.
+		if (!a_cell->IsInteriorCell()) {
+			for (auto* cell : keptGrid) {
+				if (cell->cellState.get() != CellState::kAttached || cell->GetRuntimeData().worldSpace != a_cell->GetRuntimeData().worldSpace) {
+					continue;
+				}
+				if (!outerRoot) {
+					outerRoot.reset(RE::NiNode::Create(0));
+				}
+				RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
+				cell3D->parent->DetachChild(cell3D.get());
+				outerRoot->AttachChild(cell3D.get(), true);
+				outer.push_back(cell);
+				held.push_back(cell);
+			}
+			std::erase_if(keptGrid, [&](RE::TESObjectCELL* a_kept) { return std::ranges::find(outer, a_kept) != outer.end(); });
+		}
+		DropKeptGrid();
 		prewarmCells.clear();
 		prewarmLand = nullptr;
 		worldMapClouds.reset();
@@ -405,11 +492,12 @@ namespace Portal
 		if (!(debugSkip & 1)) {
 			const Perf::Scope scope("attach persistent");
 			int               newlyQueued = 0;
-			const auto        persistent = PersistentIn(cells, persistentQueued, newlyQueued);
+			const auto        street = WithOuter();
+			const auto        persistent = PersistentIn(street, persistentQueued, newlyQueued);
 			if (newlyQueued) {
 				logger::info("portal: 3D of {} persistent reference(s) queued for loading", newlyQueued);
 			}
-			for (auto* cell : cells) {
+			for (auto* cell : street) {
 				// Their lights (a lantern on a house) come with them.
 				if (AdoptPersistent(cell, persistent) && !(debugSkip & 4)) {
 					adoptedLights += LightScene::Adopt(scene.get(), Cell3D(cell));
@@ -658,23 +746,8 @@ namespace Portal
 		alwaysRenderHolders.clear();
 	}
 
-	void RemoteCell::Release(bool a_handOver)
+	void RemoteCell::Unmerge()
 	{
-		if (cells.empty()) {
-			return;
-		}
-		// Hidden, the cell would stay so once the engine has it again (the player walking in).
-		SetParked(false);
-		// Before the cells go: handed over, they are the player's own again.
-		RestorePassage();
-		UnhangAlwaysRender();
-		auto* tes = RE::TES::GetSingleton();
-		auto* engineRoot = tes ? tes->objRoot : nullptr;
-		// A merged street (merged into the interior being left) is put back under the portal root,
-		// unmoved, below and then handed over like any other.
-		const bool handOver = a_handOver && handOverStreet && engineRoot && !cells.front()->IsInteriorCell();
-		// The step job may be running right now; it must be done with this world first.
-		StepWorld(nullptr);
 		auto* root = scene.get();
 		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
 		UnmergeCollision();
@@ -711,6 +784,28 @@ namespace Portal
 		}
 		stilledClutter.clear();
 		RestoreBounds();
+	}
+
+	void RemoteCell::Release(bool a_handOver)
+	{
+		if (cells.empty()) {
+			return;
+		}
+		// Hidden, the cell would stay so once the engine has it again (the player walking in).
+		SetParked(false);
+		// Before the cells go: handed over, they are the player's own again.
+		RestorePassage();
+		UnhangAlwaysRender();
+		auto* tes = RE::TES::GetSingleton();
+		auto* engineRoot = tes ? tes->objRoot : nullptr;
+		// A merged street (merged into the interior being left) is put back under the portal root,
+		// unmoved, below and then handed over like any other.
+		const bool handOver = a_handOver && handOverStreet && engineRoot && !cells.front()->IsInteriorCell();
+		// The step job may be running right now; it must be done with this world first.
+		StepWorld(nullptr);
+		auto* root = scene.get();
+		auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+		Unmerge();
 		// Our lights are copies of the cells' light refs; entering a cell normally re-creates them
 		// in the world scene, so they must not stay registered here too.
 		LightScene::Clear(scene.get());
@@ -719,6 +814,16 @@ namespace Portal
 		// engine has hung it into the world again meanwhile (the player came back out another
 		// way), taking it off its parent would leave a hole where the building is.
 		handedPersistent.clear();
+		for (auto& object : outerPersistentRefs) {
+			if (object->parent == outerPersistent.get()) {
+				outerPersistent->DetachChild(object.get());
+				if (auto* ref = RE::TESObjectREFR::FindReferenceFor3D(object.get()); ref && ref->Get3D() == object.get()) {
+					handedPersistent.push_back(ref->GetFormID());
+				}
+			}
+		}
+		outerPersistentRefs.clear();
+		outerPersistent.reset();
 		for (auto& object : borrowedPersistent) {
 			if (object->parent == root) {
 				root->DetachChild(object.get());
@@ -757,6 +862,23 @@ namespace Portal
 				logger::info("portal: forgot {} (taken over by the engine)", Probe::DescribeCell(cell));
 			}
 		}
+		for (auto* cell : outer | std::views::reverse) {
+			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
+			std::erase(held, cell);
+			// Otherwise the engine took it over meanwhile, as above.
+			if (!cell3D || cell3D->parent != outerRoot.get() || cell->cellState.get() != CellState::kAttached) {
+				continue;
+			}
+			outerRoot->DetachChild(cell3D.get());
+			if (handOver) {
+				engineRoot->AttachChild(cell3D.get(), true);
+				handedOver.push_back(cell);
+			} else {
+				REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::RelocationID(18655, 19130) };
+				detachCell(cell, true);
+			}
+		}
+		outer.clear();
 		for (auto* cell : cells) {
 			std::erase(held, cell);
 		}
@@ -779,19 +901,42 @@ namespace Portal
 	void RemoteCell::UnloadDetachedExteriors()
 	{
 		std::vector<RE::TESObjectCELL*> detached;
+		std::vector<RE::TESObjectCELL*> skyCells;
+		for (auto* world : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::TESWorldSpace>()) {
+			if (world && world->skyCell) {
+				skyCells.push_back(world->skyCell);
+			}
+		}
 		{
 			auto [forms, lock] = RE::TESForm::GetAllForms();
 			RE::BSReadLockGuard guard(lock);
 			for (auto& [id, form] : *forms) {
 				auto* cell = form->As<RE::TESObjectCELL>();
-				if (cell && !cell->IsInteriorCell() && cell->cellState.get() == CellState::kUnattached) {
+				// Not a worldspace's sky cell: the load's change of worldspace (ID 13315 + 0x1EB) gives
+				// it the new worldspace's room graph without looking whether it is loaded, when the
+				// two worldspaces share it (Windhelm's and Solitude's: a crash loading from Sadri's
+				// Used Wares into Solitude).
+				if (cell && !cell->IsInteriorCell() && cell->cellState.get() == CellState::kUnattached && std::ranges::find(skyCells, cell) == skyCells.end()) {
 					detached.push_back(cell);
 				}
 			}
 		}
 		REL::Relocation<void (*)(RE::TES*, RE::TESObjectCELL*)> unloadCell{ REL::RelocationID(13623, 13721) };
+		// Out of the engine's buffer of exterior cells first (TES + 0xD0, kept packed: ID 13368 stops
+		// at the first empty slot), as the engine empties a slot it unloads. Left in, a cell made at
+		// runtime (Markarth's 'Wilderness') was freed by the unload and unloaded once more from its
+		// slot when the load pushed it off the end (ID 13434 -> 13721 -> 19130 on freed memory).
+		auto*      tes = RE::TES::GetSingleton();
+		const auto slots = RE::GetINISetting("uExterior Cell Buffer:General")->data.u;
+		std::uint32_t kept = 0;
+		for (std::uint32_t i = 0; i < slots; ++i) {
+			auto* cell = std::exchange(tes->exteriorBuffer[i], nullptr);
+			if (cell && std::ranges::find(detached, cell) == detached.end()) {
+				tes->exteriorBuffer[kept++] = cell;
+			}
+		}
 		for (auto* cell : detached) {
-			unloadCell(RE::TES::GetSingleton(), cell);
+			unloadCell(tes, cell);
 		}
 		logger::info("portal: {} detached exterior cell(s) unloaded before loading a save", detached.size());
 	}
@@ -884,13 +1029,14 @@ namespace Portal
 		}
 		if (roundNext == 0 && (persistentCheck -= a_delta) <= 0.0f) {
 			persistentCheck = 0.25f;
-			roundNext = cells.size();
+			roundNext = cells.size() + outer.size();
 			int newlyQueued = 0;
-			roundPersistent = debugSkip & 1 ? PersistentByCell{} : PersistentIn(cells, persistentQueued, newlyQueued);
+			roundPersistent = debugSkip & 1 ? PersistentByCell{} : PersistentIn(WithOuter(), persistentQueued, newlyQueued);
 		}
 		RE::TESObjectCELL* checked = nullptr;
 		if (roundNext > 0) {
-			checked = cells[cells.size() - roundNext--];
+			const auto street = WithOuter();
+			checked = street[street.size() - roundNext--];
 			AdoptPersistent(checked, roundPersistent);
 		}
 		for (auto* cell : cells) {
@@ -2008,6 +2154,35 @@ namespace Portal
 			static inline REL::Relocation<decltype(Thunk)> func;
 		};
 
+	}
+
+	// TES::SetCurrentCell (ID 13316) + 0x50E: going indoors, each attached cell of the grid is
+	// detached (ID 19130 (cell, false)), and at + 0x58E the worldspace's sky cell ((cell, true): its
+	// references' bodies taken out of the Havok world one by one, up to 26 ms in Whiterun; walking
+	// out, ID 13317 + 0x480 attaches it again unless it is attached). See RemoteCell::keepGridOnEntry.
+	struct GridDetachHook
+	{
+		static void Thunk(RE::TESObjectCELL* a_cell, bool a_unload)
+		{
+			if (RemoteCell::keepGridOnEntry) {
+				// Off the engine's root at once: left there until the street is attached a few frames
+				// on, it could be drawn where it stands, which may be where the room is.
+				if (!RemoteCell::keptRoot) {
+					RemoteCell::keptRoot.reset(RE::NiNode::Create(0));
+				}
+				RE::NiPointer<RE::NiAVObject> cell3D(a_cell->GetRuntimeData().loadedData->cell3D);
+				cell3D->parent->DetachChild(cell3D.get());
+				RemoteCell::keptRoot->AttachChild(cell3D.get(), true);
+				RemoteCell::keptGrid.push_back(a_cell);
+				return;
+			}
+			func(a_cell, a_unload);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	namespace
+	{
 		struct GridReadyHook
 		{
 			static bool Thunk(void* a_grid)
@@ -2037,6 +2212,16 @@ namespace Portal
 					++accepted;
 				}
 				logger::info("portal: grid ready with {} cell(s) handed over attached", accepted);
+				// The interior's room graph was just taken out of the world scene (ID 13317 + 0x78), and
+				// the next cell the engine attaches installs the worldspace's. With the whole grid handed
+				// over it attaches none: the scene's graph stayed null and the first frame's actor cull
+				// read it (ID 106433 + 0x28, a crash). Now, before the cells' lights are queued
+				// (+0x590): a change of graph empties the scene's light queues.
+				REL::Relocation<RE::BSPortalGraph* (*)(RE::TESWorldSpace*)> worldGraph{ REL::RelocationID(20070, 20513) };
+				auto* worldScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+				if (!worldScene->GetRuntimeData().portalGraph) {
+					worldScene->SetPortalGraph(worldGraph(RemoteCell::HandedOver().front()->GetRuntimeData().worldSpace));
+				}
 				return true;
 			}
 			static inline REL::Relocation<decltype(Thunk)> func;
@@ -2121,5 +2306,14 @@ namespace Portal
 			return;
 		}
 		GridReadyHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), GridReadyHook::Thunk);
+		// Only with the hand-over back: the grid kept attached must be accepted again on the way out.
+		for (const auto offset : REL::Relocate(std::array{ 0x38E, 0x40C }, std::array{ 0x50E, 0x58E })) {
+			REL::Relocation<std::uintptr_t> detachSite{ REL::RelocationID(13171, 13316), offset };
+			if (Hooks::CallsTo(detachSite.address(), REL::RelocationID(18655, 19130), "portal: grid detach on walking in")) {
+				GridDetachHook::func = SKSE::GetTrampoline().write_call<5>(detachSite.address(), GridDetachHook::Thunk);
+			} else {
+				logger::warn("portal: street cells are detached when walking in");
+			}
+		}
 	}
 }

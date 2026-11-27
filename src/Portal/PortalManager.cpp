@@ -2677,6 +2677,7 @@ namespace Portal::Manager
 		bool DoorShut();
 		void PublishRooms();
 		void TakeBeside(const RE::TESObjectCELL* a_cell);
+		void HideBesideOf(const RE::TESObjectCELL* a_cell, std::string_view a_why);
 		bool DemoteShown(RE::TESObjectCELL* a_here, const Active& a_portal);
 		void UpdateBeside(RE::TESObjectCELL* a_here, float a_delta, std::vector<MergedCull::Room>& a_culls);
 		Portal::RemoteCell* KeptSpace(const RE::TESObjectCELL* a_cell);
@@ -2728,14 +2729,57 @@ namespace Portal::Manager
 			return LetGoKept(a_space, a_why);
 		}
 
+		// The kept rooms out of sight and still, but attached: the player is in a building of their
+		// street. Let go on walking in, the engine freed their references' 3D within seconds, and
+		// walking out again each was attached anew (a 26 ms frame) and loaded from disk for seconds
+		// before its doorway showed it (Arcadia's Cauldron after a visit to Belethor's: 4.7 s).
+		void ParkWarm()
+		{
+			for (auto& space : warm) {
+				if (space.merged) {
+					// Under the world's root it would be moved along with the street merged into the
+					// building walked into.
+					HideBesideOf(space.Cell(), "player is indoors");
+					space.Unmerge();
+					space.SetParked(false);
+					logger::info("portal: {} kept behind its door while the player is indoors", Probe::DescribeCell(space.Cell()));
+				}
+				space.SetPaused(true);
+			}
+		}
+
+		// Indoors the kept rooms stay for as long as the street they open on is shown behind the door
+		// come in through, and this long after (the street is attached a moment after the arrival):
+		// deep in the building, or gone on into another interior, they are let go.
+		constexpr float kWarmIndoorsSeconds = 5.0f;
+		float           warmIndoors = 0.0f;
+
 		void UpdateWarm(RE::TESObjectCELL* a_here, float a_delta)
 		{
-			if (shownRoomsSetting <= 1 || a_here->IsInteriorCell()) {
+			if (shownRoomsSetting <= 1) {
 				if (!warm.empty()) {
-					ReleaseWarm(a_here->IsInteriorCell() ? "player is indoors" : "none kept");
+					ReleaseWarm("none kept");
 				}
 				return;
 			}
+			if (a_here->IsInteriorCell()) {
+				const bool street = remote.Attached() && !remote.Cell()->IsInteriorCell();
+				warmIndoors = street ? 0.0f : warmIndoors + a_delta;
+				if (warmIndoors > kWarmIndoorsSeconds) {
+					ReleaseWarm("player is indoors, away from their street");
+				}
+				ParkWarm();
+				for (auto it = warm.begin(); it != warm.end();) {
+					if (!it->Healthy()) {
+						it = LetGoKept(it, "no longer attached under its scene");
+					} else {
+						it->Update(a_delta);  // paused: only what is still loading
+						++it;
+					}
+				}
+				return;
+			}
+			warmIndoors = 0.0f;
 			// Fewer kept than before (changed in the menu): the farthest go first.
 			while (std::cmp_greater_equal(warm.size(), shownRoomsSetting)) {
 				LetGoWarm(std::ranges::max_element(warm, {}, [](const Portal::RemoteCell& a_space) { return WarmRankOf(a_space.Cell()->GetFormID()); }),
@@ -2853,11 +2897,16 @@ namespace Portal::Manager
 		}
 	}
 
-	void ReleaseAll(std::string_view a_reason, float a_holdoff, bool a_handOver)
+	void ReleaseAll(std::string_view a_reason, float a_holdoff, bool a_handOver, bool a_keepRooms)
 	{
 		{
 			const Perf::Scope scope("release kept");
-			ReleaseWarm(a_reason);
+			if (a_keepRooms) {
+				warmIndoors = 0.0f;
+				ParkWarm();
+			} else {
+				ReleaseWarm(a_reason);
+			}
 		}
 		const Perf::Scope scope("release shown");
 		ReleaseShown(a_reason, a_holdoff, a_handOver);
@@ -2922,6 +2971,16 @@ namespace Portal::Manager
 		failedCooldown -= a_delta;
 		crossCooldown -= a_delta;
 		attachHoldoff -= a_delta;
+		{
+			// The street walked in from is attached a few frames after the arrival, and takes the cells
+			// the engine left attached for it. If none comes (its door switched off, the portals too),
+			// they go back to how the engine leaves a street.
+			static float gridKept = 0.0f;
+			gridKept = Portal::RemoteCell::GridKept() ? gridKept + a_delta : 0.0f;
+			if (gridKept > 3.0f) {
+				Portal::RemoteCell::DropKeptGrid();
+			}
+		}
 		{
 			// Community Shaders' skylighting starts afresh around the street (its probes are kept by
 			// position, and the player's jumps from the interior's coordinates to the street's) and

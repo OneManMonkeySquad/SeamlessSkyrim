@@ -1144,6 +1144,67 @@ namespace Bridge
 				 }
 				 return json{ { "orphans", found }, { "graphs", graphs } };
 			 } } },
+			// What hangs in the world's scene, counted per cell (or per node under the engine's root):
+			// shapes, and those not hidden. To compare two ways of getting to the same place: a cell
+			// drawn twice, or one that lost its things, shows as a different count.
+			{ "scene_shapes", { [](const json&) {
+				 std::vector<std::pair<const RE::NiAVObject*, std::string>> cells;
+				 const auto                                                 note = [&](RE::TESObjectCELL* a_cell) {
+					 auto* loaded = a_cell ? a_cell->GetRuntimeData().loadedData : nullptr;
+					 if (loaded && loaded->cell3D) {
+						 std::string under;
+						 for (auto* up = loaded->cell3D->parent; up; up = up->parent) {
+							 under += std::format(" < '{}'", up->name.c_str());
+						 }
+						 cells.emplace_back(loaded->cell3D.get(), std::format("{:08X} state {}{}", a_cell->GetFormID(), static_cast<int>(a_cell->cellState.get()), under));
+					 }
+				 };
+				 auto* tes = RE::TES::GetSingleton();
+				 note(tes->interiorCell);
+				 if (tes->gridCells) {
+					 for (std::uint32_t i = 0; i < tes->gridCells->length * tes->gridCells->length; ++i) {
+						 note(tes->gridCells->cells[i]);
+					 }
+				 }
+				 for (auto* cell : Portal::Manager::RemoteCells()) {
+					 note(cell);
+				 }
+				 struct Count
+				 {
+					 int shapes = 0, shown = 0;
+				 };
+				 std::map<std::string, Count> counts;
+				 const std::function<void(RE::NiAVObject*, const std::string&, bool, int)> walk = [&](RE::NiAVObject* a_object, const std::string& a_key, bool a_shown, int a_depth) {
+					 const bool shown = a_shown && !a_object->GetAppCulled();
+					 auto       key = a_key;
+					 if (const auto cell = std::ranges::find(cells, a_object, [](const auto& a_entry) { return a_entry.first; }); cell != cells.end()) {
+						 key = cell->second;
+					 } else if (a_depth <= 2) {
+						 key = std::format("{}/{}", a_key, a_object->name.c_str());
+					 }
+					 if (a_object->AsGeometry()) {
+						 auto& count = counts[key];
+						 ++count.shapes;
+						 count.shown += shown ? 1 : 0;
+					 }
+					 if (auto* node = a_object->AsNode()) {
+						 for (auto& child : node->GetChildren()) {
+							 if (child) {
+								 walk(child.get(), key, shown, a_depth + 1);
+							 }
+						 }
+					 }
+				 };
+				 walk(RE::Main::WorldRootNode(), "", true, 0);
+				 json out = json::object();
+				 int  shapes = 0, shown = 0;
+				 for (const auto& [key, count] : counts) {
+					 out[key] = { count.shapes, count.shown };
+					 shapes += count.shapes;
+					 shown += count.shown;
+				 }
+				 return json{ { "shapes", shapes }, { "shown", shown }, { "by", out } };
+			 } } },
 			// The nodes of a cell's 3D whose bound is wider than {radius} (default 8000), with their
 			// widest children: one stray child (a node left at the origin) makes every bound above it
 			// span the world, and the engine's per-light walk of the scene can't skip any of it.

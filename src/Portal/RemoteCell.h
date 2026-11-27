@@ -101,6 +101,17 @@ namespace Portal
 		static inline bool stepExterior = true;
 		// [Portals] bHandOverStreet (see Release).
 		static inline bool handOverStreet = true;
+		// Walking from a street into a building: set by the crossing for its teleport, the engine's
+		// grid cells then stay attached (GridDetachHook) and the street attached behind the door come
+		// through takes them as they are (Attach). The engine detached all of them (uGridsToLoad
+		// squared, 25) and the nine round the door were attached again a few frames later: 18 ms
+		// and 19 ms of the frame of walking in, and each reference's detach and attach event to
+		// every mod listening (DynDOLOD: most of that time). Walking out again, the engine attached
+		// the other sixteen anew.
+		static inline bool keepGridOnEntry = false;
+		// Those cells until a street takes them; DropKeptGrid detaches what none took.
+		[[nodiscard]] static bool GridKept() { return !keptGrid.empty(); }
+		static void               DropKeptGrid();
 		static void StepAtEndOfFrame();
 
 		// Diagnostics: the cached render passes of the remote cells' shapes; a_drop forgets the
@@ -154,6 +165,9 @@ namespace Portal
 		// Merged: the cells placed anew (a door correction changed while looking at them, or the
 		// space is now seen through another of its doors).
 		void Remap(const Placement& a_placement);
+		// Merged: back under its own root where it was attached, still attached. A room kept while the
+		// player is in another building is merged again when they are back in its street.
+		void Unmerge();
 		[[nodiscard]] const Placement& Placed() const { return placed; }
 		// Merged, for walking into the room without leaving the world: copies of its fixed collision
 		// (walls, floors, furniture) put into a_world where its 3D is drawn (a_toSource). The originals
@@ -241,6 +255,19 @@ namespace Portal
 		std::vector<RE::NiPointer<RE::NiNode>> alwaysRenderHolders;
 
 		std::vector<RE::TESObjectCELL*> cells;  // [0] = the door's cell
+		// A street walked in from: the rest of the engine's grid, beyond the cells round the door.
+		// Attached as the engine left them but hanging in no scene (outerRoot), so neither drawn nor
+		// moved with a merge; given back attached on walking out (Release).
+		std::vector<RE::TESObjectCELL*> outer;
+		RE::NiPointer<RE::NiNode>       outerRoot;
+		// The persistent references standing in them, drawn with the street (see AdoptPersistent).
+		RE::NiPointer<RE::NiNode>                  outerPersistent;
+		std::vector<RE::NiPointer<RE::NiAVObject>> outerPersistentRefs;
+		static inline std::vector<RE::TESObjectCELL*> keptGrid;  // see keepGridOnEntry
+		static inline RE::NiPointer<RE::NiNode>       keptRoot;  // their 3D hangs here meanwhile
+		static bool                     TakeKept(RE::TESObjectCELL* a_cell);
+		[[nodiscard]] std::vector<RE::TESObjectCELL*> WithOuter() const;  // cells, then outer
+		friend struct GridDetachHook;
 		std::vector<RE::NiPointer<RE::NiAVObject>> parked;  // cells' 3D hidden by SetParked
 		bool                                       paused = false;
 		std::vector<RE::NiPointer<RE::bhkRigidBody>> mergedBodies;  // see MergeCollision

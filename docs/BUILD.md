@@ -291,6 +291,12 @@ town falls between screenshots):
 Diagnostics:
 - `dump_world` writes the outdoors probe to the plugin log: the sky and its colours, the computed
   outdoor lighting, the doorway, and the street references that can't be drawn and why.
+- `scene_shapes`: the shapes hanging in the world's scene per cell, with each cell's state and
+  chain of parents, and how many aren't hidden. Compared between two ways of getting to the same
+  place it shows a cell drawn that shouldn't be, or one that lost its things.
+- `travel_options {keepStreet: false}`: walking in, the street's cells are detached and attached
+  again as before, for timing both ways in one session (two launches differ by more than the
+  change does).
 - `wide_bounds {cell, radius}`: nodes of a cell's 3D with a bound wider than `radius`, with their
   farthest children (a stray child at the origin makes every bound above it span the map).
 - `portal_status` has the active portal, the remote cell, the merged rooms and the distant LOD

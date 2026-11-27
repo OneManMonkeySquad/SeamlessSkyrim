@@ -1600,7 +1600,7 @@
     ]
   },
   "solitude-hall-of-the-dead-walk-out": {
-    "note": "Solitude's Hall of the Dead: look at the arched door to the city, then walk out. Was: the arch's inner frame culled while the street was merged in (sky and void round the doorway).",
+    "note": "Solitude's Hall of the Dead: open the arched door to the city (00016B3A) and look at it, then walk out. Was: the arch's inner frame culled while the street was merged in (sky and void round the doorway).",
     "steps": [
       {
         "load": "SeamlessTestSolitudeHallOfTheDead"
@@ -1615,13 +1615,26 @@
         "wait": 3
       },
       {
+        "activate": "00016B3A"
+      },
+      {
+        "wait": 2
+      },
+      {
         "frames": 30
       },
       {
         "check": {
           "merged": true,
-          "name": "door"
+          "name": "door",
+          "scene": false
         }
+      },
+      {
+        "wait": 6
+      },
+      {
+        "activate": "00016B3A"
       },
       {
         "walk": {
@@ -1629,6 +1642,7 @@
             -700,
             -976
           ],
+          "run": true,
           "stop_distance": 40,
           "timeout_seconds": 20
         }

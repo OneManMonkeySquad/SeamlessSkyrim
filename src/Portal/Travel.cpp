@@ -209,7 +209,10 @@ namespace
 		Note(std::format("crossing door {:08X} from {} (menus: {})", trace.door, Probe::DescribeCell(player->GetParentCell()), OpenMenus()));
 
 		// The cell goes back to the engine first: the teleport attaches it as the current cell.
-		Portal::Manager::ReleaseAll("player walked through the doorway", 3.0f, a_portal.cell && !a_portal.cell->IsInteriorCell());
+		// Into or out of a building: the rooms kept behind the street's other doors stay.
+		auto* leaving = player->GetParentCell();
+		const bool streetDoor = leaving && a_portal.cell && leaving->IsInteriorCell() != a_portal.cell->IsInteriorCell();
+		Portal::Manager::ReleaseAll("player walked through the doorway", 3.0f, a_portal.cell && !a_portal.cell->IsInteriorCell(), streetDoor);
 
 		*skipLoadScreen = true;
 		// What activating a load door does for the player (TESObjectDOOR::HandleOpen, ID 17926):
@@ -301,6 +304,7 @@ namespace
 
 	// Diagnostics: each part of the stutter can be put back to compare (travel_options).
 	bool skipLoadWait = true;
+	bool keepStreet = true;  // see RemoteCell::keepGridOnEntry
 	bool skipLoadScreenClose = true;
 
 	// ID 40438 + 0x8B2: after a door teleport, waits until the task pool (*ID 411121, ID 75708)
@@ -332,6 +336,24 @@ namespace
 		{
 			if (seamlessTeleport && skipLoadWait && !Portal::RemoteCell::HandedOver().empty()) {
 				Note("waiting for the outdoor grid to load skipped");
+				return 0;
+			}
+			return func(a_taskPool, a_level);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// The change into an interior (TES::SetCurrentCell) waits for the task pool as well (+0x6CB,
+	// +0x700). It used to find nothing queued: detaching the street's cells cancelled their loads.
+	// With the street kept attached (RemoteCell::keepGridOnEntry) what is still streaming in out
+	// there goes on, and the wait for it was 66 ms of walking into Belethor's. The room walked into
+	// has been on screen behind its door: nothing of it is waited for.
+	struct InteriorLoadWaitHook
+	{
+		static std::uint64_t Thunk(void* a_taskPool, std::uint32_t a_level)
+		{
+			if (seamlessTeleport && skipLoadWait && Portal::RemoteCell::keepGridOnEntry) {
+				Note("waiting for the street's loads skipped");
 				return 0;
 			}
 			return func(a_taskPool, a_level);
@@ -548,7 +570,10 @@ namespace
 			const float yawBefore = a_player->GetAngleZ();
 			{
 				const Perf::Scope scope(seamlessTeleport ? "teleport" : "teleport step");
+				auto* from = a_player->GetParentCell();
+				Portal::RemoteCell::keepGridOnEntry = seamlessTeleport && keepStreet && Portal::RemoteCell::handOverStreet && from && !from->IsInteriorCell();
 				func(a_player);
+				Portal::RemoteCell::keepGridOnEntry = false;
 			}
 			if (std::exchange(seamlessTeleport, false)) {
 				// The engine only resets the flag after its own short teleports. Ours is done now;
@@ -776,6 +801,12 @@ namespace Portal::Travel
 		} else {
 			logger::warn("travel: load wait call not found, crossings keep waiting for loads");
 		}
+		for (const auto offset : REL::Relocate(std::array{ 0x544, 0x579 }, std::array{ 0x6CB, 0x700 })) {
+			REL::Relocation<std::uintptr_t> interiorWait{ REL::RelocationID(13171, 13316), offset };
+			if (callsTo(interiorWait.address(), kWaitForLoads)) {
+				InteriorLoadWaitHook::func = SKSE::GetTrampoline().write_call<5>(interiorWait.address(), InteriorLoadWaitHook::Thunk);
+			}
+		}
 		for (const auto offset : REL::Relocate(std::array{ 0x402, 0x437 }, std::array{ 0x4A0, 0x4D5 })) {
 			REL::Relocation<std::uintptr_t> gridWait{ REL::RelocationID(13172, 13317), offset };
 			if (callsTo(gridWait.address(), kWaitForLoads)) {
@@ -831,8 +862,9 @@ namespace Portal::Travel
 		skipLoadScreenClose = a_options.value("skipLoadScreenClose", skipLoadScreenClose);
 		skipExtraFrame = a_options.value("skipExtraFrame", skipExtraFrame);
 		spreadLights = a_options.value("spreadLights", spreadLights);
+		keepStreet = a_options.value("keepStreet", keepStreet);
 		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
-			{ "spreadLights", spreadLights } };
+			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

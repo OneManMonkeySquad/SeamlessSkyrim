@@ -192,6 +192,37 @@ the end. These were expensive to find. Add new ones in the same change that need
     With `bPreemptivelyUnloadCells:General` set (off by default) and more than
     `iLargeIntRefCount:General` (1000) references in the interior, it then purges every buffered
     cell and sets the worldspace up anew (+0x392: `PurgeBufferedCells`, `SetWorldSpace`).
+- **The change into an interior** (`TES::SetCurrentCell`, ID 13316), coming from outdoors:
+  - It detaches every attached cell of the grid (+0x50E: ID 19130 (cell, false), uGridsToLoad
+    squared) and the worldspace's sky cell (+0x58E, (cell, true)): 18 ms and up to 26 ms walking
+    into Belethor's. The cells stay loaded (kUnattached); walking out, ID 13317 attaches them
+    again, the sky cell too unless it is attached (+0x480).
+  - Then it waits for the task pool (+0x6CB, +0x700: ID 75708). Usually nothing is queued: a
+    cell's detach cancels its loads (ID 13059). With the grid kept attached the wait was 66 ms.
+  - Skipped for a seamless walk in (`RemoteCell::keepGridOnEntry`, `GridDetachHook`): the street
+    behind the door takes the cells as they are, and hands them back attached on the way out.
+- **Detaching or attaching a cell tells every mod's sink about each reference** (ID 19188 or
+  19187 -> ID 19362, the cell attach/detach event). In the test load order DynDOLOD's sink is
+  most of a cell's attach: 10 of 14 profile samples under ID 19362 on a first walk out.
+- **Walking out with every grid cell already attached, nothing installs the world scene's room
+  graph**: ID 13317 + 0x78 takes the interior's out, and the next engine attach of a cell would
+  install the worldspace's (ID 20513, `TESWorldSpace` + 0x130; a cell's own if it has one, ID
+  18976 + 0xFE). The first frame's actor cull then read a null graph (a crash; see Light scenes).
+  `GridReadyHook` installs it, before the cells' lights are queued (+0x590).
+- **Where a persistent reference's 3D hangs follows the cells' attach state.** With the street's
+  cells detached on going indoors, it ends up in one node of the persistent cell's, off the
+  scene. Kept attached, each stays under the cell it hangs in, which isn't always the cell it
+  stands in (192 of Whiterun's stood in the nine cells round the Bannered Mare's door and hung
+  in cells beyond them).
+- **The exterior cell buffer** (`TES::exteriorBuffer`, +0xD0, `uExterior Cell Buffer` slots) lists
+  the loaded exterior cells, attached ones first, packed (ID 13368, on a detach, stops at the
+  first empty slot). ID 13434 puts a cell at its front and unloads the one pushed off the end.
+  ID 13721 doesn't take the cell it unloads out of the buffer; the engine empties the slot
+  itself. A cell made at runtime (Markarth's 'Wilderness') is freed by the unload: left in its
+  slot, the next load unloaded it again (ID 19130 + 0x891 on freed memory).
+- **Two worldspaces can share a sky cell** (Windhelm's and Solitude's). Changing between them,
+  `TES::SetWorldSpace` (ID 13315 + 0x1EB) gives it the new worldspace's room graph (ID 19168)
+  without looking whether it is loaded: unloaded before, a crash.
 - **A detached interior loses its references' 3D after a while**, its cell node staying (3D=yes):
   Arcadia's Cauldron, let go on walking into Belethor's and attached again 20 s later, took 4.7 s
   to load. Belethor's, detached by the teleport and attached again in the same frame, was whole.
