@@ -5,10 +5,11 @@ doorway, and the player walks through without a loading screen.
 
 https://www.nexusmods.com/skyrimspecialedition/mods/199801
 
-With Community Shaders or Bottled Shaders it needs a patched build of that mod, which the
-installer offers for Community Shaders 1.9.1 and 2.0.0-rc.2 and Bottled Shaders 2.0.3. Their
-source is at https://github.com/OneManMonkeySquad/CommunityShaders-Seamless, branches
-`seamless-portal`, `seamless-portal-2.0` and `seamless-portal-bs-2.0`.
+With Community Shaders, Bottled Shaders or Open Shaders it needs a patched build of that mod,
+which the installer offers for Community Shaders 1.9.1 and 2.0.0-rc.2, Bottled Shaders 2.0.3 and
+Open Shaders 2.23.1. Their source is at
+https://github.com/OneManMonkeySquad/CommunityShaders-Seamless, branches `seamless-portal`,
+`seamless-portal-2.0`, `seamless-portal-bs-2.0` and `seamless-portal-os-2.23`.
 
 Building: `docs/BUILD.md`.
 
@@ -17,6 +18,7 @@ Faster Objects - Compatible, recommended
 Load Screens Hider - Compatible, recommended
 Community Shaders 1.9.1, 2.0.0-rc.2 - Compatible, with the patch from the installer
 Bottled Shaders 2.0.3 - Compatible, with the patch from the installer
+Open Shaders 2.23.1 - Compatible, with the patch from the installer
 FSMP - Faster HDT-SMP - Compatible
 Precision - Compatible
 Faster Loadscreens - Compatible

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.3
+
+- **Open Shaders 2.23.1: the installer offers a patch for it, and in MO2 picks it when Open
+  Shaders is installed.** Rooms behind doors are drawn into the street with it.
+- From inside a building, an open doorway across a foggy street sits in the street's haze
+  instead of standing out black.
+- Walking from an open street door to another door, it swings shut before the next door's street
+  loads, and opens again if you turn back.
+- Loading a save after a street was shown behind a door no longer crashes.
+- Taking a trapdoor into a room shown behind another door no longer leaves a black screen (Fort
+  Greymoor's prison), and tilted trapdoors such as Ilinalta's Deep's open again.
+
 ## 0.7.2
 
 - Inside a building the street's daylight falls in through the open door onto the floor and
