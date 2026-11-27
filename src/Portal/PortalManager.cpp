@@ -2327,16 +2327,22 @@ namespace
 	// cells it leads into, not ones attached under our scene.
 	void BeforeEngineTrip(RE::TESObjectREFR* a_door)
 	{
+		auto* teleport = a_door->extraList.GetByType<RE::ExtraTeleport>();
+		auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
+		auto* cell = linked ? linked->GetParentCell() : nullptr;
+		// The shown space is let go before the engine goes into it: through the portal's own door,
+		// or through another door into the same space (Fort Greymoor's trapdoor into the prison,
+		// merged behind the wooden door below). Let go only on arrival, the cell the engine had
+		// just made the player's was detached under it: its update no longer signalled the frame
+		// event the next job waits for (ID 18889's, event 13), and the frame never ended.
 		const auto portal = GetActive();
-		if (portal && a_door->GetFormID() == portal->sourceDoor) {
+		if (portal && (a_door->GetFormID() == portal->sourceDoor || (cell && std::ranges::contains(remote.Cells(), cell)))) {
 			attachHoldoff = 3.0f;
-			Portal::Manager::ReleaseAll("player took the portal door the engine's way");
+			Portal::Manager::ReleaseAll("player took a door into the shown space the engine's way");
 		}
 		// A door into a space kept out of sight leads the engine into a cell attached under our
 		// scene: it is let go first.
-		auto* teleport = a_door->extraList.GetByType<RE::ExtraTeleport>();
-		auto  linked = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
-		if (auto* cell = linked ? linked->GetParentCell() : nullptr) {
+		if (cell) {
 			if (const auto kept = std::ranges::find(warm, cell, &Portal::RemoteCell::Cell); kept != warm.end()) {
 				LetGoKept(kept, "player took a door into it");
 				attachHoldoff = std::max(attachHoldoff, 3.0f);

@@ -656,6 +656,46 @@
       }
     ]
   },
+  "fort-greymoor-trapdoor-into-merged-prison": {
+    "note": "Fort Greymoor: at the wooden door (00035A72) until the prison (FortGreymoor02) is merged into the world, then straight up to the tower's trapdoor (00051053, lies flat: an ordinary door) into the same prison and use it. Was: a black screen for good (the prison's cell, just made the player's by the engine, detached by the release on arrival; the frame's jobs waited forever for its update's event 13). Now: the prison let go before the trip, the player arrives in it.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "console": "player.moveto 00035A72"
+      },
+      {
+        "wait": 10
+      },
+      {
+        "check": {
+          "active": "00035A72",
+          "merged": true,
+          "name": "prison-merged"
+        }
+      },
+      {
+        "move": [
+          -14890,
+          -10250,
+          -4938
+        ]
+      },
+      {
+        "activate": "00051053"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "check": {
+          "cell": "FortGreymoor02",
+          "name": "in-prison"
+        }
+      }
+    ]
+  },
   "gromms-pass-autoload-walk-in": {
     "note": "Tamriel 44,-31: run into the cave mouth's automatic load door (0100309C, Update.esm). The engine takes the player into the cave. Was: taken for a seamless door, its activation swallowed, the Mist menu left open (no HUD, menus only a cursor).",
     "steps": [
@@ -777,6 +817,38 @@
           "name": "outside",
           "worldspace": "0000003C",
           "zAbove": -6000
+        }
+      }
+    ]
+  },
+  "ilinalta-tilted-trapdoor": {
+    "note": "Ilinalta's Deep: the trapdoor in the sunken, tilted tower (00015E11, ShipTrapdoor01 at angles -30.7, -66.1, 308.4: lying about 21 degrees off level). It lies flat: no portal, and using it takes the player into Ilinalta's Deep (IlinaltasDeep01) with the loading screen. Was: taken for a standing door (its angles turned the wrong way round), its use swallowed by the portal: nothing happened.",
+    "steps": [
+      {
+        "load": "SeamlessTestWhiterunGateOutside"
+      },
+      {
+        "console": "player.moveto 00015E11"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "check": {
+          "active": "",
+          "name": "at-trapdoor"
+        }
+      },
+      {
+        "activate": "00015E11"
+      },
+      {
+        "wait": 4
+      },
+      {
+        "check": {
+          "cell": "IlinaltasDeep01",
+          "name": "inside"
         }
       }
     ]

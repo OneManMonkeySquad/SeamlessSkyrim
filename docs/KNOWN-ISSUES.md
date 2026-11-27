@@ -122,6 +122,11 @@ Open bugs and things not tried. A fixed one comes out.
 
 ## Doors and crossing
 
+- Load doors that can't be walked through but don't lie flat are still taken for doorways (not
+  tried in the game; Ilinalta's Deep's trapdoor taken so did nothing when used): Fort Greenwall's well (`ImpWellDoor` 000529DE, down to a ladder),
+  the hole in the ice above Septimus Signus's outpost (000E8E46, tilted, down to a ladder), the
+  Katariah's anchor holes (0009939A) and chain (`DBKatariahChainActivator`). A ladder rule
+  (height over four times the width) would also take Sovngarde's tall doors.
 - `place_go` out of the Smelter Overseer's House with the street merged into it: `coc Wilderness`
   left the player in the house's cell, then moved to the street's coordinates and falling. Once.
 - Outdoors with few doors around, a fourth space coming within reach halves the reach

@@ -31,6 +31,12 @@ the end. These were expensive to find. Add new ones in the same change that need
   Detached with the 3D still under our root, it took `objRoot`'s first child instead, the
   temporary node manager (`TES+0x98`). The game then crashed in its update (`NiAVObject::Update`
   from ID 13292).
+- **A trip with the loading screen into a cell we hold attached** (Fort Greymoor's trapdoor into
+  the prison merged behind another door): the engine makes it the player's cell as it is. Detached
+  after that (released on arrival), the frame never ended: the current interior's update (ID
+  18889, only for a cell in state Attached) signals frame event 13 (ID 69514), and a job of the
+  frame (ID 39068) waits for it (ID 69516) while Main::Update waits for the jobs (ID 35409).
+  Release before the trip (`BeforeEngineTrip`).
 - **Interior buffer** (`TES+0xC8`): detaching puts a cell at its front, and the one falling off
   the end is unloaded by ID 13721. ID 13721 has about 25 callers, and a cell we still hold must
   not go through any of them: hooked at its entry (`RemoteCell::InstallGridHook`). A held cell
@@ -112,6 +118,9 @@ the end. These were expensive to find. Add new ones in the same change that need
   turn upwards under half the narrower one across; `Doors::LiesFlat`), loaded or not:
   `WinterholdTrapdoor01` 96 x 96 x 33, `ShipTrapdoor01` modelled standing and laid down. The
   ladders below them (`TrapdoorLadder01`, 114 x 118 x 397) look like standing doors.
+- **A reference's rotation from its angles** is CommonLib's `NiMatrix3(angles)`
+  (`SetEulerAnglesXYZ`, = Rx(-x) Ry(-y) Rz(-z)), checked against the 3D's on Ilinalta's Deep's
+  tilted trapdoor (00015E11, -30.7, -66.1, 308.4), which `EulerAnglesToAxesZXY` stood upright.
 - **A door's mesh can hold the wall around its panel.** Riften's `RiftenRWDoorLoad01` (base
   0006F267, e.g. Elgrim's Elixirs) carries the stone frame filling the room's arch, wider than the
   panel; the room's own wall has an arch-shaped hole. Hiding a door means hiding its leaves (the

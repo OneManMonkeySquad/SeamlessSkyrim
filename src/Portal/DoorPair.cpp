@@ -1051,8 +1051,9 @@ namespace Portal::Doors
 		const auto&   bound = a_door->GetBaseObject()->boundData;
 		const float   extent[3] = { static_cast<float>(bound.boundMax.x - bound.boundMin.x), static_cast<float>(bound.boundMax.y - bound.boundMin.y),
             static_cast<float>(bound.boundMax.z - bound.boundMin.z) };
-		RE::NiMatrix3 placed;
-		placed.EulerAnglesToAxesZXY(a_door->GetAngle());
+		// The engine's rotation from the angles (as the reference's 3D gets it): with EulerAnglesToAxesZXY
+		// Ilinalta's Deep's tilted trapdoor (00015E11, angles -30.7, -66.1, 308.4) came out standing.
+		const RE::NiMatrix3 placed(a_door->GetAngle());
 		// The world's up in the model's axes.
 		const float up[3] = { std::abs(placed.entry[2][0]), std::abs(placed.entry[2][1]), std::abs(placed.entry[2][2]) };
 		const int   axis = up[0] > up[1] ? (up[0] > up[2] ? 0 : 2) : (up[1] > up[2] ? 1 : 2);
