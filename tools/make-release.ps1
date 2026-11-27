@@ -133,6 +133,14 @@ foreach ($fork in $forks) {
 	Assert-Newer $csDll (Join-Path $fork.Path 'src')
 	$files["$($fork.Folder)\$plugins\CommunityShaders.dll"] = $csDll
 
+	# The plugin and every base's shaders read the same layout: a copy left behind after an edit
+	# draws doorways from the wrong fields.
+	$include = 'shaders\Common\Seamless.hlsli'
+	$forkInclude = Join-Path $fork.Path 'package\Shaders\Common\Seamless.hlsli'
+	if ((Get-FileHash (Join-Path $repo $include)).Hash -ne (Get-FileHash $forkInclude).Hash) {
+		throw "$forkInclude differs from this repo's $include`: copy it over."
+	}
+
 	$forkChanged = @(Invoke-Git $fork.Path diff --name-only --diff-filter=d $fork.Base -- package features) +
 		@(Invoke-Git $fork.Path ls-files --others --exclude-standard -- package features)
 	foreach ($path in $forkChanged | Sort-Object -Unique) {

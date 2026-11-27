@@ -24,6 +24,7 @@
 #include "Probe.h"
 #include "Render/Backend.h"
 #include "Render/DoorwayPlanes.h"
+#include "Render/ShaderData.h"
 
 #include <Windows.h>
 
@@ -5017,11 +5018,38 @@ extern "C" __declspec(dllexport) bool SeamlessPortal_IsMergedShape(RE::BSGeometr
 	return Portal::Manager::IsMergedShape(a_shape);
 }
 
-// The same, with which of the rooms merged at once (its slot, as the doors and lights were sent
-// with Render::Backend), -1 for none.
-extern "C" __declspec(dllexport) int SeamlessPortal_MergedRoomOf(RE::BSGeometry* a_shape)
+// Asked by the patched Community Shaders for every shape it draws: what the shape is to the merged
+// doorways (Render::ShapeTag), which its shaders mask and light by.
+extern "C" __declspec(dllexport) std::uint32_t SeamlessPortal_ShapeTag(RE::BSRenderPass* a_pass)
 {
-	return Portal::Manager::MergedRoomOf(a_shape);
+	namespace Tag = ::Render::ShapeTag;
+	std::uint32_t tag = 0;
+	// A shadow map is drawn from a light, and a doorway mask taken through the camera's matrices
+	// lands anywhere there. Told by the depth target: the technique doesn't say, the engine draws
+	// most statics' depth for the main view with the shadow map technique too.
+	switch (RE::BSGraphics::RendererShadowState::GetSingleton()->GetRuntimeData().depthStencil) {
+	case RE::RENDER_TARGETS_DEPTHSTENCIL::kSHADOWMAPS_ESRAM:
+	case RE::RENDER_TARGETS_DEPTHSTENCIL::kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM:
+	case RE::RENDER_TARGETS_DEPTHSTENCIL::kSHADOWMAPS:
+	case RE::RENDER_TARGETS_DEPTHSTENCIL::kPRECIPITATION_OCCLUSION_MAP:
+		tag |= Tag::kLightView;
+		break;
+	default:
+		break;
+	}
+	if (!::Render::Backend::AnyMerged()) {
+		return tag;
+	}
+	// Which of the rooms merged at once, by its slot, as the doors and lights were sent.
+	if (const int room = Portal::Manager::MergedRoomOf(a_pass->geometry); room >= 0) {
+		tag |= Tag::kRemote | (static_cast<std::uint32_t>(room) << Tag::kRoomShift);
+	}
+	// The player walking through the doorway belongs to neither side: cut at the door plane, half
+	// of them vanished on the way in.
+	if (Portal::Manager::IsPlayerShape(a_pass->geometry)) {
+		tag |= Tag::kUnmasked;
+	}
+	return tag;
 }
 
 // The light scene a merged room's shapes are lit from: rooms merged at once stand in the same
@@ -5042,9 +5070,4 @@ namespace
 	}
 }
 
-// Asked by the patched Community Shaders for every shape it draws while a space is merged in:
-// shapes left out of the doorway mask (the player's, so they aren't cut at the door plane).
-extern "C" __declspec(dllexport) bool SeamlessPortal_IsUnmaskedShape(RE::BSGeometry* a_shape)
-{
-	return Portal::Manager::IsPlayerShape(a_shape);
-}
+

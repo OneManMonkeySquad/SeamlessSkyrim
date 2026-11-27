@@ -152,6 +152,11 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
 - The lighting pixel shaders then recompile in the background for minutes (about 10 s each,
   queued). Until they're done, the patch doesn't show.
 - A shader that fails to compile is reported in `CommunityShaders.log` ("Failed to compile ...").
+- `shaders/Common/Seamless.hlsli` in this repo is the one copy to edit; copy it into each fork's
+  `package/Shaders/Common/` (`make-release.ps1` stops when one differs). It must match
+  `src/Render/ShaderData.h`.
+- The shader compiler's preprocessor doesn't expand a macro written after a namespace
+  (`SharedData::NAME` stays as it is, "undeclared identifier"): make such a name a function.
 
 ## Driving the game from an agent (tools/skyrim-mcp)
 

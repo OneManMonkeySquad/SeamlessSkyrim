@@ -7,12 +7,12 @@ who does that.
 
 | Backend | When | What does the work |
 |---|---|---|
-| Community Shaders (fork) | `CommunityShaders.dll` with the `SeamlessPortal_*` exports | The fork's shaders (COMMUNITY-SHADERS-PATCH.md). |
+| Community Shaders (fork) | `CommunityShaders.dll` with `SeamlessPortal_SetShaderData` (an older release's patch lacks it: None) | The fork's shaders (COMMUNITY-SHADERS-PATCH.md). |
 | Native | No Community Shaders (vanilla shaders, and ENB, which runs on them) | `src/Render/NativeMask.cpp`, `src/Render/NativeLighting.cpp` |
 | None | A stock Community Shaders (no fork exports) | Nothing: no render-merge; the portal pass is drawn unclipped, with only the sun and ambient the portal code sets. Crossing without a loading screen works. |
 
 How many rooms can be merged at once (`Render::Backend::MergedRooms`): 4 with
-the fork's per-room exports (`SeamlessPortal_SetMergedRoomDoor/Lighting`), else 1. `SetMergedDoor` and
+the fork, else 1. `SetMergedDoor` and
 `SetMergedLighting` take the room's slot; the native backend accepts slot 0 only.
 
 Chosen once when the portal hooks are installed (`Portal::Manager::Install`, kDataLoaded).

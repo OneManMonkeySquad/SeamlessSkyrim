@@ -5,7 +5,9 @@
 // portal pass, and the light of a room merged into the world.
 //
 // - Community Shaders, the SeamlessSkyrim fork (docs/COMMUNITY-SHADERS-PATCH.md): it replaces the
-//   game's shaders and does all of it inside them, reached through its SeamlessPortal_* exports.
+//   game's shaders and does all of it inside them. What they read of SeamlessSkyrim goes over whole
+//   (Render/ShaderData.h, laid out by shaders/Common/Seamless.hlsli); the rest through its
+//   SeamlessPortal_* exports.
 // - Native: the game's own shaders, unchanged (also what ENB runs on). The mask is cut by the
 //   rasterizer from clip distances a geometry shader of ours adds behind the engine's vertex
 //   shader (Render/NativeMask.cpp); the light by changing what the engine hands its lighting
@@ -35,10 +37,12 @@ namespace Render::Backend
 	// A room can be drawn into the world (render-merge): something masks the two spaces.
 	[[nodiscard]] bool CanMerge();
 	// How many rooms can be merged at once, each masked at its own doorway and lit by its own
-	// light: 4 with the fork's per-room exports, else 1. The native backend cuts the world into
-	// convex pieces per doorway, and a shape near two doorways would multiply them: one room.
+	// light: 4 with the fork, else 1. The native backend cuts the world into convex pieces per
+	// doorway, and a shape near two doorways would multiply them: one room.
 	inline constexpr int kMaxMergedRooms = 4;
 	[[nodiscard]] int MergedRooms();
+	// The fork's shaders mask at a doorway now: its shapes need their tags (SeamlessPortal_ShapeTag).
+	[[nodiscard]] bool AnyMerged();
 
 	// Render-merge, every frame while merged; nullptr when nothing is merged. a_door: doorway
 	// centre (3), unit normal into the merged space (3), unit horizontal axis (3), half width, half
