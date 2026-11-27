@@ -20,7 +20,10 @@ then, or the player walked on into whatever stands behind it in their own space.
 
 A door opens when it is used (the player, or an NPC reaching for it on its way through) and
 shuts 5 s after nobody stands in it; city gates and the doors set to stand open always stand
-open (`DoorUse`, `Wanted` in `PortalManager.cpp`). Until the city behind it is there, a gate
+open (`DoorUse`, `Wanted` in `PortalManager.cpp`). A portal let go with its door open (a closer
+door, walked away) hands the door to its stand-in; a door out of a building has none, so it swings
+shut first and the next door's space attaches after (walked back meanwhile, it swings open again
+and nothing is let go). Until the city behind it is there, a gate
 shows the player's own worldspace through its gateway: its low-detail copy of the city, in 3D,
 under the real sky; its own leaves swing into the side the far gate's do with the portal on
 (not where the gates stand apart: there they would swing into the masked passage). Where the two

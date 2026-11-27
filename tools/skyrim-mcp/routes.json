@@ -1153,6 +1153,68 @@
       }
     ]
   },
+  "riften-orphanage-door-bounce": {
+    "note": "Honorhall Orphanage, Riften: two doors out to different street cells, A 00056B9F (-512,192, faces south) and B 00016CEE (-128,-320), a wall between them. Open A, teleport where B is the better door, come back after a moment: A must be seen part-way shut and swinging open again, with no 'released' line and B never attached. Was: A let go at once while open, shut in the next frame (no stand-in for a door out of a building). Run with capture. For the other half (stay at B 2 s): 'used: shuts' + 'released: a closer door' ~0.4 s after arriving, then A shut on return.",
+    "steps": [
+      {
+        "load": "SeamlessTestMistveil"
+      },
+      {
+        "console": "coc RiftenHonorhallOrphanage"
+      },
+      {
+        "wait": 6
+      },
+      {
+        "console": "setini \"fAutoVanityModeDelay:Camera\" 100000"
+      },
+      {
+        "move": [
+          -512,
+          380,
+          70
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 6
+      },
+      {
+        "activate": "00056B9F"
+      },
+      {
+        "wait": 1.5
+      },
+      {
+        "move": [
+          -260,
+          -40,
+          70
+        ]
+      },
+      {
+        "wait": 0.25
+      },
+      {
+        "move": [
+          -512,
+          380,
+          70
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "frames": 30
+      },
+      {
+        "wait": 1
+      }
+    ]
+  },
   "riften-south-gate-turn-back": {
     "note": "Riften's south gate: walk out of the city, turn round at once and walk back in before the view back into the city is ready. Expected: the player is taken back into the city (the engine's trip, with its loading screen). Was: the door just come out of stayed walkable (Travel's arrival hold) until that view was ready, and the player walked through the open gate into the Tamriel worldspace's low-detail copy of Riften, with no crossing back; then, the gate solid, the player stood at it until the view was ready.",
     "steps": [

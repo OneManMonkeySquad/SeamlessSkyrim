@@ -248,6 +248,10 @@ town falls between screenshots):
   swing. It also leaves the camera turned: `camera_view {firstPerson: true}` and
   `player.setangle` before the next picture. Bridge `doors {force: 0|1|2}` sets the global door
   setting for the session (2: every door shut until used).
+- Not with `tfc` to watch a door from where the player isn't: the free camera stops the
+  player's update, which drives `Manager::Update`, so no portal is let go or swung meanwhile.
+  Behind a wall, teleport there and back and capture on return (route
+  `riften-orphanage-door-bounce`).
 - The odd-frame score only finds what lasts a single frame. Something wrong for several frames in
   a row (a weapon drawn black for four) has to be seen.
 - Not while measuring stutter or timing anything: writing a burst out stalls the game ~2.5 s.

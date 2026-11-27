@@ -649,6 +649,7 @@ namespace
 	// release reach and a sparse street's, and those were let go at once, swinging or not.
 	constexpr float kForceReleaseBeyond = 1350.0f;
 	bool            doorWanted = false;  // the portal's door swings towards open (else towards shut): Wanted
+	bool            shuttingToRelease = false;  // the portal's door, to stay open, swings shut before its space is let go
 
 	// How far open a_door is a_t of the way through its swing (0 .. 1), a_opening or shutting: its own
 	// animation's (Doors::SwingAmount), as when the game opens it.
@@ -2870,6 +2871,7 @@ namespace Portal::Manager
 			~Timing() { logger::info("portal: release took {:.1f} ms", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count()); }
 		} timing{ started };
 		logger::info("portal: {}", lastEvent);
+		shuttingToRelease = false;
 		CloseDoor();
 		ClosePassage();
 		if (remote.merged) {
@@ -2977,10 +2979,24 @@ namespace Portal::Manager
 				end = nullptr;
 			}
 			// A door a stand-in will hold open is let go open, to be taken over where it is: swung shut
-			// first, it swung open again right after.
-			const bool keepOpen = door && linkedDoor && !off && !locked && Wanted(door, linkedDoor);
-			doorWanted = keepOpen;
-			if (end && (DoorShut() || keepOpen || reach > ReleaseRadius() + kForceReleaseBeyond)) {
+			// first, it swung open again right after. A door out of a building has no stand-in
+			// (StreetShownLive): let go open, it stood shut the next frame. It swings shut first, and
+			// the next door's space comes only after. Its use is cut short only at the release: back
+			// in reach while it swings, it swings open again and the portal stays.
+			const bool wanted = door && linkedDoor && !off && !locked && Wanted(door, linkedDoor);
+			const bool handOver = wanted && !StreetShownLive(door, Outdoors(linkedDoor));
+			const bool shutFirst = end && wanted && !handOver;
+			if (shutFirst != std::exchange(shuttingToRelease, shutFirst) && (shutFirst ? !DoorShut() : wanted)) {
+				PlayDoorSound(portal->sourceDoor, portal->linkedDoor, !shutFirst);
+			}
+			doorWanted = wanted && !shutFirst;
+			if (end && (DoorShut() || handOver || reach > ReleaseRadius() + kForceReleaseBeyond)) {
+				shuttingToRelease = false;
+				if (!handOver) {
+					// Left in use, it swung open by itself when its space was attached again within the
+					// use's seconds.
+					Portal::DoorUse::Shut(portal->sourceDoor);
+				}
 				if (better && candidate->cell == portal->cell && !remote.merged) {
 					// The other door leads into the same space, which is attached already: only the
 					// door pair changes. Let go and attached again, the doorway was empty for a third
