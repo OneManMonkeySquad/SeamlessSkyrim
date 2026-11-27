@@ -2568,6 +2568,7 @@ namespace Portal::Manager
 		Portal::Travel::Install();
 		Portal::CameraLimit::Install();
 		Portal::StreetLOD::Install();
+		Portal::WaterReflections::Install();
 		MergedCull::Install();
 		Portal::Doors::InstallPromptHook(::GetPrivateProfileIntW(L"Portals", L"bPromptNamesDoor", 1, ini.c_str()) != 0);
 		RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESActivateEvent>(&activateSink);
@@ -2898,7 +2899,6 @@ namespace Portal::Manager
 
 	void Update(float a_delta)
 	{
-		Portal::WaterReflections::Update();
 		approachLimit.reset();
 		Portal::Doors::UpdatePrompt();
 		ExpireLetGo(a_delta);

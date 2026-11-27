@@ -31,6 +31,20 @@ Open bugs and things not tried. A fixed one comes out.
   Kings, 0.2 s after the upstairs behind its door was attached, its references still loading): in
   a culling job, `BSCullingProcess::Process` (ID 106921) reading a null object (ID 76561 + 0x56).
   Not reproduced by saving 0.05-0.4 s after an attach of the same door.
+- A user's game (0.7.0, AE 1.6.1170, stock Community Shaders 1.9.1, CS Water Mod with its
+  WaterWind and WaterWade plugins, 139 plugins), "often, when entering different buildings":
+  crashes attaching a street's water. The one log sent (2026-11-26) is from after he added
+  `WaterReflectionsEngineFix.dll` 0.9.2-beta: in the material lookup (ID 107719 + 0x21D, from
+  `AddWater` + 0x3D0), a table entry holding a freed material. That plugin deletes a reflection's
+  material itself at its last reference, which leaves the entry (read from its source, not
+  reproduced); it isn't needed beside SeamlessSkyrim. His crashes before it: no log. A reflection
+  left with a freed material was found and fixed after this (`WaterReflections`); not known
+  whether that was his crash.
+- AE 1.7.104, once in three runs of `coc` between Winterhold's street and its houses (2026-11-27,
+  on `coc WinterholdTheFrozenHearth` from the street, the inn merged): crash on a Havok job thread
+  in Precision's `ActiveActor` destructor (`PrecisionHandler::Clear`), destroying a `BSFadeNode`
+  whose extra data array (ID 70520 + 0x50) holds floats for a pointer. Not reproduced in 40 more
+  such trips.
 - A user's game (0.5.0, Maids II) hung minutes after an automatic door fired from indoors and
   left the Mist menu open. The menu is fixed; the hang wasn't reproduced.
 

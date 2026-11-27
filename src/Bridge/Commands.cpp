@@ -1527,11 +1527,59 @@ namespace Bridge
 				 for (auto& reflection : system->waterReflections) {
 					 const auto* plane = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(reflection.get()) + 0x14);
 					 const void* material = at(reflection.get(), 0x40);
-					 reflections.push_back(std::format("{:X} refs {} plane ({:.2f} {:.2f} {:.2f} {:.1f}) material {:X}{}", reinterpret_cast<std::uintptr_t>(reflection.get()), refCount(reflection.get()),
-						 plane[0], plane[1], plane[2], plane[3], reinterpret_cast<std::uintptr_t>(material), std::ranges::find(materials, material) != materials.end() ? "" : " (no water object has it)"));
+					 // Freed when its water went before the reflection: read it the way a debugger would.
+					 std::uintptr_t head[2]{};
+					 HMODULE        module = nullptr;
+					 const bool     alive = ::ReadProcessMemory(::GetCurrentProcess(), material, head, sizeof(head), nullptr) &&
+					                    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(head[0]), &module);
+					 reflections.push_back(std::format("{:X} refs {} plane ({:.2f} {:.2f} {:.2f} {:.1f}) material {:X} {}{}", reinterpret_cast<std::uintptr_t>(reflection.get()), refCount(reflection.get()),
+						 plane[0], plane[1], plane[2], plane[3], reinterpret_cast<std::uintptr_t>(material), alive ? std::format("refs {}", static_cast<std::uint32_t>(head[1])) : "FREED",
+						 std::ranges::find(materials, material) != materials.end() ? "" : " (no water object has it)"));
 				 }
 				 return json{ { "enabled", system->enabled }, { "worldSpace", system->worldSpace ? system->worldSpace->GetFormEditorID() : "" }, { "objects", objects },
 					 { "reflections", reflections } };
+			 } } },
+			// The shader material manager's table (ID 403555; lookup ID 107719, release ID 107720):
+			// +0x14 capacity, +0x30 entries of { key, material, next }, next null in a free slot. A
+			// material freed without its entry taken out crashes the next lookup that hashes to its
+			// key (a user's 1.6.1170, 2026-11-26, from AddWater). Lists entries whose material has no
+			// vtable in a loaded module, or whose key (+0x2C) isn't the entry's. AE only.
+			{ "materials", { [](const json&) {
+				 struct Entry
+				 {
+					 std::uint32_t key;
+					 const void*   material;
+					 const void*   next;
+				 };
+				 REL::Relocation<std::byte**>      manager{ REL::ID(403555) };
+				 REL::Relocation<RE::BSSpinLock*>  lock{ REL::ID(415284) };
+				 // A plugin's own material classes (Community Shaders' PBR) have their vtable in its image.
+				 const auto inAModule = [](std::uintptr_t a_address) {
+					 HMODULE module = nullptr;
+					 return ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(a_address), &module) != 0;
+				 };
+				 RE::BSSpinLockGuard               guard(*lock);
+				 const auto                        capacity = *reinterpret_cast<const std::uint32_t*>(*manager + 0x14);
+				 const auto*                       entries = *reinterpret_cast<const Entry* const*>(*manager + 0x30);
+				 std::uint32_t                     used = 0;
+				 json                              stale = json::array();
+				 for (std::uint32_t i = 0; entries && i < capacity; ++i) {
+					 const auto& entry = entries[i];
+					 if (!entry.next) {
+						 continue;
+					 }
+					 ++used;
+					 // A freed material's page may be gone: read it the way a debugger would.
+					 std::byte head[0x30]{};
+					 const bool readable = ::ReadProcessMemory(::GetCurrentProcess(), entry.material, head, sizeof(head), nullptr) != 0;
+					 const auto vtable = *reinterpret_cast<const std::uintptr_t*>(head);
+					 const auto key = *reinterpret_cast<const std::uint32_t*>(head + 0x2C);
+					 if (!readable || !inAModule(vtable) || key != entry.key) {
+						 stale.push_back(std::format("slot {} key {:08X} material {:X} vtable {:X} its key {:08X} refs {}", i, entry.key, reinterpret_cast<std::uintptr_t>(entry.material), vtable, key,
+							 *reinterpret_cast<const std::uint32_t*>(head + 8)));
+					 }
+				 }
+				 return json{ { "capacity", capacity }, { "used", used }, { "stale", stale } };
 			 } } },
 			// Read-only and independent of game state, so they work even during loading screens.
 			{ "re_export_ids", { ReverseEngineering::ExportIDs, false } },

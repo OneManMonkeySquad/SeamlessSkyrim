@@ -1,17 +1,15 @@
 #pragma once
 
 // A water reflection (TESWaterReflections, shared by every water at its height) keeps a plain
-// pointer to the material of the water it was made for (+0x40), and TESWaterSystem::AddWater
-// reads it when another water joins (ID 32179 +0x697). The game only adds water of the space the
-// player is in, so the water a reflection was made for lives as long as the reflection. Here the
-// street's distant water (LOD, StreetLOD) and the street's own water are added while the player
-// is indoors, and join the room's reflection: the room's water went (Riften's jail, walked out
-// of), the street's distant water kept the reflection, its material was freed, and attaching a
-// street later (walking into the Bee and Barb) read the memory that had become a BSTriShape.
-// Each reflection's material is kept alive here, through the shader property of a water that has
-// it, until the reflection is gone.
+// pointer to the material of the water it was made for (+0x40, set by its constructor and never
+// again), and TESWaterSystem::AddWater reads it when another water joins (ID 32179 +0x685). The
+// reflection outlives that water whenever others have joined it: the street's water added while
+// the player is indoors joins the room's reflection (Riften's jail walked out of, then the Bee
+// and Barb walked into, read memory that had become a BSTriShape), and it happens across a
+// loading screen too, where nothing of the plugin runs (the sea's reflection at Winterhold).
+// Each reflection takes a reference on its material when it is made and gives it back when it is
+// destroyed.
 namespace Portal::WaterReflections
 {
-	// Main thread, every frame.
-	void Update();
+	void Install();
 }

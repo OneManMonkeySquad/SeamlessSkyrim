@@ -248,11 +248,24 @@ the end. These were expensive to find. Add new ones in the same change that need
   condition.
 - **Water:** `TESWaterSystem` (ID 400450) lists water objects (+0x20, each: +0x20 shape, +0x40
   reflection) and reflections (+0x38, each: +0x14 plane, +0x40 the material of the water it was
-  made for, a plain pointer). A water joining a reflection reads that material (`AddWater`, ID
-  32179 +0x697). Water added while the player is indoors (the street's LOD water, the street's
-  own) joins the room's reflection and keeps it after the room's water is gone and its material
-  freed (`pcb` frees it at once). `RemoveWater` (ID 32182) does nothing while the system is
-  disabled (+0xB0). Bridge `water` lists both.
+  made for, a plain pointer set by the constructor, ID 32158, called only from `AddWater` + 0x770).
+  A water joining a reflection reads that material (`AddWater`, ID 32179 + 0x685: its +0x38
+  texture is copied into the new water's material). The reflection outlives its first water
+  whenever others joined: the material is freed and the next join reads freed memory. Seen with
+  a street's water joining a room's reflection, and across a loading screen (launch, load in the
+  Hall of the Elements, `coc WinterholdExterior05`: the sea's reflection, 93 waters on it, its
+  material freed; not tried without the plugin). `WaterReflections` gives each reflection a
+  reference on its material. `RemoveWater`
+  (ID 32182) does nothing while the system is disabled (+0xB0). Bridge `water` lists both, and
+  says `FREED` for such a material.
+- **Shader materials:** the manager (ID 403555, lock ID 415284) keeps every shared material in a
+  table (+0x14 capacity, +0x30 entries of key, material, next). `BSShaderProperty::SetMaterial`
+  (ID 105544) looks the new one up (ID 107719: a slot with the same key is compared through the
+  stored material's vtable +0x18) and releases the old (ID 107720: at zero references the entry
+  with the material's key, +0x2C, is taken out and the material deleted). A material deleted any
+  other way stays in the table, and the next lookup with its key calls into freed memory. A
+  reference is added under the lock. Community Shaders' PBR materials have their vtable in its
+  DLL. Bridge `materials` lists entries whose material is gone (AE only).
 
 ## Rendering a second view
 

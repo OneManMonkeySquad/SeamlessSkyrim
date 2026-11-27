@@ -1,60 +1,78 @@
 #include "Portal/WaterReflections.h"
 
+#include "Hooks.h"
+
 namespace Portal::WaterReflections
 {
 	namespace
 	{
-		// Layouts from TESWaterSystem::AddWater / RemoveWater (IDs 32179 / 32182).
-		constexpr std::size_t kObjectShape = 0x20;
-		constexpr std::size_t kReflectionMaterial = 0x40;
-
-		template <class T>
-		T* At(const void* a_object, std::size_t a_offset)
-		{
-			return *reinterpret_cast<T* const*>(reinterpret_cast<const std::byte*>(a_object) + a_offset);
-		}
-
 		struct Held
 		{
-			const void*                         reflection;
-			const RE::BSShaderMaterial*         material;
-			RE::NiPointer<RE::BSShaderProperty> property;  // holds the material
+			const RE::TESWaterReflections* reflection;
+			RE::BSShaderMaterial*          material;
 		};
 		std::vector<Held> held;
+		// AddLODWater makes reflections in the LOD job, on a worker thread.
+		std::mutex heldLock;
+
+		// The shader material manager and its lock (taken by its lookup and release, IDs 107719 /
+		// 107720).
+		REL::Relocation<void**>          materialManager{ REL::RelocationID(517047, 403555) };
+		REL::Relocation<RE::BSSpinLock*> materialLock{ REL::RelocationID(528338, 415284) };
+
+		struct ConstructHook
+		{
+			static RE::TESWaterReflections* Thunk(RE::TESWaterReflections* a_this, void* a_plane, RE::BSShaderMaterial* a_material, std::uint16_t a_flags, void* a_world)
+			{
+				auto* reflection = func(a_this, a_plane, a_material, a_flags, a_world);
+				{
+					// A shared material's count only changes under the manager's lock: its release
+					// compares the count with zero after decrementing it.
+					RE::BSSpinLockGuard guard(*materialLock);
+					a_material->IncRef();
+				}
+				std::scoped_lock guard(heldLock);
+				assert(std::ranges::find(held, reflection, &Held::reflection) == held.end());
+				held.push_back({ reflection, a_material });
+				return reflection;
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
+
+		struct DestroyHook
+		{
+			static void* Thunk(RE::TESWaterReflections* a_this, std::uint32_t a_flags)
+			{
+				RE::BSShaderMaterial* material = nullptr;
+				{
+					std::scoped_lock guard(heldLock);
+					const auto       it = std::ranges::find(held, a_this, &Held::reflection);
+					material = it->material;
+					held.erase(it);
+				}
+				auto* result = func(a_this, a_flags);
+				// The engine's release, not the material's destructor: at the last reference it takes
+				// the material out of the manager's table first. Deleted directly, the entry stays and
+				// the next lookup with its key calls into freed memory.
+				static REL::Relocation<void (*)(void*, RE::BSShaderMaterial*)> release{ REL::RelocationID(100935, 107720) };
+				release(*materialManager, material);
+				return result;
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
 	}
 
-	void Update()
+	void Install()
 	{
-		auto*                    system = RE::TESWaterSystem::GetSingleton();
-		std::vector<std::size_t> seen;
-		{
-			// AddLODWater runs in the LOD job, on a worker thread.
-			RE::BSSpinLockGuard guard(system->lock);
-			for (auto& reflection : system->waterReflections) {
-				const auto* material = At<RE::BSShaderMaterial>(reflection.get(), kReflectionMaterial);
-				const auto  kept = std::ranges::find_if(held, [&](const Held& a_held) { return a_held.reflection == reflection.get() && a_held.material == material; });
-				if (kept != held.end()) {
-					seen.push_back(static_cast<std::size_t>(kept - held.begin()));
-					continue;
-				}
-				for (auto& object : system->waterObjects) {
-					auto* shape = At<RE::NiAVObject>(object.get(), kObjectShape);
-					auto* geometry = shape ? shape->AsGeometry() : nullptr;
-					auto* property = geometry ? geometry->GetGeometryRuntimeData().shaderProperty.get() : nullptr;
-					if (property && property->material == material) {
-						held.push_back({ reflection.get(), material, RE::NiPointer<RE::BSShaderProperty>(property) });
-						seen.push_back(held.size() - 1);
-						break;
-					}
-				}
-			}
+		const REL::RelocationID         kAddWater(31388, 32179), kConstruct(31371, 32158);
+		REL::Relocation<std::uintptr_t> site{ kAddWater, REL::Relocate(0x66C, 0x770) };
+		if (!Hooks::CallsTo(site.address(), kConstruct, "water reflections: the constructor")) {
+			logger::warn("water reflections: not installed; a street's water joining a room's reflection can crash later");
+			return;
 		}
-		// Let go outside the water system's lock: the last reference frees the material, under the
-		// material manager's own.
-		std::vector<Held> kept;
-		for (const auto i : seen) {
-			kept.push_back(std::move(held[i]));
-		}
-		held = std::move(kept);
+		ConstructHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), ConstructHook::Thunk);
+		REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_TESWaterReflections[0] };
+		DestroyHook::func = vtable.write_vfunc(0x0, DestroyHook::Thunk);
+		logger::info("water reflections: installed");
 	}
 }
