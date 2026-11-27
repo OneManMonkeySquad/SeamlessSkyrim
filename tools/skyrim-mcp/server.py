@@ -778,7 +778,12 @@ def run_step(step: dict[str, Any]) -> str:
         return f"capturing {start_burst(route_capture / f'burst_{route_bursts:02}', int(arg))} frames"
     if kind == "check":
         return check_step(arg or {})
-    raise ValueError(f"unknown step '{kind}' (load, place, walk, activate, console, heading, move, wait, frames, check)")
+    if kind == "bridge":
+        # A bridge command with its arguments, e.g. {"cmd": "doors", "force": 1}: settings a route
+        # needs that the console can't set.
+        bridge.call(arg["cmd"], **{k: v for k, v in arg.items() if k != "cmd"})
+        return f"bridge {arg['cmd']}"
+    raise ValueError(f"unknown step '{kind}' (load, place, walk, activate, console, heading, move, wait, frames, check, bridge)")
 
 
 # ---- checks and the test suite -------------------------------------------------------------
@@ -800,6 +805,21 @@ route_checks: list[dict[str, Any]] = []
 # Where in the plugin log the lines a check's log options read begin: the route's start, then the
 # previous check. Each check reads what its own part of the route wrote.
 check_log_from = 0
+
+
+class KeepDoorForce:
+    """A route's {"bridge": {"cmd": "doors", "force": n}} lasts for the game's session: put back
+    when the route ends, failed or not, or every route after it ran with its doors."""
+
+    def __enter__(self) -> "KeepDoorForce":
+        self.force = bridge.call("doors")["force"]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        try:
+            bridge.call("doors", force=self.force)
+        except BridgeError:
+            pass  # the game crashed or hung: the next one starts with the ini's setting
 
 
 def log_size() -> int:
@@ -875,7 +895,9 @@ def check_step(arg: dict[str, Any]) -> str:
     """{"check": {}}: scene_check (radius 3000), and a picture while run_suite runs. Options:
     "radius"; "merged": true or false, whether a space should be merged behind the door (not
     checked when left out); "worldspace": the form ID the player must be in (a city's own, not the
-    street worldspace's low-detail copy of it); "cell": the editor ID of the player's cell; "name": the picture's name within the route
+    street worldspace's low-detail copy of it); "cell": the editor ID of the player's cell; "zAbove": the
+    player's height must be above it; "refNear": {"name", "radius"}: a reference of that name near
+    the player, its form ID not cleared; "name": the picture's name within the route
     (default: its number); "scene": false skips the scene check (where it fails anyway, e.g.
     indoors with the street merged); "active": the door that must hold the portal (form ID, ""
     for none); "used": the doors standing open because they were used (DoorUse), [] for none;
@@ -884,7 +906,9 @@ def check_step(arg: dict[str, Any]) -> str:
     problems = log_problems(arg, check_log_lines())
     empty = {"checked": 0, "problems": [], "problemCount": 0}
     result = bridge.call("scene_check", radius=float(arg.get("radius", 3000))) if arg.get("scene", True) else {"here": empty}
-    status = bridge.call("portal_status") if "active" in arg or "used" in arg else {}
+    status = bridge.call("portal_status") if "active" in arg or "used" in arg or ("merged" in arg and not arg.get("scene", True)) else {}
+    if "merged" in arg and not arg.get("scene", True) and bool(arg["merged"]) != bool(status.get("merged")):
+        problems.insert(0, f"expected the space behind the door {'merged' if arg['merged'] else 'not merged'}")
     if "active" in arg:
         active = (status.get("active") or {}).get("sourceDoor", "")
         if active.upper() != str(arg["active"]).upper():
@@ -893,8 +917,19 @@ def check_step(arg: dict[str, Any]) -> str:
         used = sorted(entry["door"].upper() for entry in status["doorUse"]["used"])
         if used != sorted(str(door).upper() for door in arg["used"]):
             problems.append(f"doors in use {used or 'none'}, expected {arg['used'] or 'none'}")
-    if "worldspace" in arg or "cell" in arg:
+    if "refNear" in arg:
+        # Gone, or there with its form ID cleared (the engine took it for fallen out of the world).
+        want = arg["refNear"]
+        refs = bridge.call("refs_near", radius=float(want.get("radius", 300)), kind="all", limit=200)["refs"]
+        found = [ref for ref in refs if ref.get("name") == want["name"]]
+        if not found:
+            problems.append(f"no '{want['name']}' within {want.get('radius', 300)} units")
+        elif all(ref["id"] == "00000000" for ref in found):
+            problems.append(f"'{want['name']}' is there with its form ID cleared")
+    if "worldspace" in arg or "cell" in arg or "zAbove" in arg:
         player = bridge.call("state").get("player") or {}
+        if "zAbove" in arg and player["pos"][2] <= float(arg["zAbove"]):
+            problems.append(f"the player at z {player['pos'][2]:.0f}, expected above {arg['zAbove']} (fell through the world)")
         here = player.get("worldspace", "")
         if "worldspace" in arg and here.upper() != str(arg["worldspace"]).upper():
             problems.append(f"in worldspace {here or 'none'}, expected {arg['worldspace']}")
@@ -906,7 +941,7 @@ def check_step(arg: dict[str, Any]) -> str:
             problems += [f"{part}: {p}" for p in result[part]["problems"]]
             if result[part]["problemCount"] > len(result[part]["problems"]):
                 problems.append(f"{part}: ... {result[part]['problemCount']} in all")
-    if "merged" in arg and bool(arg["merged"]) != (result.get("merged") is not None):
+    if "merged" in arg and arg.get("scene", True) and bool(arg["merged"]) != (result.get("merged") is not None):
         problems.insert(0, f"expected the space behind the door {'merged' if arg['merged'] else 'not merged'}")
     number = len(route_checks) + 1
     picture = None
@@ -990,12 +1025,13 @@ def run_suite(routes: list[str] | None = None, accept: bool = False) -> list[Any
                 try:
                     if not game_process():
                         game_launch(save=next((s["load"] for s in steps if "load" in s), None))
-                    for step in steps:
-                        done.append(f"{json.dumps(step)} -> {run_step(step)}")
-                        if "load" in step:
-                            # The same light in every run, for the pictures.
-                            for command in suite.get("afterLoad", []):
-                                bridge.call("console", command=command)
+                    with KeepDoorForce():
+                        for step in steps:
+                            done.append(f"{json.dumps(step)} -> {run_step(step)}")
+                            if "load" in step:
+                                # The same light in every run, for the pictures.
+                                for command in suite.get("afterLoad", []):
+                                    bridge.call("console", command=command)
                 except Exception as e:  # noqa: BLE001 -- reported with the steps that ran
                     done.append(f"FAILED: {e}")
                     outcome = "error" if game_process() else "crashed"
@@ -1089,7 +1125,7 @@ def run_route(name: str = "", steps: list[dict[str, Any]] | None = None, grep: s
         if route_capture is not None:
             bridge.call("capture_events", directory=str(route_capture))
         start_check_log()
-        with LogWatcher() as watcher:
+        with LogWatcher() as watcher, KeepDoorForce():
             for step in steps or []:
                 try:
                     done.append(f"{json.dumps(step)} -> {run_step(step)}")

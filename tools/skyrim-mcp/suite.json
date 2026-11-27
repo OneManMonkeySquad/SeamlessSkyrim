@@ -1,9 +1,10 @@
 {
-  "note": "Routes run_suite runs by default: the paths that broke more than once, and those asked to be kept working, not every stored route. afterLoad: console commands after each load step, for the same light in every picture.",
+  "note": "Routes run_suite runs by default: the paths that broke more than once, and those asked to be kept working, not every stored route. afterLoad: console commands after each load step, for the same light in every picture. honningbrew-loaded-inside first: it needs a game that hasn't been near Honningbrew yet. helgen-keep-street-autodoor last: the next save loaded after it crashes the game (KNOWN-ISSUES).",
   "afterLoad": [
     "set gamehour to 13"
   ],
   "routes": [
+    "honningbrew-loaded-inside",
     "markarth-smelter-house-out-and-in",
     "understone-keep-walk-in-out",
     "mistveil-keep-walk-in",
@@ -14,6 +15,14 @@
     "riften-south-gate-turn-back",
     "drunken-huntsman-doors-after-load",
     "riften-orphanage-door-bounce",
-    "winterhold-yard-trapdoor-down-and-up"
+    "winterhold-yard-trapdoor-down-and-up",
+    "jorrvaskr-door-use",
+    "gromms-pass-autoload-walk-in",
+    "ragged-flagon-ratway-door-open",
+    "solitude-castle-dour-walk-in",
+    "solitude-gate-walk-out",
+    "warmaidens-back-door-walk-in",
+    "blue-palace-pelagius-wing-look-out",
+    "helgen-keep-street-autodoor"
   ]
 }

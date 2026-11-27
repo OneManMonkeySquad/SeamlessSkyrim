@@ -454,6 +454,16 @@
       },
       {
         "wait": 1
+      },
+      {
+        "check": {
+          "name": "dagger",
+          "refNear": {
+            "name": "Iron Dagger",
+            "radius": 200
+          },
+          "scene": false
+        }
       }
     ]
   },
@@ -538,13 +548,19 @@
     ]
   },
   "blue-palace-pelagius-wing-look-out": {
-    "note": "Pelagius Wing (dark) looking out through its door at the Blue Palace (bright), interior to interior: the palace merged into the wing (bMergeInteriors); then walk through into the palace, the wing merged behind. Run bridge doors {force: 1} first (or the door stays shut). Look at: the palace drawn as from inside it (it was drawn flat and evenly lit by the portal pass), the image space blended across the doorway, each room's light on the other's floor and the doorway's sides (fDoorwayLight).",
+    "note": "Pelagius Wing (dark) looking out through its door at the Blue Palace (bright), interior to interior: the palace merged into the wing (bMergeInteriors); then walk through into the palace, the wing merged behind. Look at: the palace drawn as from inside it (it was drawn flat and evenly lit by the portal pass), the image space blended across the doorway, each room's light on the other's floor and the doorway's sides (fDoorwayLight).",
     "steps": [
       {
         "load": "SeamlessTestWinterholdArcanaeum"
       },
       {
         "console": "coc SolitudeBluePalace"
+      },
+      {
+        "bridge": {
+          "cmd": "doors",
+          "force": 1
+        }
       },
       {
         "wait": 5
@@ -738,6 +754,12 @@
         "wait": 10
       },
       {
+        "check": {
+          "merged": true,
+          "name": "looking-out"
+        }
+      },
+      {
         "walk": {
           "pos": [
             -1296,
@@ -749,6 +771,13 @@
       },
       {
         "wait": 3
+      },
+      {
+        "check": {
+          "name": "outside",
+          "worldspace": "0000003C",
+          "zAbove": -6000
+        }
       }
     ]
   },
@@ -888,104 +917,13 @@
     ]
   },
   "markarth-understone-walk-in-look-back": {
-    "note": "Walk into Understone Keep through its always-open doors and look back: the doors must stand open, the street seen through them",
+    "note": "Out of Understone Keep and back in through its always-open doors, looking back: the doors must stand open, the street merged and seen through them.",
     "steps": [
       {
-        "load": "Quicksave0_00000000_0_507269736F6E6572_MarkarthWorld_000048_20261123161230_1_1"
+        "load": "SeamlessTestUnderstone"
       },
       {
-        "move": [
-          -178747,
-          3410,
-          -2182
-        ]
-      },
-      {
-        "wait": 5
-      },
-      {
-        "walk": {
-          "ref": "00016E47",
-          "stop_distance": 10,
-          "timeout_seconds": 15
-        }
-      },
-      {
-        "walk": {
-          "pos": [
-            -179500,
-            3180
-          ],
-          "stop_distance": 30,
-          "timeout_seconds": 6
-        }
-      },
-      {
-        "wait": 1
-      },
-      {
-        "move": [
-          -1982,
-          -2520,
-          6440
-        ]
-      },
-      {
-        "heading": 180
-      },
-      {
-        "wait": 2
-      }
-    ]
-  },
-  "markarth-understone-walk-out": {
-    "note": "From inside Understone Keep walk out through its open front doors onto the street (the street drawn scaled from inside: watch the crossing)",
-    "steps": [
-      {
-        "load": "Quicksave0_00000000_0_507269736F6E6572_MarkarthWorld_000048_20261123161230_1_1"
-      },
-      {
-        "move": [
-          -178747,
-          3410,
-          -2182
-        ]
-      },
-      {
-        "wait": 5
-      },
-      {
-        "walk": {
-          "ref": "00016E47",
-          "stop_distance": 10,
-          "timeout_seconds": 15
-        }
-      },
-      {
-        "walk": {
-          "pos": [
-            -179500,
-            3180
-          ],
-          "stop_distance": 30,
-          "timeout_seconds": 6
-        }
-      },
-      {
-        "wait": 1
-      },
-      {
-        "move": [
-          -1982,
-          -2520,
-          6440
-        ]
-      },
-      {
-        "heading": 180
-      },
-      {
-        "wait": 4
+        "wait": 8
       },
       {
         "walk": {
@@ -994,11 +932,91 @@
             -3100
           ],
           "stop_distance": 20,
-          "timeout_seconds": 8
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "wait": 4
+      },
+      {
+        "walk": {
+          "ref": "00016E47",
+          "stop_distance": 10,
+          "timeout_seconds": 15
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -179500,
+            3180
+          ],
+          "stop_distance": 30,
+          "timeout_seconds": 6
         }
       },
       {
         "wait": 1
+      },
+      {
+        "move": [
+          -1982,
+          -2520,
+          6440
+        ]
+      },
+      {
+        "heading": 180
+      },
+      {
+        "wait": 3
+      },
+      {
+        "check": {
+          "active": "0007F65E",
+          "cell": "MarkarthUnderStoneKeep",
+          "merged": true,
+          "name": "looking-back",
+          "scene": false
+        }
+      }
+    ]
+  },
+  "markarth-understone-walk-out": {
+    "note": "From inside Understone Keep, its open front doors (0007F65E, set to stand open) ahead, walk out onto the street (the street drawn scaled from inside: watch the crossing).",
+    "steps": [
+      {
+        "load": "SeamlessTestUnderstone"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "check": {
+          "active": "0007F65E",
+          "merged": true,
+          "name": "looking-out",
+          "scene": false
+        }
+      },
+      {
+        "walk": {
+          "pos": [
+            -1982,
+            -3100
+          ],
+          "stop_distance": 20,
+          "timeout_seconds": 10
+        }
+      },
+      {
+        "wait": 2
+      },
+      {
+        "check": {
+          "name": "outside",
+          "zAbove": -2600
+        }
       }
     ]
   },
@@ -1041,13 +1059,19 @@
     ]
   },
   "ragged-flagon-ratway-door-open": {
-    "note": "The Ragged Flagon (an interior built of rooms), facing its door to the Ratway (another roomed interior) with every door open: the Ratway merged into the Flagon. Run bridge doors {force: 1} after the coc. Was: the game hung drawing as soon as the door opened (the Ratway's portal-straddling shapes culled twice, a batch's pass list ran in a circle).",
+    "note": "The Ragged Flagon (an interior built of rooms), facing its door to the Ratway (another roomed interior) with every door open: the Ratway merged into the Flagon. Was: the game hung drawing as soon as the door opened (the Ratway's portal-straddling shapes culled twice, a batch's pass list ran in a circle).",
     "steps": [
       {
         "load": "SeamlessTestWinterholdArcanaeum"
       },
       {
         "console": "coc RiftenRaggedFlagon"
+      },
+      {
+        "bridge": {
+          "cmd": "doors",
+          "force": 1
+        }
       },
       {
         "wait": 8
@@ -1067,10 +1091,20 @@
     ]
   },
   "riften-beggars-row-out": {
-    "note": "Walk out of Beggar's Row onto Riften's street (user report: fell out of the map crossing)",
+    "note": "Walk out of Beggar's Row onto Riften's street (user report: fell out of the map crossing). Was: under the street after the crossing.",
     "steps": [
       {
-        "load": "Quicksave0_00000000_0_507269736F6E6572_RiftenBeggarsRow_000035_20261123153044_1_1"
+        "load": "SeamlessTestBeggarsRow"
+      },
+      {
+        "wait": 8
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "door",
+          "scene": false
+        }
       },
       {
         "activate": "00089D5F"
@@ -1091,6 +1125,13 @@
       },
       {
         "wait": 3
+      },
+      {
+        "check": {
+          "name": "street",
+          "worldspace": "00016BB4",
+          "zAbove": 10400
+        }
       }
     ]
   },
@@ -1098,7 +1139,7 @@
     "note": "Run out of Beggar's Row right after loading, before the street is there: taken the engine's way. Broken: the street's persistent references (canal walk 0005DB62, houses) not drawn after",
     "steps": [
       {
-        "load": "Quicksave0_00000000_0_507269736F6E6572_RiftenBeggarsRow_000035_20261123153044_1_1"
+        "load": "SeamlessTestBeggarsRow"
       },
       {
         "walk": {
@@ -1123,6 +1164,13 @@
       },
       {
         "wait": 0.5
+      },
+      {
+        "check": {
+          "name": "street",
+          "worldspace": "00016BB4",
+          "zAbove": 10400
+        }
       }
     ]
   },
@@ -1134,6 +1182,13 @@
       },
       {
         "wait": 10
+      },
+      {
+        "check": {
+          "merged": true,
+          "name": "looking-out",
+          "scene": false
+        }
       },
       {
         "frames": 20
@@ -1149,7 +1204,13 @@
         }
       },
       {
-        "wait": 1
+        "wait": 2
+      },
+      {
+        "check": {
+          "name": "outside",
+          "worldspace": "00016BB4"
+        }
       }
     ]
   },
@@ -1888,6 +1949,12 @@
       },
       {
         "wait": 4
+      },
+      {
+        "check": {
+          "name": "back-in",
+          "worldspace": "0001A26F"
+        }
       }
     ]
   },

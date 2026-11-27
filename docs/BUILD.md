@@ -222,12 +222,15 @@ Test suite (`run_suite`):
   player is elsewhere: walked through a city gate without the crossing, they stand in the street
   worldspace's low-detail copy of the city, and the scene check passes there.
 - For behaviour rather than placement, a check also takes `"scene": false` (no scene check:
-  indoors with the street merged it fails anyway), `"cell"`, `"active"` (the door holding the
+  indoors with the street merged it fails anyway), `"cell"`, `"zAbove"` (fell through the world), `"refNear"`
+  (`{"name", "radius"}`: still there, form ID not cleared), `"active"` (the door holding the
   portal), `"used"` (the doors open from use) and `"logPresent"` / `"logAbsent"` / `"logOrder"`:
   regexes over the plugin log since the previous check, an order entry `[regex, seconds]` at least
   that long after the one before. Events rather than step timing: a route step's wait runs long by
   bridge overhead. A swing too short to step in and out of is slowed with `sgtm 0.1` (route
   `riften-orphanage-door-bounce`).
+- A step `{"bridge": {"cmd": "doors", "force": 1}}` sends a bridge command; the door force is
+  put back when the route ends.
 - The MCP server reads `server.py` once, at its start: after a change to it, reconnect it
   (`/mcp`) or run the route from `tools/skyrim-mcp` with `uv run python` and `import server`.
 - `walk_to` stops at a door crossing ("travelled through a door"): a route walking on past it
