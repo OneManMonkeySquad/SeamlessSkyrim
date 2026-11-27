@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2
+
+- Inside a building the street's daylight falls in through the open door onto the floor and
+  walls of the entrance.
+- No crash from water added after a loading screen.
+
 ## 0.7.1
 
 - Trapdoors and hatches stay ordinary doors with their loading screen instead of being made
