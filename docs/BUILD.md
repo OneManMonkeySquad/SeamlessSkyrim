@@ -75,15 +75,17 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
 
 - `Core/`, always installed: the plugin (Release, no PDB) and `package/`'s two ini, the in-game
   door tunings folded in first (commit them).
-- `CommunityShaders-1.9.1/`, `CommunityShaders-2.0/` and `BottledShaders-2.0.3/`, one installer
-  choice with "None of these": each fork's DLL and the files it changed against its base
-  (`-CsBase`, `-CsBase20`, `-BsBase`). A patch fits one release only: over another, or without the
+- `CommunityShaders-1.9.1/`, `CommunityShaders-2.0/`, `BottledShaders-2.0.3/` and
+  `OpenShaders-2.23.1/`, one installer choice with "None of these": each fork's DLL and the files
+  it changed against its base (`-CsBase`, `-CsBase20`, `-BsBase`, `-OsBase`). A patch fits one release only: over another, or without the
   mod it patches, its DLL runs without the shaders and data it expects, rendering breaks, and
   SeamlessSkyrim picks the fork backend instead of the native one. Told apart by feature files:
   Bottled Shaders (same DLL name) by `SnowCover.ini` or `HairBacklighting.ini`, which only it
   installs, and its 2.0 by `Rainbows.ini` with `SnowCover.ini` (its patch recommended; Bottled
   Shaders 1.0 gets "None"); Community Shaders 2.0 by `ViewAtmosphere.ini` or `SceneManager.ini`,
-  new in 2.0; otherwise an installed `CommunityShaders.dll` is taken for 1.9.1.
+  new in 2.0; Open Shaders (which has `SnowCover.ini` and `SceneManager.ini` too) by
+  `CSUtility.ini`, `FoliageLighting.ini` or `LODShadows.ini`; otherwise an installed
+  `CommunityShaders.dll` is taken for 1.9.1.
   All of this is MO2 only: Vortex answers `fileDependency` from its plugin list, so there the
   option texts, which name the exact versions, are all the user gets.
 - Each fork's branch must be on GitHub as built (SOURCE.txt links it): the script warns when the
@@ -110,7 +112,8 @@ cp build/ALL/Release/CommunityShaders.dll build/ALL/Release/CommunityShaders.pdb
 The Community Shaders 2.0 port (`seamless-portal-2.0`, COMMUNITY-SHADERS-PATCH.md) is a git
 worktree with its own build tree: `tools\build.ps1 -CommunityShaders -CsFork
 E:\projects\CommunityShaders-Seamless-2.0`; the Bottled Shaders port likewise
-(`seamless-portal-bs-2.0`, `E:\projects\BottledShaders-Seamless-2.0`). A fresh tree is configured with `cmake --preset ALL`
+(`seamless-portal-bs-2.0`, `E:\projects\BottledShaders-Seamless-2.0`), and the Open Shaders one
+(`seamless-portal-os-2.23`, `E:\projects\OpenShaders-Seamless-2.23`). A fresh tree is configured with `cmake --preset ALL`
 from the worktree with `VCPKG_ROOT` set to Visual Studio's vcpkg (`C:\Program Files\Microsoft
 Visual Studio\18\Community\VC\vcpkg`), about 4 minutes.
 
@@ -119,6 +122,8 @@ Community Shaders 2.0 with the patch, from `cmake --install build/ALL --config R
 <folder>`, in place of the 1.9.1 mod. The SeamlessSkyrim mod still carries the 1.9.1 fork's DLL
 and shaders, so the 2.0 mod has to load after it. With 2.0 deployed, a `-CommunityShaders` build
 without `-CsFork` writes the 1.9.1 fork into the game's hard link, that is into the 2.0 mod.
+Open Shaders: the mod `Open Shaders 2.23.1 SeamlessSkyrim`, `build/ALL/aio` of its worktree
+(`cmake --install build/ALL --config Release`, without `--prefix`) less `include` and `share`.
 
 CMake's build of the fork doesn't copy anything into the game, so do it by hand as above, or run
 `tools/build.ps1 -CommunityShaders` or `tools/deploy-vortex-mod.ps1`. `cp` writes into the
@@ -138,7 +143,12 @@ cp package/Shaders/Utility.hlsl "/e/SteamLibrary/steamapps/common/Skyrim Special
   `<game>\Data\ShaderCache\` (for example `Lighting`, `Utility`), or the old code keeps running.
   Bottled Shaders 2.0.3 (upstream `dev`'s `ShaderDDC`, `ShaderCache\DDC\`) keys each compiled
   shader by a hash of its source and every include: it recompiles exactly the shaders an edited
-  include reaches, so delete nothing there.
+  include reaches, so delete nothing there. Open Shaders 2.23.1 compiles all of them (~3200)
+  before the main menu: 11-15 minutes after a change to a common include, so `game_launch` needs
+  `timeout_seconds` 2400. It logs to `OpenShaders.log`, not `CommunityShaders.log`, and reads the
+  settings file Community Shaders 1.9.1 left: with "Replace Original Shaders" Sky off there (the
+  test game had it), its Reverse Z draws the vanilla sky over every interior, washed out. Turn
+  Sky on in `SettingsUser.json`.
 - The lighting pixel shaders then recompile in the background for minutes (about 10 s each,
   queued). Until they're done, the patch doesn't show.
 - A shader that fails to compile is reported in `CommunityShaders.log` ("Failed to compile ...").

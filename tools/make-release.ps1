@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Builds the release archive: a FOMOD installer with SeamlessSkyrim and, as options, the patched
-Community Shaders or Bottled Shaders for each release the fork is ported to.
+Community Shaders, Bottled Shaders or Open Shaders for each release the fork is ported to.
 
 .DESCRIPTION
 The archive holds:
@@ -15,6 +15,7 @@ The archive holds:
                                            and features\*\ since -CsBase
   CommunityShaders-2.0\...                 the same for the 2.0 port (-CsFork20, -CsBase20)
   BottledShaders-2.0.3\...                 the same for the Bottled Shaders port (-BsFork, -BsBase)
+  OpenShaders-2.23.1\...                   the same for the Open Shaders port (-OsFork, -OsBase)
   LICENSE, SOURCE.txt                      the GPL text and where the source of both parts is
   THIRD-PARTY-NOTICES.txt                  the licenses of the libraries built into both DLLs
 
@@ -44,6 +45,9 @@ param(
 	# Bottle-Compendium commit 2.0.3 was built from, which has no tag.
 	[string]$BsFork = 'E:\projects\BottledShaders-Seamless-2.0',
 	[string]$BsBase = 'e022b1c7',
+	# The port to Open Shaders 2.23.1 (a worktree of the same repository) and its base.
+	[string]$OsFork = 'E:\projects\OpenShaders-Seamless-2.23',
+	[string]$OsBase = 'v2.23.1',
 	# Build SeamlessSkyrim (Release) and each fork's CommunityShaders target first.
 	[switch]$Build,
 	# Written into the archive's SOURCE.txt.
@@ -61,6 +65,7 @@ $forks = @(
 	[pscustomobject]@{ Name = 'Community Shaders 1.9.1'; Folder = 'CommunityShaders-1.9.1'; Path = $CsFork; Base = $CsBase; Branch = 'seamless-portal'; Upstream = 'Community Shaders' }
 	[pscustomobject]@{ Name = 'Community Shaders 2.0'; Folder = 'CommunityShaders-2.0'; Path = $CsFork20; Base = $CsBase20; Branch = 'seamless-portal-2.0'; Upstream = 'Community Shaders' }
 	[pscustomobject]@{ Name = 'Bottled Shaders 2.0.3'; Folder = 'BottledShaders-2.0.3'; Path = $BsFork; Base = $BsBase; Branch = 'seamless-portal-bs-2.0'; Upstream = 'Bottled Shaders' }
+	[pscustomobject]@{ Name = 'Open Shaders 2.23.1'; Folder = 'OpenShaders-2.23.1'; Path = $OsFork; Base = $OsBase; Branch = 'seamless-portal-os-2.23'; Upstream = 'Open Shaders' }
 )
 
 function Invoke-Git([string]$Repo) {
@@ -164,7 +169,8 @@ function Get-Notices([string]$VcpkgShare, [string]$Extern, [hashtable]$More = @{
 	foreach ($dir in Get-ChildItem -LiteralPath $Extern -Directory) {
 		$places = @($dir.FullName, (Join-Path $dir.FullName 'licenses')) | Where-Object { Test-Path -LiteralPath $_ }
 		$sections[$dir.Name] = @(Get-ChildItem -LiteralPath $places -File |
-			Where-Object { $_.Name -match '^(LICENSE|COPYING|EXCEPTIONS)|notices|licenses' -and $_.Extension -in '', '.txt', '.md' } |
+			# PROVENANCE: a header vendored on its own names its license there (Open Shaders' stb HDR writer).
+			Where-Object { $_.Name -match '^(LICENSE|COPYING|EXCEPTIONS|PROVENANCE)|notices|licenses' -and $_.Extension -in '', '.txt', '.md' } |
 			ForEach-Object FullName)
 		if (-not $sections[$dir.Name]) { throw "No license file found in $($dir.FullName)." }
 	}
@@ -214,7 +220,7 @@ into CommunityShaders.dll, and their licenses: see THIRD-PARTY-NOTICES.txt.
 
 Source of SeamlessSkyrim:
   $SourceUrl
-Source of the patched Community Shaders and Bottled Shaders, in the branch of each option:
+Source of the patched Community Shaders, Bottled Shaders and Open Shaders, in the branch of each option:
 $(($forks | ForEach-Object { "  $($_.Name): $CsSourceUrl/tree/$($_.Branch)" }) -join "`n")
 
 "@)

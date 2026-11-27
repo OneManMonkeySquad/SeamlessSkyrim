@@ -16,6 +16,8 @@ Open bugs and things not tried. A fixed one comes out.
   (`Hooks::MainHooks::Unk_sub`, under `EndOfFrameHook`); every other thread idle. Twice now.
   Also on SE 1.5.97 (no HDT-SMP), twice on 2026-11-26: `place_go bannered-mare-door-out` a few
   seconds after walking out of the Bannered Mare, 0% CPU. From the Tamriel exterior it loads.
+  Again 2026-11-27 (Open Shaders fork, AE): the frame thread waits for the frame's jobs (ID 35409
+  under `EndOfFrameHook`), one job thread waits in ID 39068 (on ID 69516, event 0xD).
 - A hang right after walking out of Arcadia's (2026-11-16, agent game, once in ~17 exits): the main thread waiting for the frame's jobs (ID 35409), one job thread (an audio job, ID 39080 -> 91863) spinning in EngineFixes' `ScrapHeap::Allocate` replacement (ID 68173 -> 68144). Not reproduced; not known whether SeamlessSkyrim plays a part.
 - Loading saves one after another across worldspaces (Whiterun's Belethor's, Riften's jail) with portals on crashes now and then (ID 19165 putting an actor's 3D into a cell without 3D), also without the persistent references' 3D loading. During the sectors work (APPROACHES.md, 5), loading a save, travelling to Swindler's Den and loading again crashed with all of that switched off.
 - Walking into Understone Keep in the suite (`understone-keep-walk-in-out`, right after the smelter
@@ -200,6 +202,12 @@ Open bugs and things not tried. A fixed one comes out.
   Nothing takes a merge back short of letting the space go.
 
 ## ENB, the native backend and other game versions
+
+- Open Shaders 2.23.1, walking out of the Bannered Mare with the street merged in (13:00, clear):
+  the first frame outside (~200 ms long) is drawn without the sun, the street dull and dark, then
+  lit. Every walk-out, also the second in a session; not Skylighting (off: the same), not Sky Sync
+  (off: the same). Stock Open Shaders (no merge, the engine's crossing) doesn't show it. Cause not
+  found.
 
 - SE 1.5.97 with ENB 0.505, effects on: the street seen from inside a building (Warmaiden's at
   16:30, route `warmaidens-street-sun-1630-se`) lies in full sun where outside it is in the

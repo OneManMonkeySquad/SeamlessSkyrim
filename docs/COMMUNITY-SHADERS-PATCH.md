@@ -145,6 +145,49 @@ its own features, so everything in "On Community Shaders 2.0" holds; on top of i
   Switched in one frame, the street's exposure jumped on walking out; it is eased at the adaptation
   speed instead (`interiorBrighteningEV`), snapped after a pause in drawing (a loading screen).
 
+## On Open Shaders 2.23.1
+
+Branch `seamless-portal-os-2.23`, in the worktree `E:\projects\OpenShaders-Seamless-2.23` (same
+repository, remote `open` = `alandtse/open-shaders`), based on its tag `v2.23.1`: the commits of
+`seamless-portal-2.0` cherry-picked onto it. Open Shaders is a fork of Community Shaders `dev`
+(merge base 2026-11-18) with ~3900 commits of its own, not Community Shaders 2.0 or Bottled
+Shaders. Where it differs from 2.0:
+
+- `ExtraShaderDescriptor`: Open Shaders keeps upstream's bits where upstream has them and puts
+  its own from bit 31 down; free are 7, 8, 14-18. Ours: `SeamlessRemote` 15, `SeamlessUnmasked` 16,
+  `SeamlessPlace` 17, `SeamlessOutdoor` 18, `SeamlessRoom` 7-8 (`kSeamlessRoomShift` 7),
+  `SeamlessLightView` 14.
+- `SharedDataCB` is in `State.h` (no `src/SharedData.h`), ours after `WindFieldPreviousTransientImpulses`.
+  Open Shaders keeps no copy of it: `UpdateSharedData` stores the world's in our
+  `State::sharedData`, a `unique_ptr` (over-aligned, as a member it padded `State`: C4324 is an error).
+- `FrameBuffer::CameraViewProjInverse` and `CameraPosAdjust` are per-eye arrays: `[0]`.
+- Linear Lighting converts in the shaders (`Color::DirectionalLight`, `Color::Ambient`,
+  `Color::Fog`), not on upload: the merged colours are uploaded as the game's (`working` is the
+  identity) and go through the same functions as the engine's. Rain lit by the street:
+  `Color::GamutTransform` and `AdjustUtilityColor`, as `GetDirLightColor`. The engine's sun is the
+  game's colour (Sky Sync dims the weather's sunlight in place), so `SeamlessPortal_GameLightColor`
+  isn't needed and isn't there; SeamlessSkyrim uses the light's own colour.
+- No Physical Sky: `SeamlessPortal_SetStreetSky` isn't there.
+- Skylighting updates a few probe slices per capture (`EnableIncrementalProbeUpdates`):
+  `SeamlessSettle` also forces every slice (`forcedFullUpdateFrames`), or most probes would not
+  settle. Its CB field is `SkylightingCB::_pad4[0]` / `pad0.x`.
+- IBL has `DisableInInteriors`: `Prepass` returns early indoors, so t75 is bound before that
+  check. `GetIBLRatio` takes the DALC and IBL it compares; `GetStreetDiffuseIBL` returns gamma
+  space, as `GetDiffuseIBL`.
+- The deferred composite reconstructs the ambient only with Screen Space GI; there is no
+  `ReplaceAmbient` and no Histogram Auto Exposure interior brightening, so Bottled Shaders'
+  changes to those are not ported. Snow Cover is: `snowActive` is false for `SeamlessRemote`.
+- Volumetric Shadows reads the shadow maps from the renderer, not from PS t4: `Build` takes the
+  real views; `RestoreWorld` builds from the engine's targets again. `UploadShadowLight` also
+  binds the cascades at t99 (`LightLimitFix::GetDirectionalShadow`), the portal's own in a portal pass.
+- Terrain Shadows: `GetCommonBufferData` returns nothing when LOD Shadows replaces it. What LOD
+  Shadows does in a portal pass (behind a city gate) is not looked at.
+- Light Limit Fix: `ProcessLight(bsLight, niLight)`, then `SetPointLightTypeFlags` (spot or
+  omni, which the shader reads); `eyePositionCached` is per eye. Only `LightFlags::Shadow` exists.
+- Frame generation: `needsReset` is stored every present (`hdrParamsChanged || cameraCut`).
+- `cmake --install` refuses any prefix but `build/ALL/aio` (it empties the prefix first), and
+  compares it as a string: give none.
+
 ## DLL
 
 Exports used by SeamlessSkyrim (looked up with `GetProcAddress`; absent = feature off):

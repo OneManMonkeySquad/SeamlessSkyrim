@@ -1,4 +1,4 @@
-# Plan: the fork on Community Shaders 1.9.1, 2.0 and Bottled Shaders 2.0.3
+# Plan: the fork on Community Shaders 1.9.1, 2.0, Bottled Shaders 2.0.3 and Open Shaders 2.23.1
 
 Written 2026-11-26. Steps 1 and 2 are ported (COMMUNITY-SHADERS-PATCH.md, "On Community Shaders
 2.0" and "On Bottled Shaders 2.0.3"), and the installer and `tools/make-release.ps1` offer all
@@ -12,6 +12,7 @@ Shaders 2.0 and Bottled Shaders 2.0.3.
 | Community Shaders 1.9.1 | released | `seamless-portal` (today) |
 | Community Shaders 2.0 | `v2.0.0-rc.2` tagged, not released | new, from the 2.0 tag |
 | Bottled Shaders 2.0.x | 2.0.3 on Nexus (mod 192816); source `InTheBottle/Bottled-Shaders`, branch `Bottle-Compendium` | new, from the commit 2.0.3 was built from |
+| Open Shaders 2.23.1 | released 2026-11-23 (Nexus mod 180419); source `alandtse/open-shaders`, tag `v2.23.1` | `seamless-portal-os-2.23`, ported 2026-11-27 |
 
 Bottled Shaders 1.0.x (1.0.28) is not a target.
 
@@ -45,6 +46,13 @@ for; where a base differs, it says so there.
   comparing the archive's shaders with the branch's history, all equal there. Its DLL is newer than
   the commit before and older than that one. The next release is found the same way.
 - GPL-3.0: publish the branch, as for the Community Shaders fork (`SOURCE.txt`).
+
+## Open Shaders facts
+
+- Its DLL is `CommunityShaders.dll`, the layout Community Shaders'. A fork of Community Shaders
+  `dev` with many features of its own, not Bottled Shaders.
+- Releases are tagged (`vX.Y.Z`), about every four days since August 2026: each update brings its
+  own DLL back, and SeamlessSkyrim falls to the "None" backend until our next release.
 
 ## Installer
 
