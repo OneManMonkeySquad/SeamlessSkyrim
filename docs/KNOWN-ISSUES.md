@@ -33,6 +33,11 @@ Open bugs and things not tried. A fixed one comes out.
   Kings, 0.2 s after the upstairs behind its door was attached, its references still loading): in
   a culling job, `BSCullingProcess::Process` (ID 106921) reading a null object (ID 76561 + 0x56).
   Not reproduced by saving 0.05-0.4 s after an attach of the same door.
+- Crash in an animation job (2026-11-27, Open Shaders 2.23.1): a `BShkbAnimationGraph` updated
+  with its vtable null (SkyrimSE.exe+0BCF258, `call [rax+140h]`, 1.7.104), a few ms after
+  `released: a closer door` let go of WindhelmBloodworks (10 actors, 9 with 3D) merged into the
+  Palace of the Kings and the upstairs was attached in its place (`place_go
+  windhelm-palace-upstairs-door` from Whiterun). Not again on the next run of the same steps.
 - A user's game (0.7.0, AE 1.6.1170, stock Community Shaders 1.9.1, CS Water Mod with its
   WaterWind and WaterWade plugins, 139 plugins), "often, when entering different buildings":
   crashes attaching a street's water. The one log sent (2026-11-26) is from after he added
