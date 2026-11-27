@@ -86,8 +86,11 @@ tools\deploy-vortex-mod.ps1 -Build   # -Build: both DLLs first
   new in 2.0; Open Shaders (which has `SnowCover.ini` and `SceneManager.ini` too) by
   `CSUtility.ini`, `FoliageLighting.ini` or `LODShadows.ini`; otherwise an installed
   `CommunityShaders.dll` is taken for 1.9.1.
-  All of this is MO2 only: Vortex answers `fileDependency` from its plugin list, so there the
-  option texts, which name the exact versions, are all the user gets.
+  All of this is MO2 only: Vortex answers `fileDependency` from its plugin list (`.esp`, `.esm`,
+  `.esl`; read from Vortex 2.11's code), deployed or not. Where a game archive that is always there
+  (`Skyrim - Interface.bsa`) reads as missing, the installer preselects "Choose one of the options
+  below" instead, which installs no patch and leads to a page that sends the user back. A FOMOD
+  can't refuse Next. Not yet run in Vortex or MO2.
 - Each fork's branch must be on GitHub as built (SOURCE.txt links it): the script warns when the
   local branch differs from `fork/<branch>` (as last fetched).
 - `LICENSE`, `SOURCE.txt` and `THIRD-PARTY-NOTICES.txt` at the archive's root, outside both

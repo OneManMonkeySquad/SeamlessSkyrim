@@ -62,6 +62,13 @@ Open bugs and things not tried. A fixed one comes out.
   in Precision's `ActiveActor` destructor (`PrecisionHandler::Clear`), destroying a `BSFadeNode`
   whose extra data array (ID 70520 + 0x50) holds floats for a pointer. Not reproduced in 40 more
   such trips.
+- A user's game (0.7.2, AE 1.6.1170, the 1.9.1 fork, SPS.dll, K747_LodWind, NMN_DeformableTerrain;
+  2026-11-27, "on a door interaction", 8 min in): crash in the world's sun shadow map
+  (`RenderPlayerView` + 0x2F1 → ID 107133 → `SubmitAccumulator` → `SetupAndDrawPass` → ID 107762
+  + 0x100, `BSUtilityShader` calling the geometry's vfunc 0x80). The pass's geometry is freed
+  memory: its "vtable" is a heap pointer (the pass's own shader property), the call goes to
+  0x32ED. A terrain `Land` shape is beside it on the stack. Same kind as the Bottled Shaders sun
+  shadow crash under "ENB, the native backend...". No plugin log and no door named; not reproduced.
 - A user's game (0.5.0, Maids II) hung minutes after an automatic door fired from indoors and
   left the Mist menu open. The menu is fixed; the hang wasn't reproduced.
 

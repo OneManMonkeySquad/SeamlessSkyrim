@@ -7,8 +7,11 @@
 	<installSteps order="Explicit">
 		<installStep name="Community Shaders, Bottled Shaders or Open Shaders">
 			<optionalFileGroups order="Explicit">
-				<!-- A forced choice: Vortex answers fileDependency from its plugin list, which never holds
-				     these files, so only MO2 can preselect the right answer; the texts name the versions.
+				<!-- Vortex answers fileDependency from its plugin list, which never holds these files, so only
+				     MO2 can preselect the right answer. Where nothing can be detected (a game archive that is
+				     always there reads as missing), the preselected option is one that installs no patch and
+				     leads to a page sending the user back: a FOMOD can't refuse Next, and a silent "None of
+				     these" left Vortex users without the rooms behind doors.
 				     Each patch replaces the DLL and some shaders and fits one release exactly.
 				     Told apart by feature files (patterns: the first match wins):
 				     - Bottled Shaders (same CommunityShaders.dll): Snow Cover, Hair Backlighting, only it has.
@@ -19,6 +22,25 @@
 				       rules out the others): CS Utility, Foliage Lighting, LOD Shadows, only it has. -->
 				<group name="Which Community Shaders, Bottled Shaders or Open Shaders do you use?" type="SelectExactlyOne">
 					<plugins order="Explicit">
+						<plugin name="Choose one of the options below">
+							<description>Your mod manager can't tell this installer which shader mod you have. Choose the one you use, or "None of these".</description>
+							<conditionFlags>
+								<flag name="nothingChosen">On</flag>
+							</conditionFlags>
+							<typeDescriptor>
+								<dependencyType>
+									<defaultType name="Optional" />
+									<patterns>
+										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="Skyrim - Interface.bsa" state="Missing" />
+											</dependencies>
+											<type name="Recommended" />
+										</pattern>
+									</patterns>
+								</dependencyType>
+							</typeDescriptor>
+						</plugin>
 						<plugin name="Community Shaders 1.9.1">
 							<description>Installs a patch for Community Shaders 1.9.1 that draws the rooms behind doors with their own light. SeamlessSkyrim must win its file conflicts with Community Shaders and Skylighting. Not for any other version of Community Shaders, nor Bottled Shaders or Open Shaders: it replaces their DLL and shaders with Community Shaders 1.9.1's and breaks them.</description>
 							<files>
@@ -141,6 +163,12 @@
 									<defaultType name="Optional" />
 									<patterns>
 										<pattern>
+											<dependencies operator="And">
+												<fileDependency file="Skyrim - Interface.bsa" state="Missing" />
+											</dependencies>
+											<type name="Optional" />
+										</pattern>
+										<pattern>
 											<dependencies operator="Or">
 												<fileDependency file="Shaders\Features\CSUtility.ini" state="Active" />
 												<fileDependency file="Shaders\Features\FoliageLighting.ini" state="Active" />
@@ -170,6 +198,24 @@
 										</pattern>
 									</patterns>
 								</dependencyType>
+							</typeDescriptor>
+						</plugin>
+					</plugins>
+				</group>
+			</optionalFileGroups>
+		</installStep>
+		<installStep name="Nothing chosen">
+			<visible>
+				<flagDependency flag="nothingChosen" value="On" />
+			</visible>
+			<optionalFileGroups order="Explicit">
+				<group name="You haven't said which shader mod you use" type="SelectExactlyOne">
+					<plugins order="Explicit">
+						<plugin name="Go back and choose one">
+							<description>Press Back and choose your Community Shaders, Bottled Shaders or Open Shaders, or "None of these". If you finish here, no patch is installed: doors still open without a loading screen, but the rooms behind them aren't drawn into the street.</description>
+							<files />
+							<typeDescriptor>
+								<type name="Required" />
 							</typeDescriptor>
 						</plugin>
 					</plugins>
