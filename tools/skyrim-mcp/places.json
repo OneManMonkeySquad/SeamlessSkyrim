@@ -318,6 +318,17 @@
       0.07609369605779648
     ]
   },
+  "winterhold-longhouse-door-se": {
+    "cell": "WinterholdJarlsLonghouse",
+    "headingDeg": 218.27784729003906,
+    "interior": true,
+    "note": "SE 1.5.97 (user's quicksave): inside Winterhold's Jarl's Longhouse at its door (000177FB), the street merged in, looking out at snowy terrain in the sun and in the house's shade.",
+    "pos": [
+      -72.05316925048828,
+      316.3037109375,
+      0.34994757175445557
+    ]
+  },
   "winterhold-yard-trapdoor": {
     "cell": "WinterholdCollegeExterior",
     "headingDeg": 9.550568580627441,

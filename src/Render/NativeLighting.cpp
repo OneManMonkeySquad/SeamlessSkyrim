@@ -111,6 +111,37 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// Snow's subsurface scattering (BSImagespaceShader::RenderSnowSSS, ID 107267, called from
+	// Main::RenderWorld) lights the picture's snow pixels again, with the world scene's sun colour
+	// in the game's default mode (iSnowSSSColorMode 2, the global at ID 391589). Indoors that sun is
+	// the interior's: the snow seen through a doorway lay in shades of black, and land covered in
+	// snow, which gets its light only from this pass, was black outright. While the street is
+	// merged in, the pass gets the street's sun colour, as the street's shapes do (LightingSwap).
+	struct SnowSSSHook
+	{
+		static std::int32_t Thunk(void* a_shader, std::int32_t a_target, std::uint32_t a_flags)
+		{
+			std::optional<std::array<float, 19>> lighting;
+			{
+				std::scoped_lock lock(lightingLock);
+				lighting = mergedLighting;
+			}
+			auto* here = RE::PlayerCharacter::GetSingleton()->GetParentCell();
+			if (!lighting || !here || !here->IsInteriorCell() || !Render::Native::MergedDoorSet()) {
+				return func(a_shader, a_target, a_flags);
+			}
+			static REL::Relocation<RE::ShadowSceneNode**> world{ REL::RelocationID(513211, 390951) };
+			auto&       diffuse = (*world)->GetRuntimeData().sunLight->light->GetLightRuntimeData().diffuse;
+			const auto  own = diffuse;
+			const float scale = (*lighting)[18];
+			diffuse = { (*lighting)[0] * scale, (*lighting)[1] * scale, (*lighting)[2] * scale };
+			const auto result = func(a_shader, a_target, a_flags);
+			diffuse = own;
+			return result;
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	struct ScaledLight
 	{
 		RE::NiLight* light;
@@ -432,6 +463,10 @@ namespace Render::Native
 		REL::Relocation<std::uintptr_t> site{ REL::RelocationID(100520, 107245), REL::Relocate(0xC37, 0xD26) };
 		if (Hooks::CallsTo(site.address(), REL::RelocationID(98984, 105637), "native backend: SSAO composite's fog")) {
 			CompositeFogHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), CompositeFogHook::Thunk);
+		}
+		REL::Relocation<std::uintptr_t> snowSite{ REL::RelocationID(100424, 107142), REL::Relocate(0x1F0, 0x21D) };
+		if (Hooks::CallsTo(snowSite.address(), REL::RelocationID(100537, 107267), "native backend: snow's subsurface scattering")) {
+			SnowSSSHook::func = SKSE::GetTrampoline().write_call<5>(snowSite.address(), SnowSSSHook::Thunk);
 		}
 	}
 

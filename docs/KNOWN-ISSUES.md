@@ -18,6 +18,8 @@ Open bugs and things not tried. A fixed one comes out.
   seconds after walking out of the Bannered Mare, 0% CPU. From the Tamriel exterior it loads.
   Again 2026-11-27 (Open Shaders fork, AE): the frame thread waits for the frame's jobs (ID 35409
   under `EndOfFrameHook`), one job thread waits in ID 39068 (on ID 69516, event 0xD).
+  Again 2026-11-28 on SE 1.5.97: `coc WinterholdJarlsLonghouse` (`place_go`) seconds after
+  `move_to` the longhouse's outer door, 0% CPU.
 - A hang right after walking out of Arcadia's (2026-11-16, agent game, once in ~17 exits): the main thread waiting for the frame's jobs (ID 35409), one job thread (an audio job, ID 39080 -> 91863) spinning in EngineFixes' `ScrapHeap::Allocate` replacement (ID 68173 -> 68144). Not reproduced; not known whether SeamlessSkyrim plays a part.
 - Pointers overwritten with floats (2026-11-27, AE 1.7.104): three crashes read a pointer that
   holds two floats (0x3F039F20'3F36DF34 and the like). Loading a save right after
@@ -288,6 +290,9 @@ Open bugs and things not tried. A fixed one comes out.
 - Without Community Shaders (the native backend) water isn't masked at a merged room's doorway:
   the street's canal shows in the Ratway's doorway over the steps down. `NativeMask` hooks the
   lighting, utility and effect shaders only; the water shader isn't tried.
+- Snow seen from indoors with the Community Shaders fork: whether the game's snow pass
+  (`RenderSnowSSS`, lit with the interior's sun colour, ENGINE.md) darkens it as it did with the
+  native backend is not checked; the native backend's fix (`SnowSSSHook`) isn't installed there.
 - Two interiors merged (`bMergeInteriors`) with the native backend (no Community Shaders, SE
   1.5.97): not tried.
 - The automatic doors' hook (`AutoDoorHook`) installs on SE 1.5.97 without error but hasn't been
