@@ -501,7 +501,7 @@ namespace Portal
 			attachRefLights(a_cell, true);
 		}
 		if (!(debugSkip & 4)) {
-			adoptedLights += LightScene::Adopt(scene.get(), Cell3D(a_cell));
+			adoptedLights += LightScene::Adopt(scene.get(), Cell3D(a_cell), lateLights);
 		}
 	}
 
@@ -612,7 +612,7 @@ namespace Portal
 			for (auto* cell : street) {
 				// Their lights (a lantern on a house) come with them.
 				if (AdoptPersistent(cell, persistent) && !(debugSkip & 4)) {
-					adoptedLights += LightScene::Adopt(scene.get(), Cell3D(cell));
+					adoptedLights += LightScene::Adopt(scene.get(), Cell3D(cell), lateLights);
 				}
 			}
 		}
@@ -660,6 +660,27 @@ namespace Portal
 		groundCheck = 0.0f;
 		logger::info("portal: attached {} (+{} neighbouring cells, {} lights)", Probe::DescribeCell(a_cell), cells.size() - 1, adoptedLights);
 		return true;
+	}
+
+	void UpdateMoved(RE::NiAVObject* a_root)
+	{
+		// A node with a collision object leaves its world transform to that object's update
+		// (ID 70539 + 0x8B); without one, it works it out itself. The blend objects are taken off
+		// their nodes for the update and put back.
+		std::vector<std::pair<RE::NiAVObject*, RE::NiPointer<RE::NiCollisionObject>>> blends;
+		if (!moveBodies) {
+			RE::BSVisit::TraverseScenegraphObjects(a_root, [&](RE::NiAVObject* a_object) {
+				if (a_object->collisionObject && netimmerse_cast<RE::bhkBlendCollisionObject*>(a_object->collisionObject.get())) {
+					blends.emplace_back(a_object, std::move(a_object->collisionObject));
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+		RE::NiUpdateData update;
+		a_root->Update(update);
+		for (auto& [object, collision] : blends) {
+			object->collisionObject = std::move(collision);
+		}
 	}
 
 	// Moving a whole cell (merging it, or putting it back) changes every object's world transform
@@ -876,8 +897,7 @@ namespace Portal
 					cell3D->parent->DetachChild(cell3D.get());
 					cell3D->local = RE::NiTransform();
 					root->AttachChild(cell3D.get(), true);
-					RE::NiUpdateData update;
-					cell3D->Update(update);
+					UpdateMoved(cell3D.get());
 					RecomputeBounds(cell3D.get());
 					SettleMotion(cell3D.get());
 				}
@@ -1203,7 +1223,7 @@ namespace Portal
 			// registers one of them anew every frame; taking each into ours, the world scene's queued
 			// removal of the one before crashed (ID 106335 -> 106342).
 			if (!(debugSkip & 4) && !(merged && !cell->IsInteriorCell())) {
-				late += LightScene::Adopt(scene.get(), Cell3D(cell));
+				late += LightScene::Adopt(scene.get(), Cell3D(cell), lateLights);
 			}
 			// A street merged into an interior hangs in the world scene: the light update there queued
 			// a new light in the world's light scene every frame, which was adopted here, and the
@@ -1649,8 +1669,7 @@ namespace Portal
 				movedBounds.Capture(cell3D);
 				movedBounds.UnfixBeforeMove(cell3D);
 				cell3D->local = a_toSource;
-				RE::NiUpdateData update;
-				cell3D->Update(update);
+				UpdateMoved(cell3D);
 				SettleMotion(cell3D);
 			}
 		}
@@ -2176,8 +2195,7 @@ namespace Portal
 					}
 					return RE::BSVisit::BSVisitControl::kContinue;
 				});
-				RE::NiUpdateData update;
-				cell3D->Update(update);
+				UpdateMoved(cell3D.get());
 				SettleMotion(cell3D.get());
 				++moved;
 			}

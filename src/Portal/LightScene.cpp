@@ -121,7 +121,7 @@ namespace Portal::LightScene
 		return a_top && name && a_top->name.data() == name;
 	}
 
-	int Adopt(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D)
+	int Adopt(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D, const std::vector<RE::NiPointer<RE::BSLight>>& a_coming)
 	{
 		auto* portal = a_scene;
 		if (!portal || !a_cell3D) {
@@ -132,7 +132,22 @@ namespace Portal::LightScene
 		// of its lights again every frame; added to ours each time, the portal scene held it 1400
 		// times after two minutes and the game crashed in the world scene's light list.
 		std::unordered_set<const RE::BSLight*> ours;
-		ForEachLight(portal, [&](RE::BSLight* a_light) { ours.insert(a_light); });
+		// By NiLight too: within a crossing the engine queues a second BSLight for each light of a
+		// space that changed scene as it was (Take, Give). Taken in as well, each walked the scene
+		// again: 42 of Belethor's, ~3 ms of walking out.
+		std::unordered_set<const RE::NiLight*> lit;
+		ForEachLight(portal, [&](RE::BSLight* a_light) {
+			ours.insert(a_light);
+			lit.insert(a_light->light.get());
+		});
+		for (auto& light : portal->GetRuntimeData().lightQueueAdd) {
+			if (light) {
+				lit.insert(light->light.get());
+			}
+		}
+		for (auto& light : a_coming) {
+			lit.insert(light->light.get());
+		}
 		for (auto* engineScene : RE::BSShaderManager::State::GetSingleton().shadowSceneNode) {
 			if (!engineScene || engineScene == portal) {
 				continue;
@@ -146,7 +161,7 @@ namespace Portal::LightScene
 			});
 			for (auto& light : lights) {
 				engineScene->RemoveLight(light);
-				if (ours.insert(light.get()).second) {
+				if (ours.insert(light.get()).second && lit.insert(light->light.get()).second) {
 					portal->AddLight(light.get());
 					++moved;
 				}
@@ -171,7 +186,7 @@ namespace Portal::LightScene
 				}
 			}
 			for (auto& light : queued) {
-				if (ours.insert(light.get()).second) {
+				if (ours.insert(light.get()).second && lit.insert(light->light.get()).second) {
 					portal->AddLight(light.get());
 					++moved;
 				}

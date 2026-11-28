@@ -362,6 +362,25 @@ namespace
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// Both changes of space end by waiting until every queued pathing request is done (ID 13317 +
+	// 0x781, TES::SetCurrentCell + 0x7E5: ID 30451 on ID 400442, which sleeps until the pathing
+	// thread has caught up, ID 91402). Usually nothing; with a market's people asking for paths,
+	// 45 to 180 ms of walking out of Belethor's, four trips in eight. The requests are finished a
+	// moment later as in any other frame; nothing a seamless trip changes makes them wrong (no
+	// cell, and so no navmesh, is attached or detached by it).
+	struct PathingWaitHook
+	{
+		static void Thunk(void* a_pathing)
+		{
+			if (seamlessTeleport && skipLoadWait) {
+				Note("waiting for the pathing requests skipped");
+				return;
+			}
+			func(a_pathing);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	// ID 40438 + 0x952: closes the loading screen (ID 13363 with "show" false), which ends with
 	// two Sleep(30) calls, 60 ms of every trip. With the loading screen never shown (ID 400337
 	// makes the "show" call return straight away) there is nothing to close.
@@ -830,6 +849,27 @@ namespace Portal::Travel
 		} else {
 			logger::warn("travel: load wait call not found, crossings keep waiting for loads");
 		}
+		{
+			const REL::RelocationID         kWaitForPathing(29619, 30451);
+			REL::Relocation<std::uintptr_t> inSite{ REL::RelocationID(13171, 13316), REL::Relocate(0x64F, 0x7E5) };
+			if (callsTo(inSite.address(), kWaitForPathing)) {
+				PathingWaitHook::func = SKSE::GetTrampoline().write_call<5>(inSite.address(), PathingWaitHook::Thunk);
+			}
+			// On SE the walk out ends with a jump to it, not a call.
+			REL::Relocation<std::uintptr_t> outSite{ REL::RelocationID(13172, 13317), REL::Relocate(0x5FF, 0x781) };
+			if (REL::Module::IsAE()) {
+				if (callsTo(outSite.address(), kWaitForPathing)) {
+					PathingWaitHook::func = SKSE::GetTrampoline().write_call<5>(outSite.address(), PathingWaitHook::Thunk);
+				}
+			} else {
+				const auto* code = reinterpret_cast<const std::uint8_t*>(outSite.address());
+				if (code[0] == 0xE9 && outSite.address() + 5 + *reinterpret_cast<const std::int32_t*>(code + 1) == kWaitForPathing.address()) {
+					PathingWaitHook::func = SKSE::GetTrampoline().write_branch<5>(outSite.address(), PathingWaitHook::Thunk);
+				} else {
+					logger::warn("travel: jump to ID {} not found, walking out keeps waiting for pathing", kWaitForPathing.id());
+				}
+			}
+		}
 		for (const auto offset : REL::Relocate(std::array{ 0x544, 0x579 }, std::array{ 0x6CB, 0x700 })) {
 			REL::Relocation<std::uintptr_t> interiorWait{ REL::RelocationID(13171, 13316), offset };
 			if (callsTo(interiorWait.address(), kWaitForLoads)) {
@@ -893,10 +933,11 @@ namespace Portal::Travel
 		spreadLights = a_options.value("spreadLights", spreadLights);
 		keepStreet = a_options.value("keepStreet", keepStreet);
 		Portal::RemoteCell::keepInterior = a_options.value("keepInterior", Portal::RemoteCell::keepInterior);
+		Portal::moveBodies = a_options.value("moveBodies", Portal::moveBodies);
 		moveLights = a_options.value("moveLights", moveLights);
 		Portal::RemoteCell::moveLights = moveLights;
 		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
-			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights }, { "keepInterior", Portal::RemoteCell::keepInterior } };
+			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights }, { "keepInterior", Portal::RemoteCell::keepInterior }, { "moveBodies", Portal::moveBodies } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

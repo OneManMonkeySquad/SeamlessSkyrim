@@ -237,6 +237,10 @@ the end. These were expensive to find. Add new ones in the same change that need
 - **A detached interior loses its references' 3D after a while**, its cell node staying (3D=yes):
   Arcadia's Cauldron, let go on walking into Belethor's and attached again 20 s later, took 4.7 s
   to load. Belethor's, detached by the teleport and attached again in the same frame, was whole.
+- **Both changes of space end by waiting for the pathing thread** (ID 13317 + 0x781, on SE a jump
+  at + 0x5FF; `TES::SetCurrentCell` + 0x7E5: ID 30451 on ID 400442, sleeping until every queued
+  request is done, ID 91402). Walking out into Whiterun's market it was nothing or 45-180 ms, four
+  trips in eight. Skipped for a seamless trip (`PathingWaitHook`).
 - **Teleports** onto a point below the land are lifted onto it (ID 37507 + 0xCEA).
 - **A mod's hook in a profile isn't necessarily the mod's work.** Walking in or out of Whiterun's
   shops (2026-11-16), ~25 ms of the teleport sat under `po3_LightPlacer` (ID 19411+0x257 ->
@@ -266,11 +270,19 @@ the end. These were expensive to find. Add new ones in the same change that need
   every actor in high process, on the job threads; +0x279) calls ID 19165 (cell, actor, true, ..),
   which, when the 3D's parent isn't the cell's node for actors (ID 19339), queues the move there
   (ID 19415, a per-thread queue run by ID 19416 → ID 19414 `AttachChild`).
-- **Moving a cell's 3D moves its bodies too:** `NiAVObject::Update` of the cell (ID 70539 →
-  the collision object's ID 78910 → ID 78178) sets its bodies' transforms in Havok, and the
-  broadphase update (IDs 61802, 64613) is most of moving Riften's street out of the jail on
-  walking out (70-270 ms). `NiUpdateData::kDisableCollision` doesn't skip it; ID 78910 returns early
-  when a thread-local state (TLS + 0x9E8) is 1, set by whom isn't known.
+- **Moving a cell's 3D moves the bone bodies of its people, not its fixed bodies.** A node with a
+  collision object leaves its world transform to that object (`NiAVObject::UpdateWorldData`, ID
+  70539 + 0x8B: the object's vfunc +0x130). A fixed body of a static stays where it is: a street
+  merged into a room has its brazier's body at the street's coordinates, its shape at the room's.
+  A blend collision object (ID 78910: the bones of people and animals, the weapons they carry,
+  ~500 in Whiterun's market) sets its body from the node (ID 78178 -> 78082) and the broadphase
+  moves the body across the world (ID 61802 -> 64680): 80% of the update of a moved street, and
+  most of moving Riften's street out of the jail on walking out (70-270 ms).
+  - Which way a blend object goes is its `heirGain` (+0x28) and a thread-local mode (TLS + 0x9E8):
+    gain 1, body from node, unless the mode is 2 (node from body, ID 78177); gain 0 and mode 1,
+    nothing. `NiUpdateData::kDisableCollision` changes none of it.
+  - Taken off its node for an update, the node works its transform out itself; the body follows at
+    the person's own next update (`Portal::UpdateMoved`).
 - **An update with a loose item's collision active reads its place back from its body** (ID 70539
   → 78177 → 78382 → ID 19826). If the body is outside the item's cell (in an interior, below its
   floor), ID 19826 treats the item as fallen out and moves it to another cell (ID 19799). A

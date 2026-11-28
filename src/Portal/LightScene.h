@@ -34,7 +34,8 @@ namespace Portal::LightScene
 
 	// Moves the lights under a_cell3D (the remote cell) from the engine's light scenes into a_scene.
 	// Cheap enough to run every frame, which also catches lights created after the attach.
-	int Adopt(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D);
+	// a_coming: lights the scene is about to be given; another for the same NiLight isn't taken.
+	int Adopt(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D, const std::vector<RE::NiPointer<RE::BSLight>>& a_coming = {});
 
 	// Lights changing scene as they are. A light taken into a scene the engine's way (AddLight) is
 	// given a 200 KB culling process, built entry by entry (ID 76551), and a walk of the scene for

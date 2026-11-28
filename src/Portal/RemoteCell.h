@@ -389,6 +389,17 @@ namespace Portal
 		float groundCheck = 0.0f;  // seconds until the next look
 	};
 
+	// The scene update of a subtree moved as a whole into the space it is drawn in (a street into a
+	// room, a room into a street) or back, without its blend collision objects' part (the bones of
+	// people and animals, the weapons they carry: ~500 in Whiterun's market, none of them anything
+	// else). A blend object's update (ID 78910) sets its body's
+	// transform in Havok from the node (ID 78178) and the broadphase moves the body across the whole
+	// world (ID 61802 -> 64680): 80% of the update, ~6 ms of walking in and ~8 ms of walking out
+	// for Whiterun's nine cells. The bodies belong where their space is simulated, not where it is
+	// drawn; a person's are set from the bones again by their own next update.
+	void UpdateMoved(RE::NiAVObject* a_root);
+	inline bool moveBodies = false;  // diagnostics (travel_options): the update as it was
+
 	// After moving a_root as a whole: each object's previous transform set to the current one, so
 	// the motion vectors don't reach back to where it came from (see RemoteCell.cpp).
 	void SettleMotion(RE::NiAVObject* a_root);

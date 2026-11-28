@@ -98,7 +98,10 @@ The interior stays attached too. Walking out, the engine's detach of it is skipp
 attached behind the door come out of takes the cell as it is; walking in (from a street or another
 interior), the room is handed to the engine attached and the engine's attach only hangs it under
 its root, wakes its Havok world and installs its room graph. Its lights change scene as they are
-as well, its shadow casters the engine's way. Walking in 61 -> 51 ms, out 57 -> 56 ms. Between
+as well, its shadow casters the engine's way. Walking in 61 -> 51 ms, out 57 -> 56 ms. The move
+of the street into the room and back leaves the bone bodies of its people where they are
+(`UpdateMoved`: another 8 ms in, 6 ms out), and the engine's wait for the pathing thread at the
+end of a trip is skipped (walking out was 45-180 ms longer every other time). Between
 two interiors the one walked out of is still detached by the engine (`TES::SetCurrentCell` +
 0x3A1) and attached again by us.
 

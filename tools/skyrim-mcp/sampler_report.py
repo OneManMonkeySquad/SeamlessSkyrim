@@ -1,11 +1,14 @@
 """Summarise a Sampler file (bridge command `travel_profile`, src/Bridge/Sampler.cpp).
 
-    python sampler_report.py <file> [from_ms] [to_ms] [--top N] [--chain "ID 75708"]
+    python sampler_report.py <file> [from_ms] [to_ms] [--top N] [--chain "ID 75708"] [--own] [--under NAME]
 
 Prints inclusive and exclusive sample counts per function (SkyrimSE frames resolved to Address
 Library IDs, SeamlessSkyrim and the Community Shaders fork to functions from their PDBs, other
 modules by name) for the samples in the time window. With --chain, prints the most common call
-chains around the given function instead (frames as "ID n+0xoffset").
+chains around the given function instead (frames as "ID n+0xoffset"). With --own, prints for each
+path through SeamlessSkyrim's own functions (outermost first, by source line) how many samples
+ended below it, and what engine function they were in: which of our calls the time is under.
+--under NAME (repeatable) keeps only the samples with a frame whose name contains NAME.
 """
 import argparse
 import collections
@@ -23,6 +26,8 @@ parser.add_argument("start", nargs="?", type=float, default=0.0)
 parser.add_argument("end", nargs="?", type=float, default=1e12)
 parser.add_argument("--top", type=int, default=40)
 parser.add_argument("--chain")
+parser.add_argument("--own", action="store_true")
+parser.add_argument("--under", action="append", default=[])
 args = parser.parse_args()
 
 d = server.disassembler()
@@ -80,6 +85,8 @@ for line in open(args.file):
     if args.start <= float(ms) <= args.end:
         samples.append([f for f in stack.split(",") if f])
 symbolize(samples)
+for under in args.under:
+    samples = [stack for stack in samples if any(under in label(f, False) for f in stack)]
 
 if args.chain:
     chains = collections.Counter()
@@ -91,6 +98,32 @@ if args.chain:
             chains[" < ".join(frames[max(0, i - 3) : i + 4])] += 1
     for chain, count in chains.most_common(args.top):
         print(count, chain)
+    sys.exit()
+
+if args.own:
+    import re
+    paths = collections.Counter()
+    below = collections.defaultdict(collections.Counter)
+    for stack in samples:
+        ours = [i for i, f in enumerate(stack) if f.startswith("SeamlessSkyrim+")]
+        if not ours:
+            continue
+        names = []
+        for i in reversed(ours):
+            name = re.sub(r"`anonymous namespace'::|class |struct |RE::|Portal::", "", label(stack[i], False).split("!", 1)[1])
+            name = re.sub(r"\(.*\) \(", " (", name) if name.count("(") > 1 else name
+            if "std::" in name or "BSVisit" in name and names and "BSVisit" in names[-1]:
+                continue
+            names.append(name[:70])
+        path = " > ".join(names[-4:])
+        paths[path] += 1
+        engine = [label(f, False) for f in stack[: ours[0]] if f.startswith("SkyrimSE+")]
+        below[path][engine[-1] if engine else "(own code)"] += 1
+    print(f"{len(samples)} samples in [{args.start}, {args.end}] ms")
+    for path, count in paths.most_common(args.top):
+        inner = ", ".join(f"{n} {c}" for n, c in below[path].most_common(3))
+        print(f"{count:5d}  {path}")
+        print(f"         in: {inner}")
     sys.exit()
 
 inclusive = collections.Counter()

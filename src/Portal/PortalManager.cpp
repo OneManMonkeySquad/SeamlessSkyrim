@@ -1280,8 +1280,7 @@ namespace
 		}
 		a_branch->AttachChild(a_object, true);
 		a_object->local = a_branch->world.Invert() * world;
-		RE::NiUpdateData placed;
-		a_object->Update(placed);
+		Portal::UpdateMoved(a_object);
 	}
 
 	// A town's houses, porches and paving are persistent references: their 3D hangs in a node of
@@ -1310,8 +1309,7 @@ namespace
 			node->local = mergedLOD->toSource * node->local;
 			// HangInto keeps the node where it is drawn now: not updated, that was still the street's
 			// place, and the moved ground and rocks stood there, out of the doorway's view.
-			RE::NiUpdateData update;
-			node->Update(update);
+			Portal::UpdateMoved(node.get());
 			mergedLOD->bounds.Move(node.get(), mergedLOD->toSource);
 			if (mergedLOD->branch) {
 				HangInto(mergedLOD->branch.get(), node.get());
@@ -1423,8 +1421,7 @@ namespace
 		state.bounds.UnfixBeforeMove(root);
 		root->local = a_toSource;
 		// Updated before HangInto below, which keeps it where it is drawn now.
-		RE::NiUpdateData update;
-		root->Update(update);
+		Portal::UpdateMoved(root);
 		state.bounds.Move(root, moveBy);
 		std::size_t most = 0;
 		RE::NiNode* branch = InteriorBranch(a_door, most);
@@ -1472,8 +1469,7 @@ namespace
 				parent->AttachChild(node.get(), true);
 			}
 			node->local = local;
-			RE::NiUpdateData update;
-			node->Update(update);
+			Portal::UpdateMoved(node.get());
 			Portal::RecomputeBounds(node.get());
 			Portal::SettleMotion(node.get());
 		}
@@ -1488,8 +1484,7 @@ namespace
 			mergedLOD->parent->AttachChild(root.get(), true);
 		}
 		root->local = mergedLOD->local;
-		RE::NiUpdateData update;
-		root->Update(update);
+		Portal::UpdateMoved(root.get());
 		Portal::RecomputeBounds(root.get());
 		Portal::SettleMotion(root.get());
 		mergedLOD->bounds.Restore();

@@ -297,7 +297,8 @@ Diagnostics:
 - `travel_options {keepStreet: false}`: walking in, the street's cells are detached and attached
   again as before, for timing both ways in one session (two launches differ by more than the
   change does). `{moveLights: false}`: lights are made anew at each crossing. `{keepInterior: false}`: the
-  interior is detached and attached again at each crossing.
+  interior is detached and attached again at each crossing. `{moveBodies: true}`: the move of a
+  street or room updates its people's bone bodies as before.
 - At night shops are shut: a route walks into the door. Bridge `doors {force: 1}` first.
 - `wide_bounds {cell, radius}`: nodes of a cell's 3D with a bound wider than `radius`, with their
   farthest children (a stray child at the origin makes every bound above it span the map).
@@ -336,6 +337,10 @@ Frame rate:
   (`lightOcclusion.raysTotal` in `portal_status`).
 - What the merged room costs: a profile with `merged_cull {"mode": 3}` and one without, compared
   function by function (the sampler takes the same number of samples per second either way).
+- `sampler_report.py file --own` counts the samples by the path through our own functions they
+  were under (which of our calls the time is in); `--under NAME` keeps only the samples with a
+  frame of that name (the engine functions below one of ours). Several crossings' files pooled
+  (the first 55 ms of each) give a crossing frame ~0.25 ms per sample.
 - `sampler_report.py file [from_ms to_ms]` names the functions in SeamlessSkyrim's and the fork's
   frames from their build folders' PDBs, so the DLLs in the game must be those builds.
 - The camera moving changes the numbers a lot. Measure with nobody at the controls.
