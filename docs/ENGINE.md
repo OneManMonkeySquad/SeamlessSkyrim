@@ -444,6 +444,24 @@ the end. These were expensive to find. Add new ones in the same change that need
 - **A street in the world scene** while the player is indoors registers one of its lights anew
   every frame. Adopting each into our scene crashed in the world scene's queued removal
   (ID 106335 → 106342).
+- **A light's pairs with the shapes it lights belong to the light and the shapes, not the scene**
+  (`BSLight::geomList` and each shape's shader property, ID 108283), and so does its culling
+  process (`BSLight` + 0x128, 0x30230 bytes; ID 106401 makes one only for a light without, and
+  its constructor, ID 76551, builds a 4096-entry free list with an interlocked exchange per entry:
+  about half of taking a light in). A `BSLight` moved from one scene's `activeLights` into
+  another's goes on as it is, with no update of either scene (`LightScene::Take`, `Give`).
+  - Reparenting a shape's cell out of a scene and into another undoes its pairs; hung into a
+    scene again, the scene's update pairs the new geometry with its active lights (ID 106350-
+    106352). So a light must be in the active list before that update to cost nothing.
+  - A reference that has its light already gets no new one on its cell's attach (ID 19678 looks at
+    its `ExtraLight`); a cell's detach with the unload flag takes the lights away. The world scene
+    gets a `BSLight` for a reference's `NiLight` when it has none, within the teleport out.
+  - `RemoveLight` (ID 106332) only queues, and does nothing while the scene's byte at +0x300 is 0.
+    The update's removal goes by the `NiLight`: a second `BSLight` for the same one, removed from
+    the world scene, took the scene's own with it (18 of Whiterun's 53 street lights gone).
+  - The update (ID 106335): the add queue (+0x160; a queued light whose `NiLight` is active already
+    only walks again), a queue of lights to walk again (+0x190), the remove queue (+0x178), then
+    the new geometry.
 - **Taking in a light costs ~0.15-0.3 ms.** `AddLight` (ID 106327) only queues it; the scene's
   light update (ID 106335, per queued light ID 106342 → 106401, shadow lights 106400) builds a
   ~200 KB `BSParabolicCullingProcess` for it and walks the scene for the shapes it lights

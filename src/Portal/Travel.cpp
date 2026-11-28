@@ -305,6 +305,7 @@ namespace
 	// Diagnostics: each part of the stutter can be put back to compare (travel_options).
 	bool skipLoadWait = true;
 	bool keepStreet = true;  // see RemoteCell::keepGridOnEntry
+	bool moveLights = true;  // see RemoteCell::TakeStreetLights
 	bool skipLoadScreenClose = true;
 
 	// ID 40438 + 0x8B2: after a door teleport, waits until the task pool (*ID 411121, ID 75708)
@@ -474,6 +475,9 @@ namespace
 		{
 			const bool        world = a_scene == RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 			const Perf::Scope scope(world ? "lights: world" : "lights: other");
+			if (world) {
+				Portal::RemoteCell::RefreshStreetLights();
+			}
 			UpdateLightsSpread(a_scene, a_arg, [](RE::ShadowSceneNode* a_s, void* a_a) { func(a_s, a_a); });
 			if (world && spreadFrames > 0) {
 				--spreadFrames;
@@ -572,8 +576,14 @@ namespace
 				const Perf::Scope scope(seamlessTeleport ? "teleport" : "teleport step");
 				auto* from = a_player->GetParentCell();
 				Portal::RemoteCell::keepGridOnEntry = seamlessTeleport && keepStreet && Portal::RemoteCell::handOverStreet && from && !from->IsInteriorCell();
+				if (Portal::RemoteCell::keepGridOnEntry && moveLights) {
+					Portal::RemoteCell::TakeStreetLights();
+				}
 				func(a_player);
 				Portal::RemoteCell::keepGridOnEntry = false;
+				if (seamlessTeleport && a_player->GetParentCell() && !a_player->GetParentCell()->IsInteriorCell()) {
+					Portal::RemoteCell::GiveStreetLights();
+				}
 			}
 			if (std::exchange(seamlessTeleport, false)) {
 				// The engine only resets the flag after its own short teleports. Ours is done now;
@@ -863,8 +873,10 @@ namespace Portal::Travel
 		skipExtraFrame = a_options.value("skipExtraFrame", skipExtraFrame);
 		spreadLights = a_options.value("spreadLights", spreadLights);
 		keepStreet = a_options.value("keepStreet", keepStreet);
+		moveLights = a_options.value("moveLights", moveLights);
+		Portal::RemoteCell::moveLights = moveLights;
 		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
-			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet } };
+			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

@@ -156,6 +156,51 @@ namespace Portal
 		}
 		logger::info("portal: {} street cell(s) kept attached on walking in detached: no street took them", keptGrid.size());
 		keptGrid.clear();
+		LightScene::Dispose(handedLights);
+	}
+
+	void RemoteCell::TakeStreetLights()
+	{
+		LightScene::Dispose(handedLights);
+		lightsToRefresh.clear();
+		auto* world = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* grid = RE::TES::GetSingleton()->gridCells;
+		std::vector<const RE::NiAVObject*> cells;
+		for (std::uint32_t i = 0; grid && i < grid->length * grid->length; ++i) {
+			if (auto* cell3D = Cell3D(grid->cells[i])) {
+				cells.push_back(cell3D);
+			}
+		}
+		// Not the player's own (a torch, a spell in hand): those go where the player goes.
+		handedLights = LightScene::Take(world, [&](const RE::BSLight* a_light) {
+			return !LightScene::LightUnder(a_light, player->Get3D(false)) && !LightScene::LightUnder(a_light, player->Get3D(true)) &&
+			       std::ranges::any_of(cells, [&](const RE::NiAVObject* a_cell3D) { return LightScene::LightUnder(a_light, a_cell3D); });
+		});
+	}
+
+	void RemoteCell::GiveStreetLights()
+	{
+		if (handedLights.empty()) {
+			return;
+		}
+		auto*      world = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+		const auto held = handedLights.size();
+		auto       given = handedLights;
+		const int  taken = LightScene::Give(world, handedLights, [](const RE::BSLight*) { return true; });
+		std::erase_if(given, [&](const RE::NiPointer<RE::BSLight>& a_light) { return std::ranges::find(handedLights, a_light) != handedLights.end(); });
+		lightsToRefresh = std::move(given);
+		// The rest the world scene has made anew already (given too late: after the teleport, where
+		// WorldLightsClearedHook isn't installed).
+		logger::info("portal: {} of the street's {} light(s) moved into the world scene as they were", taken, held);
+		LightScene::Dispose(handedLights);
+	}
+
+	void RemoteCell::RefreshStreetLights()
+	{
+		if (!lightsToRefresh.empty()) {
+			LightScene::Refresh(RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0], lightsToRefresh, 4);
+		}
 	}
 
 	RemoteCell::PersistentByCell RemoteCell::PersistentIn(const std::vector<RE::TESObjectCELL*>& a_cells, std::unordered_set<RE::FormID>& a_queued, int& a_newlyQueued)
@@ -350,6 +395,7 @@ namespace Portal
 			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(a_cell));
 			cell3D->parent->DetachChild(cell3D.get());
 			scene->AttachChild(cell3D.get(), true);
+			adoptedLights += LightScene::Give(scene.get(), handedLights, [&](const RE::BSLight* a_light) { return LightScene::LightUnder(a_light, cell3D.get()); });
 		} else {
 			loadTempData(a_cell);
 			attachingRemote = true;
@@ -471,6 +517,8 @@ namespace Portal
 				held.push_back(cell);
 			}
 			std::erase_if(keptGrid, [&](RE::TESObjectCELL* a_kept) { return std::ranges::find(outer, a_kept) != outer.end(); });
+			outerLights = std::move(handedLights);
+			handedLights.clear();
 		}
 		DropKeptGrid();
 		prewarmCells.clear();
@@ -808,6 +856,14 @@ namespace Portal
 		Unmerge();
 		// Our lights are copies of the cells' light refs; entering a cell normally re-creates them
 		// in the world scene, so they must not stay registered here too.
+		// A street's lights go back into the world scene with it (GiveStreetLights), as they are.
+		if (handOver && moveLights) {
+			LightScene::Dispose(handedLights);
+			handedLights = LightScene::Take(scene.get(), [](const RE::BSLight*) { return true; });
+			handedLights.insert(handedLights.end(), outerLights.begin(), outerLights.end());
+			outerLights.clear();
+		}
+		LightScene::Dispose(outerLights);
 		LightScene::Clear(scene.get());
 		// Persistent references' 3D goes back to how the engine left it (unparented); the grid
 		// attaches it again when the player comes back out. Only if it is still ours: if the
@@ -2181,6 +2237,18 @@ namespace Portal
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
 
+	// ID 13317 + 0x34C: walking out, the world scene's lights are removed (the interior's). Right
+	// after, the street's come in (GiveStreetLights), before anything registers its lights anew.
+	struct WorldLightsClearedHook
+	{
+		static void Thunk(RE::ShadowSceneNode* a_scene)
+		{
+			func(a_scene);
+			RemoteCell::GiveStreetLights();
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
 	namespace
 	{
 		struct GridReadyHook
@@ -2307,6 +2375,10 @@ namespace Portal
 		}
 		GridReadyHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), GridReadyHook::Thunk);
 		// Only with the hand-over back: the grid kept attached must be accepted again on the way out.
+		REL::Relocation<std::uintptr_t> clearedSite{ REL::RelocationID(13172, 13317), REL::Relocate(0x29F, 0x34C) };
+		if (Hooks::CallsTo(clearedSite.address(), REL::RelocationID(99704, 106338), "portal: world lights cleared on walking out")) {
+			WorldLightsClearedHook::func = SKSE::GetTrampoline().write_call<5>(clearedSite.address(), WorldLightsClearedHook::Thunk);
+		}
 		for (const auto offset : REL::Relocate(std::array{ 0x38E, 0x40C }, std::array{ 0x50E, 0x58E })) {
 			REL::Relocation<std::uintptr_t> detachSite{ REL::RelocationID(13171, 13316), offset };
 			if (Hooks::CallsTo(detachSite.address(), REL::RelocationID(18655, 19130), "portal: grid detach on walking in")) {

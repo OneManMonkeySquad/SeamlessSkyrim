@@ -90,7 +90,9 @@ sky cell hanging in no scene, their persistent references drawn with the street)
 of it is handed back attached. The rooms kept behind the street's other doors stay attached while
 the player is in a building of that street (out of sight, paused), until the street is let go
 (deep in the building, a save, another interior). Walking into Belethor's 94 -> 66 ms, out
-90 -> 72 ms (the frame of the crossing, frames of 15-20 ms around it); a neighbouring room is
+90 -> 72 ms (the frame of the crossing, frames of 15-20 ms around it). The street's lights change scene with
+it as they are (`LightScene::Take`, `Give`), instead of being made anew: another 4 ms walking in
+and 9 ms walking out. A neighbouring room is
 back in its doorway in the frame of walking out instead of after seconds of loading.
 The interior walked out of and the room walked into are still detached and attached again by the
 engine and us (a few ms each; not done).

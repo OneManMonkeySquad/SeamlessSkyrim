@@ -36,6 +36,27 @@ namespace Portal::LightScene
 	// Cheap enough to run every frame, which also catches lights created after the attach.
 	int Adopt(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D);
 
+	// Lights changing scene as they are. A light taken into a scene the engine's way (AddLight) is
+	// given a 200 KB culling process, built entry by entry (ID 76551), and a walk of the scene for
+	// the shapes it lights (ID 106401): ~0.2 ms each, 12-17 ms of a crossing for lights that were
+	// lit a frame before in the other scene. The shapes a light is paired with are kept by the light
+	// and by each shape's shader property (ID 108283), not by the scene, and the street's shapes
+	// are the same ones on either side of the door: moved from one scene's list of active lights
+	// into the other's, a light goes on lighting them with nothing built.
+	// Take: the lights of a_scene that a_which accepts, out of its active list (not its shadow
+	// casters, sun or cloud light). Give: those of a_lights that a_which accepts into a_scene's,
+	// unless the scene has one for the same NiLight already; returns how many, and leaves the rest
+	// in a_lights. Dispose: lights no scene will take, removed the engine's way (their pairs undone).
+	using LightFilter = std::function<bool(const RE::BSLight*)>;
+	[[nodiscard]] std::vector<RE::NiPointer<RE::BSLight>> Take(RE::ShadowSceneNode* a_scene, const LightFilter& a_which);
+	int  Give(RE::ShadowSceneNode* a_scene, std::vector<RE::NiPointer<RE::BSLight>>& a_lights, const LightFilter& a_which);
+	void Dispose(std::vector<RE::NiPointer<RE::BSLight>>& a_lights);
+	// a_light hangs under a_ancestor.
+	[[nodiscard]] bool LightUnder(const RE::BSLight* a_light, const RE::NiAVObject* a_ancestor);
+	// Given lights whose pairs may lack shapes loaded while the light was in another scene: a_count
+	// of them per call walk the scene again (the scene's update queue), until all have.
+	void Refresh(RE::ShadowSceneNode* a_scene, std::vector<RE::NiPointer<RE::BSLight>>& a_lights, std::size_t a_count);
+
 	// The world scene's lights right now.
 	[[nodiscard]] std::vector<RE::NiPointer<RE::BSLight>> WorldLights();
 

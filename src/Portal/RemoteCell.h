@@ -112,6 +112,15 @@ namespace Portal
 		// Those cells until a street takes them; DropKeptGrid detaches what none took.
 		[[nodiscard]] static bool GridKept() { return !keptGrid.empty(); }
 		static void               DropKeptGrid();
+		// The street's lights change scene with it (LightScene::Take): before the teleport into a
+		// building they come out of the world scene (which the teleport empties), and the street
+		// attached behind the door takes its cells' (Attach); after the teleport out, the ones
+		// Release took from our scene go into the world's.
+		static inline bool moveLights = true;  // diagnostics (travel_options): off, lights are made anew
+		static void TakeStreetLights();
+		static void GiveStreetLights();
+		// Per frame: a few of the lights given back walk the world scene again (LightScene::Refresh).
+		static void RefreshStreetLights();
 		static void StepAtEndOfFrame();
 
 		// Diagnostics: the cached render passes of the remote cells' shapes; a_drop forgets the
@@ -265,9 +274,16 @@ namespace Portal
 		std::vector<RE::NiPointer<RE::NiAVObject>> outerPersistentRefs;
 		static inline std::vector<RE::TESObjectCELL*> keptGrid;  // see keepGridOnEntry
 		static inline RE::NiPointer<RE::NiNode>       keptRoot;  // their 3D hangs here meanwhile
+		// The street's lights between two scenes (see TakeStreetLights), and those given back to
+		// the world scene that have yet to walk it again.
+		static inline std::vector<RE::NiPointer<RE::BSLight>> handedLights;
+		static inline std::vector<RE::NiPointer<RE::BSLight>> lightsToRefresh;
+		// The lights of the outer cells, in no scene while the player is indoors.
+		std::vector<RE::NiPointer<RE::BSLight>> outerLights;
 		static bool                     TakeKept(RE::TESObjectCELL* a_cell);
 		[[nodiscard]] std::vector<RE::TESObjectCELL*> WithOuter() const;  // cells, then outer
 		friend struct GridDetachHook;
+		friend struct WorldLightsClearedHook;
 		std::vector<RE::NiPointer<RE::NiAVObject>> parked;  // cells' 3D hidden by SetParked
 		bool                                       paused = false;
 		std::vector<RE::NiPointer<RE::bhkRigidBody>> mergedBodies;  // see MergeCollision

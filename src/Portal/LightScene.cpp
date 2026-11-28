@@ -183,6 +183,82 @@ namespace Portal::LightScene
 		return moved;
 	}
 
+	bool LightUnder(const RE::BSLight* a_light, const RE::NiAVObject* a_ancestor)
+	{
+		return a_light->light && a_ancestor && IsUnder(a_light->light.get(), a_ancestor);
+	}
+
+	std::vector<RE::NiPointer<RE::BSLight>> Take(RE::ShadowSceneNode* a_scene, const LightFilter& a_which)
+	{
+		std::vector<RE::NiPointer<RE::BSLight>> taken;
+		auto&                                   data = a_scene->GetRuntimeData();
+		RE::BSSpinLockGuard                     locker(data.lightQueueLock);
+		RE::BSTArray<RE::NiPointer<RE::BSLight>> kept;
+		for (auto& light : data.activeLights) {
+			if (light && light.get() != data.sunLight && light.get() != data.cloudLight && a_which(light.get())) {
+				taken.push_back(light);
+			} else {
+				kept.push_back(light);
+			}
+		}
+		data.activeLights = std::move(kept);
+		return taken;
+	}
+
+	int Give(RE::ShadowSceneNode* a_scene, std::vector<RE::NiPointer<RE::BSLight>>& a_lights, const LightFilter& a_which)
+	{
+		auto&               data = a_scene->GetRuntimeData();
+		RE::BSSpinLockGuard locker(data.lightQueueLock);
+		int                 given = 0;
+		std::erase_if(a_lights, [&](const RE::NiPointer<RE::BSLight>& a_light) {
+			if (!a_which(a_light.get())) {
+				return false;
+			}
+			const auto same = [&](const RE::NiPointer<RE::BSLight>& a_other) { return a_other && a_other->light == a_light->light; };
+			if (std::ranges::any_of(data.activeLights, same) || std::ranges::any_of(data.lightQueueAdd, same)) {
+				return false;
+			}
+			data.activeLights.push_back(a_light);
+			++given;
+			return true;
+		});
+		return given;
+	}
+
+	void Dispose(std::vector<RE::NiPointer<RE::BSLight>>& a_lights)
+	{
+		// Through a scene's own removal (ID 106338), which takes each light out of its shapes' lists:
+		// let go of as they are, the shapes would keep pointing at them. A scene with nothing else
+		// in it: removed from the world's, the removal took the world's own light for the same
+		// NiLight with it (35 of Whiterun's 53 street lights left).
+		if (a_lights.empty()) {
+			return;
+		}
+		static RE::NiPointer<RE::ShadowSceneNode> bin = Create();
+		{
+			RE::BSSpinLockGuard locker(bin->GetRuntimeData().lightQueueLock);
+			for (auto& light : a_lights) {
+				bin->GetRuntimeData().activeLights.push_back(light);
+			}
+		}
+		bin->RemoveAllLights();
+		a_lights.clear();
+	}
+
+	void Refresh(RE::ShadowSceneNode* a_scene, std::vector<RE::NiPointer<RE::BSLight>>& a_lights, std::size_t a_count)
+	{
+		auto&               data = a_scene->GetRuntimeData();
+		RE::BSSpinLockGuard locker(data.lightQueueLock);
+		for (std::size_t i = 0; i < a_count && !a_lights.empty(); ++i) {
+			auto light = std::move(a_lights.back());
+			a_lights.pop_back();
+			// Only while it is still this scene's (ID 106335 + 0x1A0 walks for every light queued here).
+			if (std::ranges::find(data.activeLights, light) != data.activeLights.end()) {
+				data.unk190.push_back(light);
+			}
+		}
+	}
+
 	std::vector<RE::NiPointer<RE::BSLight>> WorldLights()
 	{
 		std::vector<RE::NiPointer<RE::BSLight>> lights;
