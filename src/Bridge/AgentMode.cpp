@@ -280,6 +280,16 @@ namespace AgentMode
 		};
 	}
 
+	void LoadRenderDoc()
+	{
+		wchar_t path[MAX_PATH]{};
+		if (!Enabled() || ::GetEnvironmentVariableW(L"SEAMLESS_AGENT_RENDERDOC", path, MAX_PATH) == 0) {
+			return;
+		}
+		const bool loaded = ::LoadLibraryW(path) != nullptr;
+		logger::info("agent mode: RenderDoc {}", loaded ? "loaded" : std::format("not loaded (error {})", ::GetLastError()));
+	}
+
 	void InstallMute()
 	{
 		if (!Enabled()) {

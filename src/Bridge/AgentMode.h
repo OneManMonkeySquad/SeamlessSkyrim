@@ -9,6 +9,7 @@
 //   SEAMLESS_AGENT_LOAD=<save>   ...and loads that save as soon as the main menu is up
 //   SEAMLESS_AGENT_MUTE=1        ...and starts silent
 //   SEAMLESS_TRAVEL_CAPTURE=<dir> ...and saves the first frames of every crossing and merge there
+//   SEAMLESS_AGENT_RENDERDOC=<renderdoc.dll> ...and loads RenderDoc, for bridge renderdoc_capture
 namespace AgentMode
 {
 	[[nodiscard]] bool Enabled();
@@ -36,6 +37,11 @@ namespace AgentMode
 	// closed while muted left the user's own games silent. Call from SKSEPluginLoad, before the
 	// game creates its audio.
 	void InstallMute();
+
+	// SEAMLESS_AGENT_RENDERDOC: RenderDoc loaded into the game, which it can only capture when it is
+	// there before the game creates its D3D11 device; without Community Shaders (which loads it
+	// itself) nothing else does. Call from SKSEPluginLoad.
+	void LoadRenderDoc();
 	void SetMuted(bool a_muted);
 	[[nodiscard]] bool Muted();
 }

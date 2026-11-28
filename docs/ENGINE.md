@@ -465,9 +465,13 @@ the end. These were expensive to find. Add new ones in the same change that need
 - **Snow is lit again after the world draw:** `BSImagespaceShader::RenderSnowSSS` (ID 107267, SE
   100537; from `Main::RenderWorld` + 0x21D, SE 100424 + 0x1F0) relights the picture's snow pixels
   with a colour picked by the global at ID 391589 (`iSnowSSSColorMode`, 2 by default: the world
-  scene's sun light diffuse, `ShadowSceneNode::sunLight`). Land whose layers are snow gets its
-  light only from this pass: with a black sun colour it is black, whatever the lighting shader's
-  constants (ambient, sun, fog) are. Gated by the byte at ID 391105.
+  scene's sun light diffuse, `ShadowSceneNode::sunLight`); the SSAO composite (ID 107245) does the
+  same with its own mode (ID 391515). Gated by the byte at ID 391105.
+- **`BSLightingShader::SetupTechnique` binds default textures** (a 16x16 placeholder) in the
+  slots its technique uses. `SetupAndDrawPass` calls it before `SetupMaterial` (ID 107298, vfunc 4),
+  which binds the material's; a technique set up again after that (for another fog) leaves the
+  placeholder unless the material is set up again too. Land shows it most: all its textures are
+  the material's, so it came out black.
 - **Two-sided at runtime:** setting `kTwoSided` on a shape's `BSShaderProperty` takes effect at its
   next draw. Community Shaders' lighting shader turns the normals of faces seen from behind (fading
   out past ~10000 units), so they are lit as their own side. Load doors' leaves are often modelled

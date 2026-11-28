@@ -339,6 +339,10 @@ namespace Render::Native
 				// shapes are drawn with the sun's shadow bits added (PortalRender), and set up again
 				// without them, the street through the Bannered Mare's door lay in flat light.
 				a_shader->SetupTechnique(*LastTechnique());
+				// Setting the technique up binds its default textures over the ones SetupAndDrawPass's
+				// SetupMaterial bound just before: the street's land, whose textures are all the
+				// material's, was drawn with the 16x16 default in every slot, black seen from inside.
+				a_shader->SetupMaterial(a_pass->shaderProperty->material);
 				++stats.ownFog;
 			}
 		}

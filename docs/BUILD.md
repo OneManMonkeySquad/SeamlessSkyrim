@@ -454,5 +454,8 @@ Every engine address is a `REL::RelocationID(se, ae)`; call sites inside a funct
   and they are deleted when RenderDoc closes them, so copy them out first.
 - From an agent: turn on "Enable RenderDoc Capture" in Community Shaders' `SettingsUser.json`,
   launch, then bridge `renderdoc_capture`. FSR frame generation breaks afterwards; relaunch.
+- Without Community Shaders (SE 1.5.97): launch with `SEAMLESS_AGENT_RENDERDOC=C:\Program
+  Files\RenderDoc\renderdoc.dll`; the plugin loads it before the game creates its device, and
+  bridge `renderdoc_capture` works the same. Captures land in `%TEMP%\RenderDoc` (~1 GB each).
 - Analysis scripts are in `tools/renderdoc/` and run in RenderDoc's own Python:
   `qrenderdoc --python script.py`, with `RDC_CAPTURE` and `RDC_OUT` set.

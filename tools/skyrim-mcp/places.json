@@ -307,6 +307,17 @@
       -12961.22265625
     ]
   },
+  "winterhold-birna-upper-door-se": {
+    "cell": "WinterholdRanmirshouse",
+    "headingDeg": 181.75927734375,
+    "interior": true,
+    "note": "SE 1.5.97 (user's quicksave): inside Birna's Oddments (WinterholdRanmirshouse) at the upper door 000DDB34, looking out at Winterhold's lower street, overcast 16:30. Merged street's snow-covered land drawn flat dark grey where outdoors it is bright.",
+    "pos": [
+      -1360.6495361328125,
+      -300.9861145019531,
+      240.27976989746094
+    ]
+  },
   "winterhold-elements-arcanaeum-door": {
     "cell": "WinterholdCollegeHallofTheElements",
     "headingDeg": 90.0,

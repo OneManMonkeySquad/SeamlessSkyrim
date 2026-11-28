@@ -80,13 +80,15 @@ directional ambient at ID 390984. For the length of the engine's call these are 
   from SetupTechnique), so the scene's fog property is given the street's values, the technique is
   set up again, and afterwards the property is put back and the batch renderer's cached technique
   (ID 415272) cleared. Set up again from ID 415272 (the technique being drawn), not the pass's
-  `passEnum`, which lacks the shadow bits added below: the street then lay in flat light. The SSAO composite (ID 107245 + 0xD26) fogs the picture by depth too and
+  `passEnum`, which lacks the shadow bits added below: the street then lay in flat light. The
+  material is set up again after it: the technique's setup binds placeholder textures (ENGINE.md),
+  and the street's land was drawn black. The SSAO composite (ID 107245 + 0xD26) fogs the picture by depth too and
   gets a copy of the fog property with the street's fog; without it the mountains seen through
   the doorway were black.
 - Street merged into an interior: the snow's light. Snow is lit again after the world draw by
   `RenderSnowSSS` (ENGINE.md) with the world scene's sun colour, the interior's: the street's snow
-  lay dark and snow-covered land black. For the length of that call the sun light's diffuse is the
-  street's (`SnowSSSHook`). Only the default colour mode (2) is covered.
+  lay darker than outside. For the length of that call the sun light's diffuse is the street's
+  (`SnowSSSHook`). Only the default colour mode (2) is covered.
 - Room merged into the street: its cell's own fog on its shapes. The SSAO composite fogs every
   pixel alike and keeps the street's (it takes the merged fog only with the player indoors).
 - Street merged into an interior: the sun's shadows. The frame setup (ID 36561 + 0x374) marks an

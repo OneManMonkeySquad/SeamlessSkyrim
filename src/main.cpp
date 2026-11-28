@@ -93,6 +93,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	// Before anything else touches windows: the game window doesn't exist yet at this point.
 	AgentMode::InstallFocusGuards();
 	AgentMode::InstallMute();
+	AgentMode::LoadRenderDoc();
 	SKSE::GetMessagingInterface()->RegisterListener(OnSKSEMessage);
 	// Agent sessions only (the MCP server sets SEAMLESS_AGENT): normal play gets no bridge and
 	// keeps the game's own alt-tab behaviour.

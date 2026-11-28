@@ -256,8 +256,9 @@ namespace
 	}
 
 	// A RenderDoc capture of the next frame, through the API of the renderdoc.dll that Community
-	// Shaders loads when its "Enable RenderDoc Capture" is on: its own trigger is a hotkey, which a
-	// game running in the background never gets. Returns the captures RenderDoc has written so far.
+	// Shaders loads when its "Enable RenderDoc Capture" is on, or that SEAMLESS_AGENT_RENDERDOC
+	// loads without it: its own trigger is a hotkey, which a game running in the background never
+	// gets. Returns the captures RenderDoc has written so far.
 	json RenderDocCapture(const json&)
 	{
 		auto* module = GetModuleHandleW(L"renderdoc.dll");
@@ -266,7 +267,7 @@ namespace
 		void** api = nullptr;
 		constexpr int kVersion_1_1_2 = 10102;
 		if (!getApi || !getApi(kVersion_1_1_2, reinterpret_cast<void**>(&api)) || !api) {
-			throw std::runtime_error("RenderDoc isn't loaded (Community Shaders: Enable RenderDoc Capture, then restart the game)");
+			throw std::runtime_error("RenderDoc isn't loaded (Community Shaders: Enable RenderDoc Capture; without it SEAMLESS_AGENT_RENDERDOC=<renderdoc.dll>; then restart the game)");
 		}
 		// RENDERDOC_API_1_1_2, in renderdoc_app.h's order: GetNumCaptures 13, GetCapture 14, TriggerCapture 15.
 		using GetNumCaptures_t = std::uint32_t (*)();
