@@ -212,7 +212,7 @@ namespace
 		// Into or out of a building: the rooms kept behind the street's other doors stay.
 		auto* leaving = player->GetParentCell();
 		const bool streetDoor = leaving && a_portal.cell && leaving->IsInteriorCell() != a_portal.cell->IsInteriorCell();
-		Portal::Manager::ReleaseAll("player walked through the doorway", 3.0f, a_portal.cell && !a_portal.cell->IsInteriorCell(), streetDoor);
+		Portal::Manager::ReleaseAll("player walked through the doorway", 3.0f, a_portal.cell != nullptr, streetDoor);
 
 		*skipLoadScreen = true;
 		// What activating a load door does for the player (TESObjectDOOR::HandleOpen, ID 17926):
@@ -411,6 +411,22 @@ namespace
 		{
 			RE::BSSpinLockGuard locker(data.lightQueueLock);
 			auto&               queue = data.lightQueueAdd;
+			// A light queued whose NiLight the scene has active already is only walked for again
+			// (ID 106335 + 0x10D), and the engine queues one for each light that changed scene with its
+			// space (RemoteCell's hand-overs): ~4 ms of a crossing for pairs the same update makes
+			// anyway, from the space's shapes as new geometry.
+			{
+				RE::BSTArray<RE::NiPointer<RE::BSLight>> fresh;
+				for (auto& light : queue) {
+					const auto same = [&](const auto& a_active) { return a_active && light && a_active->light == light->light; };
+					if (const auto active = std::ranges::find_if(data.activeLights, same); active != data.activeLights.end()) {
+						(*active)->dynamic = light->dynamic;  // what the update takes from the second one
+					} else if (std::ranges::none_of(data.activeShadowLights, same)) {
+						fresh.push_back(light);
+					}
+				}
+				queue = std::move(fresh);
+			}
 			if (queue.size() > kLightsPerUpdate) {
 				const auto at = RE::PlayerCharacter::GetSingleton()->GetPosition();
 				// The arrival queues each light twice; the update takes in the first and, for the
@@ -579,8 +595,11 @@ namespace
 				if (Portal::RemoteCell::keepGridOnEntry && moveLights) {
 					Portal::RemoteCell::TakeStreetLights();
 				}
+				Portal::RemoteCell::keepInteriorOnExit = seamlessTeleport && Portal::RemoteCell::keepInterior && from && from->IsInteriorCell();
 				func(a_player);
 				Portal::RemoteCell::keepGridOnEntry = false;
+				Portal::RemoteCell::keepInteriorOnExit = false;
+				Portal::RemoteCell::ReturnHandedRoom();
 				if (seamlessTeleport && a_player->GetParentCell() && !a_player->GetParentCell()->IsInteriorCell()) {
 					Portal::RemoteCell::GiveStreetLights();
 				}
@@ -873,10 +892,11 @@ namespace Portal::Travel
 		skipExtraFrame = a_options.value("skipExtraFrame", skipExtraFrame);
 		spreadLights = a_options.value("spreadLights", spreadLights);
 		keepStreet = a_options.value("keepStreet", keepStreet);
+		Portal::RemoteCell::keepInterior = a_options.value("keepInterior", Portal::RemoteCell::keepInterior);
 		moveLights = a_options.value("moveLights", moveLights);
 		Portal::RemoteCell::moveLights = moveLights;
 		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
-			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights } };
+			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights }, { "keepInterior", Portal::RemoteCell::keepInterior } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

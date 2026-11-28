@@ -116,6 +116,20 @@ namespace Portal
 		// building they come out of the world scene (which the teleport empties), and the street
 		// attached behind the door takes its cells' (Attach); after the teleport out, the ones
 		// Release took from our scene go into the world's.
+		// The interior on the other side of a crossing stays attached as well.
+		// Walking out: set by the crossing for its teleport; the engine's detach of the interior
+		// (ID 13317 + 0x82) and the demotion of its actors (+0x1F3) are skipped, and the space attached
+		// behind the door come out of takes the cell as it is (Attach).
+		// Walking in: Release hands the room to the engine attached (a_handOver), and the engine's
+		// attach of the cell it makes the player's (TES::SetCurrentCell + 0x66B, + 0x6AA) only does
+		// what a cell already attached still needs (RoomAttachHook).
+		// Detached and attached again by the engine and by us, each of its references' events went
+		// to every mod's sink twice per crossing and its lights were made anew.
+		static inline bool keepInteriorOnExit = false;
+		static inline bool keepInterior = true;    // diagnostics (travel_options)
+		static inline bool roomHooks = false;      // the walk-in hooks are installed
+		// After the teleport: a room handed over that the engine never took is given back detached.
+		static void ReturnHandedRoom();
 		static inline bool moveLights = true;  // diagnostics (travel_options): off, lights are made anew
 		static void TakeStreetLights();
 		static void GiveStreetLights();
@@ -278,12 +292,28 @@ namespace Portal
 		// the world scene that have yet to walk it again.
 		static inline std::vector<RE::NiPointer<RE::BSLight>> handedLights;
 		static inline std::vector<RE::NiPointer<RE::BSLight>> lightsToRefresh;
+		// An interior's lights between two scenes. Its shadow casters go the engine's way (AddLight),
+		// which sets their shadow maps up; they keep their culling process.
+		static inline std::vector<RE::NiPointer<RE::BSLight>> handedRoomLights;
+		static inline std::vector<RE::NiPointer<RE::BSLight>> handedRoomShadowLights;
+		static inline RE::TESObjectCELL*                      handedRoom = nullptr;    // see Release
+		static inline RE::TESObjectCELL*                      roomTaken = nullptr;     // between the two walk-in hooks
+		static RE::NiNode*                                    KeptRoot();
+		static void                                           TakeRoomLights(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D);
 		// The lights of the outer cells, in no scene while the player is indoors.
 		std::vector<RE::NiPointer<RE::BSLight>> outerLights;
+		// An interior just walked out of: its shadow casters, taken in one per frame rather than all at
+		// once (Update). Each builds its shadow maps' culling processes (ID 76551): all four of
+		// Belethor's in the frame of arrival were ~4 ms, for a room behind the player's back.
+		std::vector<RE::NiPointer<RE::BSLight>> lateLights;
 		static bool                     TakeKept(RE::TESObjectCELL* a_cell);
 		[[nodiscard]] std::vector<RE::TESObjectCELL*> WithOuter() const;  // cells, then outer
 		friend struct GridDetachHook;
 		friend struct WorldLightsClearedHook;
+		friend struct InteriorDetachHook;
+		friend struct InteriorDemoteHook;
+		friend struct RoomAttachHook;
+		friend struct RoomFinishHook;
 		std::vector<RE::NiPointer<RE::NiAVObject>> parked;  // cells' 3D hidden by SetParked
 		bool                                       paused = false;
 		std::vector<RE::NiPointer<RE::bhkRigidBody>> mergedBodies;  // see MergeCollision

@@ -94,8 +94,13 @@ the player is in a building of that street (out of sight, paused), until the str
 it as they are (`LightScene::Take`, `Give`), instead of being made anew: another 4 ms walking in
 and 9 ms walking out. A neighbouring room is
 back in its doorway in the frame of walking out instead of after seconds of loading.
-The interior walked out of and the room walked into are still detached and attached again by the
-engine and us (a few ms each; not done).
+The interior stays attached too. Walking out, the engine's detach of it is skipped and the space
+attached behind the door come out of takes the cell as it is; walking in (from a street or another
+interior), the room is handed to the engine attached and the engine's attach only hangs it under
+its root, wakes its Havok world and installs its room graph. Its lights change scene as they are
+as well, its shadow casters the engine's way. Walking in 61 -> 51 ms, out 57 -> 56 ms. Between
+two interiors the one walked out of is still detached by the engine (`TES::SetCurrentCell` +
+0x3A1) and attached again by us.
 
 ## 3. Render-merge (looking in)
 

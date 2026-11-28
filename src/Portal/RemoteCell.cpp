@@ -144,19 +144,73 @@ namespace Portal
 		if (keptGrid.empty()) {
 			return;
 		}
-		// As the engine would have on the way in (TES::SetCurrentCell + 0x50E, + 0x58E), their 3D under its root.
-		REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::RelocationID(18655, 19130) };
+		// As the engine would have on the way in (TES::SetCurrentCell + 0x50E, + 0x58E) or out (ID 13317
+		// + 0x82, + 0x1F3), their 3D under its root.
+		REL::Relocation<void (*)(RE::TESObjectCELL*, bool)>       detachCell{ REL::RelocationID(18655, 19130) };
+		REL::Relocation<void (*)(RE::TESObjectCELL*, bool, bool)> demoteActors{ REL::RelocationID(18577, 19046) };
 		for (auto* cell : keptGrid) {
 			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
 			if (cell->cellState.get() == CellState::kAttached && cell3D->parent == keptRoot.get()) {
 				keptRoot->DetachChild(cell3D.get());
 				RE::TES::GetSingleton()->objRoot->AttachChild(cell3D.get(), true);
-				detachCell(cell, cell->GetRuntimeData().worldSpace->GetSkyCell() == cell);
+				if (cell->IsInteriorCell()) {
+					detachCell(cell, true);
+					demoteActors(cell, true, false);
+				} else {
+					detachCell(cell, cell->GetRuntimeData().worldSpace->GetSkyCell() == cell);
+				}
 			}
 		}
-		logger::info("portal: {} street cell(s) kept attached on walking in detached: no street took them", keptGrid.size());
+		logger::info("portal: {} cell(s) kept attached across a crossing detached: no space behind a door took them", keptGrid.size());
 		keptGrid.clear();
 		LightScene::Dispose(handedLights);
+		LightScene::Dispose(handedRoomLights);
+		handedRoomShadowLights.clear();
+	}
+
+	RE::NiNode* RemoteCell::KeptRoot()
+	{
+		if (!keptRoot) {
+			keptRoot.reset(RE::NiNode::Create(0));
+		}
+		return keptRoot.get();
+	}
+
+	void RemoteCell::TakeRoomLights(RE::ShadowSceneNode* a_scene, const RE::NiAVObject* a_cell3D)
+	{
+		LightScene::Dispose(handedRoomLights);
+		handedRoomShadowLights.clear();
+		// Not the player's own (a torch, a spell in hand): the engine makes those where the player is.
+		auto*      player = RE::PlayerCharacter::GetSingleton();
+		const auto ofRoom = [&](const RE::BSLight* a_light) {
+			return LightScene::LightUnder(a_light, a_cell3D) && !LightScene::LightUnder(a_light, player->Get3D(false)) && !LightScene::LightUnder(a_light, player->Get3D(true));
+		};
+		handedRoomLights = LightScene::Take(a_scene, ofRoom);
+		// Left in the scene, whose own removal lets go of their shadow maps.
+		for (auto& light : a_scene->GetRuntimeData().activeShadowLights) {
+			if (light && ofRoom(light.get())) {
+				handedRoomShadowLights.emplace_back(light.get());
+			}
+		}
+	}
+
+	void RemoteCell::ReturnHandedRoom()
+	{
+		auto* cell = std::exchange(handedRoom, nullptr);
+		roomTaken = nullptr;
+		if (!cell) {
+			return;
+		}
+		RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(cell));
+		if (cell->cellState.get() == CellState::kAttached && cell3D->parent == keptRoot.get()) {
+			REL::Relocation<void (*)(RE::TESObjectCELL*, bool)> detachCell{ REL::RelocationID(18655, 19130) };
+			keptRoot->DetachChild(cell3D.get());
+			RE::TES::GetSingleton()->objRoot->AttachChild(cell3D.get(), true);
+			detachCell(cell, true);
+		}
+		LightScene::Dispose(handedRoomLights);
+		handedRoomShadowLights.clear();
+		logger::warn("portal: {} handed over attached wasn't taken by the engine; detached", Probe::DescribeCell(cell));
 	}
 
 	void RemoteCell::TakeStreetLights()
@@ -395,7 +449,17 @@ namespace Portal
 			RE::NiPointer<RE::NiAVObject> cell3D(Cell3D(a_cell));
 			cell3D->parent->DetachChild(cell3D.get());
 			scene->AttachChild(cell3D.get(), true);
-			adoptedLights += LightScene::Give(scene.get(), handedLights, [&](const RE::BSLight* a_light) { return LightScene::LightUnder(a_light, cell3D.get()); });
+			const auto ofCell = [&](const RE::BSLight* a_light) { return LightScene::LightUnder(a_light, cell3D.get()); };
+			adoptedLights += LightScene::Give(scene.get(), handedLights, ofCell);
+			adoptedLights += LightScene::Give(scene.get(), handedRoomLights, ofCell);
+			std::erase_if(handedRoomShadowLights, [&](const RE::NiPointer<RE::BSLight>& a_light) {
+				if (!ofCell(a_light.get())) {
+					return false;
+				}
+				lateLights.push_back(a_light);
+				++adoptedLights;
+				return true;
+			});
 		} else {
 			loadTempData(a_cell);
 			attachingRemote = true;
@@ -849,6 +913,8 @@ namespace Portal
 		// A merged street (merged into the interior being left) is put back under the portal root,
 		// unmoved, below and then handed over like any other.
 		const bool handOver = a_handOver && handOverStreet && engineRoot && !cells.front()->IsInteriorCell();
+		// An interior the player is walking into goes to the engine attached too (see keepInteriorOnExit).
+		const bool handRoom = a_handOver && keepInterior && roomHooks && engineRoot && cells.size() == 1 && cells.front()->IsInteriorCell();
 		// The step job may be running right now; it must be done with this world first.
 		StepWorld(nullptr);
 		auto* root = scene.get();
@@ -864,6 +930,10 @@ namespace Portal
 			outerLights.clear();
 		}
 		LightScene::Dispose(outerLights);
+		lateLights.clear();
+		if (handRoom && moveLights) {
+			TakeRoomLights(scene.get(), Cell3D(cells.front()));
+		}
 		LightScene::Clear(scene.get());
 		// Persistent references' 3D goes back to how the engine left it (unparented); the grid
 		// attaches it again when the player comes back out. Only if it is still ours: if the
@@ -902,7 +972,15 @@ namespace Portal
 		const Perf::Scope detachScope("release: detach");
 		for (auto* cell : cells | std::views::reverse) {
 			auto* cell3D = Cell3D(cell);
-			if (handOver && cell3D && cell3D->parent == root && cell->cellState.get() == CellState::kAttached) {
+			if (handRoom && cell3D && cell3D->parent == root && cell->cellState.get() == CellState::kAttached && cell != here) {
+				// In no scene until the engine hangs it under its root (RoomAttachHook): hung there now,
+				// its shapes would wait in the world scene's list of new geometry, which the change of
+				// room graph on the way empties, and never be paired with the room's lights.
+				RE::NiPointer<RE::NiAVObject> keep(cell3D);
+				root->DetachChild(cell3D);
+				KeptRoot()->AttachChild(cell3D, true);
+				handedRoom = cell;
+			} else if (handOver && cell3D && cell3D->parent == root && cell->cellState.get() == CellState::kAttached) {
 				RE::NiPointer<RE::NiAVObject> keep(cell3D);
 				root->DetachChild(cell3D);
 				engineRoot->AttachChild(cell3D, true);
@@ -1033,6 +1111,10 @@ namespace Portal
 		if (!Healthy()) {
 			StepWorld(nullptr);
 			return;
+		}
+		if (!lateLights.empty()) {
+			scene->AddLight(lateLights.back().get());
+			lateLights.pop_back();
 		}
 		// Readiness. refsFullyLoaded is useless here: the engine sets it (ID 19146, which also fires
 		// TESCellFullyLoadedEvent) only from its per-frame update of *current* cells (ID 18895). The
@@ -2223,16 +2305,98 @@ namespace Portal
 			if (RemoteCell::keepGridOnEntry) {
 				// Off the engine's root at once: left there until the street is attached a few frames
 				// on, it could be drawn where it stands, which may be where the room is.
-				if (!RemoteCell::keptRoot) {
-					RemoteCell::keptRoot.reset(RE::NiNode::Create(0));
-				}
 				RE::NiPointer<RE::NiAVObject> cell3D(a_cell->GetRuntimeData().loadedData->cell3D);
 				cell3D->parent->DetachChild(cell3D.get());
-				RemoteCell::keptRoot->AttachChild(cell3D.get(), true);
+				RemoteCell::KeptRoot()->AttachChild(cell3D.get(), true);
 				RemoteCell::keptGrid.push_back(a_cell);
 				return;
 			}
 			func(a_cell, a_unload);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// ID 13317 + 0x82: walking out, the interior is detached (ID 19130 (cell, true)). Kept attached
+	// instead (RemoteCell::keepInteriorOnExit): off the engine's root, its lights out of the world
+	// scene before that is emptied (+0x34C).
+	struct InteriorDetachHook
+	{
+		static void Thunk(RE::TESObjectCELL* a_cell, bool a_unload)
+		{
+			if (!RemoteCell::keepInteriorOnExit) {
+				func(a_cell, a_unload);
+				return;
+			}
+			RE::NiPointer<RE::NiAVObject> cell3D(a_cell->GetRuntimeData().loadedData->cell3D);
+			if (RemoteCell::moveLights) {
+				RemoteCell::TakeRoomLights(RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0], cell3D.get());
+			}
+			cell3D->parent->DetachChild(cell3D.get());
+			RemoteCell::KeptRoot()->AttachChild(cell3D.get(), true);
+			RemoteCell::keptGrid.push_back(a_cell);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// ID 13317 + 0x1F3: then its actors are taken out of the high process (ID 19046). Not those of an
+	// interior kept attached: they go on as they are behind the door.
+	struct InteriorDemoteHook
+	{
+		static void Thunk(RE::TESObjectCELL* a_cell, bool a_arg2, bool a_arg3)
+		{
+			if (std::ranges::find(RemoteCell::keptGrid, a_cell) == RemoteCell::keptGrid.end()) {
+				func(a_cell, a_arg2, a_arg3);
+			}
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// TES::SetCurrentCell (ID 13316) + 0x66B: the cell walked into is attached under the engine's root
+	// (ID 18976). For a room handed over attached (Release), only what that does beyond the attach:
+	// the cell's 3D under the root, its Havok world active (18976 + 0xCE), its room graph in the
+	// world scene (+0x140); then its lights, which the scene's update, later in the teleport, pairs
+	// with the room's shapes as new geometry.
+	struct RoomAttachHook
+	{
+		static void Thunk(RE::TESObjectCELL* a_cell, RE::NiNode* a_parent)
+		{
+			if (a_cell != RemoteCell::handedRoom) {
+				func(a_cell, a_parent);
+				return;
+			}
+			RemoteCell::handedRoom = nullptr;
+			RemoteCell::roomTaken = a_cell;
+			static REL::Relocation<std::uint8_t*> worldsPaused{ REL::RelocationID(514184, 400334) };
+			*(reinterpret_cast<std::uint8_t*>(a_cell->GetbhkWorld()) + 0xC701) = *worldsPaused == 0;
+			auto* worldScene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+			if (!(a_cell->GetFormFlags() & 0x2000)) {  // as the engine: not for a cell with this flag
+				worldScene->SetPortalGraph(a_cell->GetRuntimeData().loadedData->portalGraph.get());
+			}
+			RE::NiPointer<RE::NiAVObject> cell3D(a_cell->GetRuntimeData().loadedData->cell3D);
+			cell3D->parent->DetachChild(cell3D.get());
+			a_parent->AttachChild(cell3D.get(), true);
+			const auto held = RemoteCell::handedRoomLights.size();
+			const int  given = LightScene::Give(worldScene, RemoteCell::handedRoomLights, [](const RE::BSLight*) { return true; });
+			LightScene::Dispose(RemoteCell::handedRoomLights);
+			for (auto& light : RemoteCell::handedRoomShadowLights) {
+				worldScene->AddLight(light.get());
+			}
+			logger::info("portal: {} taken by the engine attached; {} of its {} light(s) moved into the world scene as they were, {} shadow light(s) queued", Probe::DescribeCell(a_cell),
+				given, held, RemoteCell::handedRoomShadowLights.size());
+			RemoteCell::handedRoomShadowLights.clear();
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+	};
+
+	// + 0x6AA: and the attach finished (ID 19063: its references' 3D queued, state Attached).
+	struct RoomFinishHook
+	{
+		static std::uint8_t Thunk(RE::TESObjectCELL* a_cell, bool a_arg2)
+		{
+			if (a_cell == std::exchange(RemoteCell::roomTaken, nullptr)) {
+				return 1;
+			}
+			return func(a_cell, a_arg2);
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 	};
@@ -2357,7 +2521,7 @@ namespace Portal
 
 	bool RemoteCell::Holds(const RE::TESObjectCELL* a_cell)
 	{
-		return a_cell && std::ranges::find(held, a_cell) != held.end();
+		return a_cell && (std::ranges::find(held, a_cell) != held.end() || std::ranges::find(keptGrid, a_cell) != keptGrid.end() || a_cell == handedRoom);
 	}
 
 	void RemoteCell::InstallGridHook()
@@ -2375,6 +2539,24 @@ namespace Portal
 		}
 		GridReadyHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), GridReadyHook::Thunk);
 		// Only with the hand-over back: the grid kept attached must be accepted again on the way out.
+		REL::Relocation<std::uintptr_t> interiorDetach{ REL::RelocationID(13172, 13317), REL::Relocate(0x8E, 0x82) };
+		if (Hooks::CallsTo(interiorDetach.address(), REL::RelocationID(18655, 19130), "portal: interior detach on walking out")) {
+			InteriorDetachHook::func = SKSE::GetTrampoline().write_call<5>(interiorDetach.address(), InteriorDetachHook::Thunk);
+			REL::Relocation<std::uintptr_t> interiorDemote{ REL::RelocationID(13172, 13317), REL::Relocate(0x218, 0x1F3) };
+			if (Hooks::CallsTo(interiorDemote.address(), REL::RelocationID(18577, 19046), "portal: interior's actors on walking out")) {
+				InteriorDemoteHook::func = SKSE::GetTrampoline().write_call<5>(interiorDemote.address(), InteriorDemoteHook::Thunk);
+			}
+		} else {
+			keepInterior = false;
+		}
+		REL::Relocation<std::uintptr_t> roomAttach{ REL::RelocationID(13171, 13316), REL::Relocate(0x4E4, 0x66B) };
+		REL::Relocation<std::uintptr_t> roomFinish{ REL::RelocationID(13171, 13316), REL::Relocate(0x523, 0x6AA) };
+		if (Hooks::CallsTo(roomAttach.address(), REL::RelocationID(18518, 18976), "portal: room attach on walking in") &&
+			Hooks::CallsTo(roomFinish.address(), REL::RelocationID(18594, 19063), "portal: room attach finish on walking in")) {
+			RoomAttachHook::func = SKSE::GetTrampoline().write_call<5>(roomAttach.address(), RoomAttachHook::Thunk);
+			RoomFinishHook::func = SKSE::GetTrampoline().write_call<5>(roomFinish.address(), RoomFinishHook::Thunk);
+			roomHooks = true;
+		}
 		REL::Relocation<std::uintptr_t> clearedSite{ REL::RelocationID(13172, 13317), REL::Relocate(0x29F, 0x34C) };
 		if (Hooks::CallsTo(clearedSite.address(), REL::RelocationID(99704, 106338), "portal: world lights cleared on walking out")) {
 			WorldLightsClearedHook::func = SKSE::GetTrampoline().write_call<5>(clearedSite.address(), WorldLightsClearedHook::Thunk);

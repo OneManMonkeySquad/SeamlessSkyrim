@@ -296,7 +296,8 @@ Diagnostics:
   place it shows a cell drawn that shouldn't be, or one that lost its things.
 - `travel_options {keepStreet: false}`: walking in, the street's cells are detached and attached
   again as before, for timing both ways in one session (two launches differ by more than the
-  change does). `{moveLights: false}`: the street's lights are made anew at each crossing.
+  change does). `{moveLights: false}`: lights are made anew at each crossing. `{keepInterior: false}`: the
+  interior is detached and attached again at each crossing.
 - At night shops are shut: a route walks into the door. Bridge `doors {force: 1}` first.
 - `wide_bounds {cell, radius}`: nodes of a cell's 3D with a bound wider than `radius`, with their
   farthest children (a stray child at the origin makes every bound above it span the map).

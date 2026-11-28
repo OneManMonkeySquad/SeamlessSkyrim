@@ -223,6 +223,17 @@ the end. These were expensive to find. Add new ones in the same change that need
 - **Two worldspaces can share a sky cell** (Windhelm's and Solitude's). Changing between them,
   `TES::SetWorldSpace` (ID 13315 + 0x1EB) gives it the new worldspace's room graph (ID 19168)
   without looking whether it is loaded: unloaded before, a crash.
+- **What the engine's attach of the cell walked into does beyond attaching** (`TES::SetCurrentCell`
+  + 0x66B: ID 18976; + 0x6AA: ID 19063), for a cell that is attached already: hangs its 3D under
+  `TES::objRoot`; for an interior sets its Havok world's active flag (18976 + 0xCE: `bhkWorld` +
+  0xC701 = the byte at ID 400334 is 0); installs its room graph in the world scene (+0x140, not for
+  a cell with form flag 0x2000). The rest is per reference (ID 19187, 19280: 3D queued, events to
+  every mod's sink) and the cell's state. Both calls skipped for a room handed over attached
+  (`RoomAttachHook`), the three things done by hand.
+- **Walking out, the interior's detach and its actors' demotion are two calls** (ID 13317 + 0x82:
+  ID 19130 (cell, true); + 0x1F3: ID 19046 (cell, true, false), when the cell is in the interior
+  buffer, which the cell the player is in always is). Both skipped (`InteriorDetachHook`), the cell
+  goes on as a cell attached behind a door.
 - **A detached interior loses its references' 3D after a while**, its cell node staying (3D=yes):
   Arcadia's Cauldron, let go on walking into Belethor's and attached again 20 s later, took 4.7 s
   to load. Belethor's, detached by the teleport and attached again in the same frame, was whole.
@@ -459,6 +470,11 @@ the end. These were expensive to find. Add new ones in the same change that need
   - `RemoveLight` (ID 106332) only queues, and does nothing while the scene's byte at +0x300 is 0.
     The update's removal goes by the `NiLight`: a second `BSLight` for the same one, removed from
     the world scene, took the scene's own with it (18 of Whiterun's 53 street lights gone).
+  - A shadow-casting light taken in builds culling processes for its shadow maps as well (ID 76551
+    again): Belethor's four were ~4 ms in one frame.
+  - The engine queues a second `BSLight` for each light of a space within a crossing; when the first
+    is active already (moved in as it was), the update only walks the scene again for it. Dropped
+    from the queue during the frames after a crossing (`UpdateLightsSpread`).
   - The update (ID 106335): the add queue (+0x160; a queued light whose `NiLight` is active already
     only walks again), a queue of lights to walk again (+0x190), the remove queue (+0x178), then
     the new geometry.
