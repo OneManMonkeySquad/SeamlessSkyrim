@@ -14,6 +14,7 @@
 
 namespace
 {
+	int guardFrames = 10;  // frames after a crossing looked at by the flash guard (travel_options)
 	using Clock = std::chrono::steady_clock;
 
 	// ID 13363 (TES: show/hide the loading screen) returns without showing it while this is set.
@@ -193,8 +194,10 @@ namespace
 		trace.start = trace.lastFrame = Clock::now();
 		trace.door = door->GetFormID();
 		Perf::AddCount("crossing", 1.0);
-		// The white frame came 2-3 frames after the crossing; a second's worth leaves room for slow ones.
-		FrameHooks::GuardFlashes(60);
+		// The white frame came 2-3 frames after the crossing. Not for longer than needed: reading a
+		// frame before it is shown waits for the GPU, ~3 ms a frame after a crossing and ~10 ms in its
+		// own frame (it was 60 frames, the second after every crossing).
+		FrameHooks::GuardFlashes(guardFrames);
 		FrameHooks::CaptureEventFrames(L"crossing", 16);
 		if (!profileFile.empty()) {
 			Sampler::Start(profileFile, 1.5);
@@ -934,10 +937,13 @@ namespace Portal::Travel
 		keepStreet = a_options.value("keepStreet", keepStreet);
 		Portal::RemoteCell::keepInterior = a_options.value("keepInterior", Portal::RemoteCell::keepInterior);
 		Portal::moveBodies = a_options.value("moveBodies", Portal::moveBodies);
+		Portal::skipAttached = a_options.value("skipAttached", Portal::skipAttached);
+		guardFrames = a_options.value("guardFrames", guardFrames);
 		moveLights = a_options.value("moveLights", moveLights);
 		Portal::RemoteCell::moveLights = moveLights;
 		return { { "skipLoadWait", skipLoadWait }, { "skipLoadScreenClose", skipLoadScreenClose }, { "skipExtraFrame", skipExtraFrame },
-			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights }, { "keepInterior", Portal::RemoteCell::keepInterior }, { "moveBodies", Portal::moveBodies } };
+			{ "spreadLights", spreadLights }, { "keepStreet", keepStreet }, { "moveLights", moveLights }, { "keepInterior", Portal::RemoteCell::keepInterior }, { "moveBodies", Portal::moveBodies },
+			{ "skipAttached", Portal::skipAttached }, { "guardFrames", guardFrames } };
 	}
 
 	void ThroughDoorTo(RE::TESObjectREFR* a_door, const RE::NiPoint3& a_position, float a_yaw)

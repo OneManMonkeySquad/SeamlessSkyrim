@@ -304,14 +304,17 @@ namespace
 	constexpr float kDarkest = 1e-3f;
 
 	// RoomBrightness of a picture's texels (RGBA16F, alpha how far behind the doorway).
+	// Every fourth texel each way: all of them were ~10 ms of the first frame after walking out of
+	// Belethor's, for the pictures of the doors around read from disk in that frame.
 	float Brightness(const void* a_texels, UINT a_width, UINT a_height, std::size_t a_rowPitch, float a_lightScale)
 	{
 		using DirectX::PackedVector::XMConvertHalfToFloat;
+		constexpr UINT kStep = 4;
 		double sum = 0.0;
 		std::size_t count = 0;
-		for (UINT y = 0; y < a_height; ++y) {
+		for (UINT y = 0; y < a_height; y += kStep) {
 			const auto* row = reinterpret_cast<const std::uint16_t*>(static_cast<const char*>(a_texels) + y * a_rowPitch);
-			for (UINT x = 0; x < a_width; ++x) {
+			for (UINT x = 0; x < a_width; x += kStep) {
 				const auto* texel = row + x * 4;
 				// Nothing there (no wall of the room's beyond the capture camera's edge): not part of it.
 				if (XMConvertHalfToFloat(texel[3]) >= 20000.0f) {

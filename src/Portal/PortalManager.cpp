@@ -2903,6 +2903,9 @@ namespace Portal::Manager
 				ReleaseWarm(a_reason);
 			}
 		}
+		// A room behind another door is attached a moment after a crossing, not in its frame, long
+		// as that is (the first walk out after loading a game: 3-14 ms of it).
+		warmAttachTimer = kWarmAttachSeconds;
 		const Perf::Scope scope("release shown");
 		ReleaseShown(a_reason, a_holdoff, a_handOver);
 	}

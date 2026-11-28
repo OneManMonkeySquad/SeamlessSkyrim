@@ -298,7 +298,12 @@ Diagnostics:
   again as before, for timing both ways in one session (two launches differ by more than the
   change does). `{moveLights: false}`: lights are made anew at each crossing. `{keepInterior: false}`: the
   interior is detached and attached again at each crossing. `{moveBodies: true}`: the move of a
-  street or room updates its people's bone bodies as before.
+  street or room updates its people's bone bodies as before. `{skipAttached: false}`: on the first
+  walk out after a load the grid attaches the street's cells a second time, as before.
+  `{guardFrames: 60}`: the flash guard reads back that many frames after a crossing, as before.
+- The first walk out after a load: alternate a switch between reloads of the save in one session
+  (load, wait 14 s for the street and its prewarm, walk out). A fresh launch reads more from disk
+  and varies by tens of ms from run to run.
 - At night shops are shut: a route walks into the door. Bridge `doors {force: 1}` first.
 - `wide_bounds {cell, radius}`: nodes of a cell's 3D with a bound wider than `radius`, with their
   farthest children (a stray child at the origin makes every bound above it span the map).

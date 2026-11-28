@@ -170,7 +170,7 @@ the end. These were expensive to find. Add new ones in the same change that need
 ## Crossing: the engine's teleport
 
 - **The teleport's cost** (ID 40438, loading screen and waits skipped): 15-40 ms into an interior,
-  25-60 ms out to a street seen before, 60-70 ms out of Belethor's the first time after a load
+  25-60 ms out to a street seen before, ~57 ms out of Belethor's the first time after a load
   (170 ms before `RemoteCell::Prewarm`).
 - **The change into an exterior** (ID 13317) sets the grid up around the arrival cell
   (13288 -> 13428 -> 13430) and calls ID 13427 for *every* grid cell: `TESWorldSpace::LoadCell`
@@ -187,6 +187,22 @@ the end. These were expensive to find. Add new ones in the same change that need
     sets the worldspace up anew and sleeps until the task pool's loads are done (ID 75708, 50 ms
     at a time). Street cells handed over still attached failed that check and made the walk out
     slower than detaching them (`GridReadyHook` accepts them).
+  - With no grid buffered (the first walk out after loading a game indoors: `saveGridX` is
+    0x7FFFFFFF) the grid is set up anew, and ID 13427 attaches every cell that isn't kAttached
+    *in its grid slot* (ID 15950), whatever the cell's own state: the slots are empty, so a cell
+    attached by us was attached a second time (ID 15962 at +0x13A, the attach event sent for each
+    reference again). `GridAttachHook` skips that attach.
+    - A cell enters the engine's buffer of loaded exterior cells through ID 13434 (TES, cell):
+      called for a cell attached in its slot (13427 + 0xCF) and for each cell the grid attached
+      (ID 13430 + 0x346, those in state kAttaching). Loading a save unloads the cells in the
+      buffer. An attached cell in a grid slot but not in the buffer stayed attached through the
+      load and crashed it (ID 19165, an actor's 3D hung into it, the worldspace's room graph gone).
+    - `TES::SetWorldSpace` (ID 13315, run when no worldspace is set) attaches the new
+      worldspace's sky cell without looking at its state (+0x1C6), and makes the worldspace's
+      room graph if it has none (ID 20514). ID 13288 + 0xCCE attaches the sky cell again unless
+      it is kAttached.
+    - ID 13430 + 0x364 (ID 18234 on `TESWorldSpace` + 0x250) then moves the worldspace's
+      persistent actors into their cells (ID 20541 -> 19411).
   - Coming from an interior it first detaches it (+0x82: ID 19130 (cell, true)), then, the cell
     found in the interior buffer, demotes its actors (ID 19046), or else unloads it (ID 13721).
     With `bPreemptivelyUnloadCells:General` set (off by default) and more than
@@ -248,6 +264,12 @@ the end. These were expensive to find. Add new ones in the same change that need
   There, ZeroBountyHostilityFix called `PlayerPayCrimeGold` 78 times per cell change, and
   PlayerPayCrimeGoldTweak re-read its INI and wrote two log lines on each call. Look below 20039
   before blaming Light Placer.
+- **DynDOLOD does its work for newly attached cells either in the attach event's sink or in the
+  player's cell change** (ID 19411 -> 40466 -> 41034 -> DynDOLOD, ~16 ms for Whiterun's grid):
+  cells attached while the player was indoors moved it from the first to the second, the same
+  time in all.
+- **Reading the back buffer before `Present` waits for the GPU** (`Map` of a staging copy, the
+  flash guard in `FrameHooks`): ~3 ms a frame, ~10 ms in a crossing's frame.
 - **Each trip through Riften's south gate leaks about 2.5 GB of GPU textures** in the test load
   order (private bytes 15 GB after loading, 31 GB after ten trips; crashes after many trips came
   with the machine's memory nearly used up). Not SeamlessSkyrim's: the same with the engine's own

@@ -2476,6 +2476,33 @@ namespace Portal
 			}
 			static inline REL::Relocation<decltype(Thunk)> func;
 		};
+
+		// ID 13427 + 0x13A: the grid set up anew (walking out the first time after loading a game
+		// indoors: no grid is buffered) attaches every cell not attached *in its slot*, and the slots
+		// are empty: a street cell handed over attached was attached a second time, the attach event
+		// sent for each of its references again (17 ms of the first walk out of Belethor's). The
+		// engine has just put the cell into its slot and goes on with its land and water as for any
+		// other.
+		struct GridAttachHook
+		{
+			static void Thunk(void* a_grid, RE::NiNode* a_root, std::uint32_t a_x, std::uint32_t a_y)
+			{
+				const auto* raw = static_cast<const std::uint8_t*>(a_grid);
+				const auto  size = *reinterpret_cast<const std::uint32_t*>(raw + 0x10);
+				auto*       cell = (*reinterpret_cast<RE::TESObjectCELL* const* const*>(raw + 0x18))[a_x * size + a_y];
+				if (!skipAttached || cell->cellState.get() != CellState::kAttached || std::ranges::find(RemoteCell::HandedOver(), cell) == RemoteCell::HandedOver().end()) {
+					func(a_grid, a_root, a_x, a_y);
+					return;
+				}
+				// Into the engine's buffer of loaded exterior cells, as ID 13430 does with a cell it
+				// attached (+0x346) and ID 13427 with one attached in its slot (+0xCF): loading a save
+				// unloads the cells in it, and one left out stayed attached through the load (a crash in
+				// ID 19165, an actor's 3D hung into it with the worldspace's room graph gone).
+				REL::Relocation<void (*)(RE::TES*, RE::TESObjectCELL*)> buffer{ REL::RelocationID(13280, 13434) };
+				buffer(RE::TES::GetSingleton(), cell);
+			}
+			static inline REL::Relocation<decltype(Thunk)> func;
+		};
 	}
 
 	namespace
@@ -2556,6 +2583,10 @@ namespace Portal
 			return;
 		}
 		GridReadyHook::func = SKSE::GetTrampoline().write_call<5>(site.address(), GridReadyHook::Thunk);
+		REL::Relocation<std::uintptr_t> gridAttach{ REL::RelocationID(13276, 13427), REL::Relocate(0x153, 0x13A) };
+		if (Hooks::CallsTo(gridAttach.address(), REL::RelocationID(15727, 15962), "portal: attach of a grid set up anew")) {
+			GridAttachHook::func = SKSE::GetTrampoline().write_call<5>(gridAttach.address(), GridAttachHook::Thunk);
+		}
 		// Only with the hand-over back: the grid kept attached must be accepted again on the way out.
 		REL::Relocation<std::uintptr_t> interiorDetach{ REL::RelocationID(13172, 13317), REL::Relocate(0x8E, 0x82) };
 		if (Hooks::CallsTo(interiorDetach.address(), REL::RelocationID(18655, 19130), "portal: interior detach on walking out")) {

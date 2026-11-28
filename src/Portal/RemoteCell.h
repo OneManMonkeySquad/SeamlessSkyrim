@@ -399,6 +399,7 @@ namespace Portal
 	// drawn; a person's are set from the bones again by their own next update.
 	void UpdateMoved(RE::NiAVObject* a_root);
 	inline bool moveBodies = false;  // diagnostics (travel_options): the update as it was
+	inline bool skipAttached = true;  // diagnostics: false, the grid attaches a cell handed over attached again
 
 	// After moving a_root as a whole: each object's previous transform set to the current one, so
 	// the motion vectors don't reach back to where it came from (see RemoteCell.cpp).

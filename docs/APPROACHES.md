@@ -105,6 +105,16 @@ end of a trip is skipped (walking out was 45-180 ms longer every other time). Be
 two interiors the one walked out of is still detached by the engine (`TES::SetCurrentCell` +
 0x3A1) and attached again by us.
 
+The first walk out after loading a game indoors: the engine sets its grid up anew, and a street
+cell handed over attached is not attached a second time (`GridAttachHook`). Belethor's 105 ->
+94 ms after a reload, 193 -> ~108 ms after launching the game; Riften's jail 148 -> 112 ms.
+- **Dropped: the whole grid attached beforehand** (`Prewarm` leaving its sixteen cells and the sky
+  cell attached in no scene, handed over with the street). Belethor's 108 -> 130 ms (more to
+  release, hang and light in the crossing's frame than the engine's attach of cells still loaded
+  took), 4 ms a frame more while indoors, and three new ways to go wrong: cells the engine's grid
+  didn't take, cells missing from its buffer (a crash loading a save), their lights made in the
+  interior's scene.
+
 ## 3. Render-merge (looking in)
 
 The room's 3D is hung into the world scene, moved by the door mapping, and the game's main pass
